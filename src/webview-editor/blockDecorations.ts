@@ -3,7 +3,7 @@ import { Decoration, DecorationSet, EditorView, WidgetType } from '@codemirror/v
 import { syntaxTree } from '@codemirror/language';
 import { parse as parseYaml } from 'yaml';
 import { MermaidWidget } from './mermaidWidget';
-import { buildTableWidget, isLineAligned } from './livePreviewPlugin';
+import { buildTableWidget, isLineAligned, alignedBlockRange } from './livePreviewPlugin';
 import { cursorTouchesRange } from './cmUtils';
 import { detectFrontmatter, FrontmatterWidget, FrontmatterEmptyWidget, FrontmatterErrorWidget } from './frontmatterWidget';
 
@@ -64,9 +64,10 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
 			}
 			if (node.name === 'Table') {
 				if (cursorTouchesRange(state, node.from, node.to)) return;
-				if (!isLineAligned(state, node.from, node.to)) return;
+				const range = alignedBlockRange(state, node.from, node.to);
+				if (!range) return;
 				decorations.push(
-					Decoration.replace({ widget: buildTableWidget(state, node), block: true }).range(node.from, node.to),
+					Decoration.replace({ widget: buildTableWidget(state, node), block: true }).range(range.from, range.to),
 				);
 				return false;
 			}

@@ -132,7 +132,7 @@ With the `watch` task running, changing the code and reloading the Extension Dev
 
 ### Manual verification steps
 
-`sample/sample.md` covers headings (h1–h6), bold, italic, strikethrough, inline code, blockquotes, lists, task lists, links, images, horizontal rules, a `python` code block, `mermaid` blocks (small and large diagrams), and tables (including one with blank cells). Walk through the following:
+`sample/sample.md` covers headings (h1–h6), bold, italic, strikethrough, inline code, blockquotes, lists, task lists, links, images, horizontal rules, a `python` code block, `mermaid` blocks (small and large diagrams), and tables (including one with blank cells, and one directly under a list item with no blank line before it). Walk through the following:
 
 1. Open `sample/sample.md` in the normal text editor and confirm the toggle icon appears at the top right of the editor title bar.
 2. Click it and confirm it switches to Live Preview. Confirm Live Preview also shows a "back to source" icon that returns to the normal editor.
@@ -147,6 +147,7 @@ With the `watch` task running, changing the code and reloading the Extension Dev
 11. Restart VS Code, reopen `sample/sample.md` in Live Preview, and confirm state such as the enabled CSS theme persisted.
 12. Confirm the "動作確認用サンプル" section's h4–h6 headings render progressively smaller, same as the other heading levels.
 13. Confirm the "動作確認用サンプル" section's table with blank cells doesn't shift later columns left — blank cells stay in their original column position.
+14. Confirm the "動作確認用サンプル" section's table directly under a bullet item (no blank line before it) renders as an actual table, not raw `|`-delimited text.
 14. Select some text and press `Ctrl+B` / `Ctrl+I`; confirm it toggles `**bold**` / `*italic*` on and back off. With no selection, confirm it inserts an empty pair with the cursor placed inside.
 15. Copy an image (e.g. a screenshot) and paste it into Live Preview; confirm an `assets/` folder is created beside the file, the image is saved into it, and `![](assets/...)` is inserted at the cursor. Try dragging an image file from a file explorer too.
 16. Open the "Outline" view in the Primary Sidebar and confirm it lists the document's headings. Click one and confirm the editor jumps to and scrolls to that heading. Switch between multiple Live Preview tabs and confirm the outline follows the active one. Add or remove a heading and confirm the list updates.
@@ -282,7 +283,7 @@ npm run compile
 
 #### 動作確認の手順
 
-`sample/sample.md`には見出し(h1〜h6)・太字・斜体・取り消し線・インラインコード・引用・リスト・タスクリスト・リンク・画像・水平線・`python`コードブロック・`mermaid`ブロック(小さい図・大きい図)・テーブル(通常/空白セルを含むもの)が一通り含まれています。以下を順に確認してください。
+`sample/sample.md`には見出し(h1〜h6)・太字・斜体・取り消し線・インラインコード・引用・リスト・タスクリスト・リンク・画像・水平線・`python`コードブロック・`mermaid`ブロック(小さい図・大きい図)・テーブル(通常/空白セルを含むもの/箇条書き直下で空行なしのもの)が一通り含まれています。以下を順に確認してください。
 
 1. 通常のテキストエディタで`sample/sample.md`を開き、エディタタイトルバー右上に切替アイコン(プレビューを開くボタン)が表示されることを確認する。
 2. クリックしてLive Previewに切り替わることを確認する。Live Preview側にも「ソースに戻る」アイコンが表示され、クリックで通常エディタに戻れることを確認する。
@@ -297,6 +298,7 @@ npm run compile
 11. VS Codeを再起動して`sample/sample.md`を再度Live Previewで開き、有効化したCSSテーマなどの状態が保持されていることを確認する。
 12. 「動作確認用サンプル」の見出しレベル4〜6が、他の見出しと同様に段階的に小さく表示されることを確認する。
 13. 「動作確認用サンプル」の空白セルを含むテーブルで、空白セルの分だけ後続の列が左にずれず、元の列位置のまま表示されることを確認する。
+14. 「動作確認用サンプル」の箇条書き直下(空行なし)のテーブルが、生の`|`区切りテキストのままではなく、実際の表として表示されることを確認する。
 14. 文字を選択して`Ctrl+B` / `Ctrl+I`を押し、`**太字**` / `*斜体*`のオン・オフが切り替わることを確認する。選択なしで押すと、空のマーカー対が挿入されカーソルが内側に置かれることを確認する。
 15. 画像(スクリーンショットなど)をコピーしてLive Previewに貼り付け、`assets/`フォルダが作成され画像が保存され、カーソル位置に`![](assets/...)`が挿入されることを確認する。ファイルエクスプローラーから画像ファイルをドラッグ&ドロップしても同様に動作することを確認する。
 16. プライマリサイドバーの「アウトライン」ビューを開き、見出し一覧が表示されることを確認する。クリックすると該当の見出しへジャンプ・スクロールすることを確認する。複数のLive Previewタブを切り替えると、アウトラインが追従することを確認する。見出しを追加・削除すると一覧が更新されることを確認する。

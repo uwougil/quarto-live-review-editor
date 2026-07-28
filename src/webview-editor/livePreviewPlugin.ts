@@ -18,6 +18,22 @@ export function isLineAligned(state: EditorState, from: number, to: number): boo
 	return from === state.doc.lineAt(from).from && to === state.doc.lineAt(to).to;
 }
 
+// A block-level decoration (rich table widget) requires `to` to land exactly
+// at the end of its line, but `from` doesn't strictly have to be a line
+// start — it may sit after pure indentation, as for a table nested under a
+// list item ("  | a | b |"). Widening `from` back to the start of its own
+// line (which is safe precisely because nothing but whitespace precedes it)
+// satisfies CodeMirror's line-alignment requirement for block decorations
+// without swallowing unrelated content sharing that line (e.g. a list
+// marker, which always lives on a different line from an indented table).
+export function alignedBlockRange(state: EditorState, from: number, to: number): { from: number; to: number } | null {
+	const toLine = state.doc.lineAt(to);
+	if (to !== toLine.to) return null;
+	const fromLine = state.doc.lineAt(from);
+	if (fromLine.from === from) return { from, to };
+	return /^[ \t]*$/.test(state.sliceDoc(fromLine.from, from)) ? { from: fromLine.from, to } : null;
+}
+
 // The webview's document lives at a `vscode-webview://` origin, not the
 // actual folder holding the `.md` file — a Markdown image path like
 // `assets/foo.png`, meant to be relative to that folder, is meaningless
@@ -519,7 +535,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 						return false;
 					}
 					case 'Table': {
-						if (!cursorTouchesRange(state, node.from, node.to) && isLineAligned(state, node.from, node.to)) {
+						if (!cursorTouchesRange(state, node.from, node.to) && alignedBlockRange(state, node.from, node.to)) {
 							// Rendered as a rich table by blockDecorationsField. Block
 							// decorations may not be supplied from a view plugin, so emit
 							// nothing here and let the state field replace this range.

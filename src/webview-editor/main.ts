@@ -3,7 +3,7 @@ import { EditorView, keymap } from '@codemirror/view';
 import { defaultKeymap, indentWithTab } from '@codemirror/commands';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import { markdown } from '@codemirror/lang-markdown';
-import { GFM } from '@lezer/markdown';
+import { GFM } from './gfmTableFix';
 import { livePreviewPlugin, createLinkClickHandler, setImageBaseUri } from './livePreviewPlugin';
 import { codeHighlightExtension, setCodeTokens } from './codeHighlightPlugin';
 import { blockDecorationsField } from './blockDecorations';
