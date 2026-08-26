@@ -5,7 +5,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
 import { ensureSyntaxTree } from '@codemirror/language';
 import type { SyntaxNode } from '@lezer/common';
-import { readCells, resolveImageSrc } from './livePreviewPlugin';
+import { readCells, resolveImageSrc, blankLineAfter } from './livePreviewPlugin';
 
 /** Builds a 2-row GFM table (header + one data row) from a list of cell values. */
 function tableFor(cells: string[]): string {
@@ -102,6 +102,50 @@ describe('resolveImageSrc', () => {
 			fc.property(relativePathArb, (relPath) => {
 				const resolved = resolveImageSrc(relPath, baseUri);
 				expect(resolved.startsWith(baseUri)).toBe(true);
+			}),
+		);
+	});
+});
+
+describe('blankLineAfter', () => {
+	const stateFor = (doc: string) => EditorState.create({ doc });
+	/** Offset of the end of `line` (1-based) — the value the helper returns. */
+	const endOfLine = (doc: string, line: number) => stateFor(doc).doc.line(line).to;
+
+	it('claims the blank line a paragraph is followed by', () => {
+		const doc = 'テスト\n';
+		expect(blankLineAfter(stateFor(doc), 3)).toBe(endOfLine(doc, 2));
+	});
+
+	it('claims the blank line separating two paragraphs', () => {
+		const doc = 'one\n\ntwo';
+		expect(blankLineAfter(stateFor(doc), 3)).toBe(endOfLine(doc, 2));
+	});
+
+	it('returns null at the end of the document (no line to claim)', () => {
+		expect(blankLineAfter(stateFor('テスト'), 3)).toBeNull();
+	});
+
+	it('returns null when the next line has content', () => {
+		// A soft-wrapped paragraph: the next line is already inside the block, so
+		// `-last` reaches it through the normal range, not through this helper.
+		expect(blankLineAfter(stateFor('one\ntwo'), 3)).toBeNull();
+	});
+
+	it('returns null when the next line is whitespace rather than empty', () => {
+		// Trailing spaces are a hard line break in Markdown — that line still
+		// carries content, so it is not a separator this may claim.
+		expect(blankLineAfter(stateFor('one\n  \ntwo'), 3)).toBeNull();
+	});
+
+	it('never returns an offset outside the document', () => {
+		fc.assert(
+			fc.property(fc.stringMatching(/^[a-z\n ]{0,40}$/), (doc) => {
+				const state = stateFor(doc);
+				for (let pos = 0; pos <= state.doc.length; pos++) {
+					const to = blankLineAfter(state, pos);
+					if (to !== null) expect(to).toBeLessThanOrEqual(state.doc.length);
+				}
 			}),
 		);
 	});

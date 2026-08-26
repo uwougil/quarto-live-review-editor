@@ -3,6 +3,7 @@ import { syntaxTree } from '@codemirror/language';
 import type { Range, EditorState } from '@codemirror/state';
 import type { SyntaxNode, SyntaxNodeRef } from '@lezer/common';
 import { cursorTouchesRange } from './cmUtils';
+import { wrapBlockWidget } from './blockWidgetWrap';
 import { detectFrontmatter } from './frontmatterWidget';
 
 const HEADING_LINE_CLASS: Record<string, string> = {
@@ -32,6 +33,19 @@ export function alignedBlockRange(state: EditorState, from: number, to: number):
 	const fromLine = state.doc.lineAt(from);
 	if (fromLine.from === from) return { from, to };
 	return /^[ \t]*$/.test(state.sliceDoc(fromLine.from, from)) ? { from: fromLine.from, to } : null;
+}
+
+/**
+ * End offset of the empty line directly after `blockTo`, or `null` when there
+ * is none (end of document, or the next line has content). Lets a paragraph
+ * claim the blank line that separates it from whatever follows — see the
+ * `Paragraph` case in `buildDecorations` for why.
+ */
+export function blankLineAfter(state: EditorState, blockTo: number): number | null {
+	const lastLine = state.doc.lineAt(blockTo);
+	if (lastLine.number >= state.doc.lines) return null;
+	const next = state.doc.line(lastLine.number + 1);
+	return next.text === '' ? next.to : null;
 }
 
 // The webview's document lives at a `vscode-webview://` origin, not the
@@ -70,11 +84,18 @@ class ImageWidget extends WidgetType {
 	eq(other: ImageWidget): boolean {
 		return other.src === this.src && other.alt === this.alt;
 	}
-	toDOM(): HTMLElement {
+	toDOM(view: EditorView): HTMLElement {
 		const img = document.createElement('img');
 		img.src = resolveImageSrc(this.src, imageBaseUri);
 		img.alt = this.alt;
 		img.className = 'mlp-image';
+		// An <img> is zero-height until its bytes arrive, so the line CodeMirror
+		// measures at mount time is nothing like the line the user ends up seeing.
+		// CodeMirror can't observe the load, so ask it to re-measure once the real
+		// dimensions are in (and on failure, when the broken-image box settles).
+		const remeasure = () => view.requestMeasure();
+		img.addEventListener('load', remeasure);
+		img.addEventListener('error', remeasure);
 		return img;
 	}
 }
@@ -226,7 +247,7 @@ class TableWidget extends WidgetType {
 			view.dispatch({ selection: { anchor: pos }, scrollIntoView: true });
 			view.focus();
 		});
-		return table;
+		return wrapBlockWidget(table);
 	}
 	ignoreEvent(): boolean {
 		return false;
@@ -400,7 +421,23 @@ function buildDecorations(view: EditorView): DecorationSet {
 						// specifies no bottom padding at all.
 						const parentName = node.node.parent?.name;
 						if (parentName === 'ListItem' || parentName === 'Blockquote') return;
-						addLineRange(node.from, node.to, (_n, first, last) => {
+						// Hand the paragraph's trailing gap (a theme's `p { margin-bottom }`,
+						// which cssAdapter maps onto `-last` as padding-bottom) to the blank
+						// line that separates this paragraph from what follows, rather than
+						// leaving it on the paragraph's own last line.
+						//
+						// Both put the gap in the same place on screen — the separator line
+						// and the gap simply swap order, so every block below keeps its exact
+						// position. What changes is where the caret lands: pressing Enter at
+						// the end of a paragraph leaves the cursor on a line the parser does
+						// not consider part of the paragraph yet, so with the gap still above
+						// it the caret sat a whole gap below the text it follows, then snapped
+						// up the moment the first character was typed and the parser extended
+						// the paragraph onto that line. Claiming the line up front makes the
+						// layout the user lands on already the one typing produces — nothing
+						// left to snap, and no dependence on where the cursor happens to be.
+						const paragraphTo = blankLineAfter(state, node.to) ?? node.to;
+						addLineRange(node.from, paragraphTo, (_n, first, last) => {
 							let cls = 'mlp-line-paragraph';
 							if (first) cls += ' mlp-line-paragraph-first';
 							if (last) cls += ' mlp-line-paragraph-last';

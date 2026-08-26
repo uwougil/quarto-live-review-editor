@@ -1,4 +1,5 @@
 import { EditorView, WidgetType } from '@codemirror/view';
+import { wrapBlockWidget } from './blockWidgetWrap';
 
 let mermaidModulePromise: Promise<typeof import('mermaid')> | null = null;
 
@@ -145,6 +146,10 @@ export class MermaidWidget extends WidgetType {
 					: '自動縮小表示に戻す（表示幅に合わせて縮小し、スクロールなしで全体を表示します）';
 			if (mode === 'native') resetPanZoom();
 			else applyTransform();
+			// The two modes have different heights ('native' adds a horizontal
+			// scrollbar and caps at `max-height: 70vh`), and CodeMirror has no way
+			// to notice a widget resizing itself — tell it to re-measure.
+			view.requestMeasure();
 		}
 		setMode('fit');
 
@@ -255,13 +260,31 @@ export class MermaidWidget extends WidgetType {
 				// mode's own CSS (`.mlp-mermaid-canvas svg`) handles shrinking instead.
 				canvas.querySelector('svg')?.style.removeProperty('max-width');
 				if (mode === 'native') resetPanZoom(); // center once real dimensions are known
+				// Rendering is asynchronous: CodeMirror measured this widget while it
+				// still held the one-line "Rendering diagram…" placeholder, and has no
+				// way to observe the swap. Without this the height map keeps that
+				// placeholder height for the finished diagram — a difference of
+				// hundreds of pixels that throws off every position below it until
+				// some unrelated measure pass happens to correct it.
+				view.requestMeasure();
 			})
 			.catch((err: unknown) => {
 				canvas.textContent = `Mermaid error: ${err instanceof Error ? err.message : String(err)}`;
 				canvas.classList.add('mlp-mermaid-error');
+				view.requestMeasure(); // the error text is a different height too
 			});
 
-		return wrap;
+		return wrapBlockWidget(wrap);
+	}
+
+	// Height CodeMirror should assume for a diagram it hasn't measured yet (a
+	// block still below the viewport). The default guess is derived from the
+	// replaced text, which for a fenced block is only a few lines tall — far off
+	// for a diagram, and enough to make the scrollbar jump as such blocks scroll
+	// into view. A mid-sized diagram is the better standing guess; the real
+	// height replaces it as soon as the block is measured.
+	get estimatedHeight(): number {
+		return 240;
 	}
 
 	// Return true so CodeMirror leaves this widget's mouse/pointer/wheel events

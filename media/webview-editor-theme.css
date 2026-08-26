@@ -94,10 +94,11 @@ html, body {
 	   still overrides this. */
 	color: var(--vscode-editor-foreground);
 }
-/* NOTE: never use `margin` on a `.cm-line`. CodeMirror measures every line's
-   box with getBoundingClientRect (border-box), which excludes margin, so a
-   margin creates vertical space its height map never accounts for — and clicks
-   / arrow-key motion then map to the wrong line by the accumulated margin.
+/* NOTE: never use vertical `margin` on a `.cm-line` — nor on a block widget's
+   root element (see `.mlp-block` below). CodeMirror measures every such box
+   with getBoundingClientRect (border-box), which excludes margin, so a margin
+   creates vertical space its height map never accounts for — and clicks /
+   arrow-key motion then map to the wrong line by the accumulated margin.
    Express all heading spacing as padding (part of the measured box) instead.
    The former `margin-bottom` gap is relocated to `padding-top` (breathing room
    above the heading), which reads just as well and stays measurable. */
@@ -227,6 +228,19 @@ html, body {
 	margin: 0.3em 0;
 }
 
+/* ── Block widgets ───────────────────────────────────────────────────────
+   Spacing wrapper around every block widget (rendered table, Mermaid diagram,
+   frontmatter table/error). The gap lives here as `padding` rather than as
+   `margin` on the widget itself, because CodeMirror measures a block widget's
+   height with getBoundingClientRect — a border box that excludes margin. A
+   margin here would be layout space the height map never sees, and since the
+   shortfall accumulates over every widget in the document, positions below
+   drift further and further out: clicks land on the wrong line and scrolling
+   jumps. See src/webview-editor/blockWidgetWrap.ts. */
+.mlp-block {
+	padding: 0.5em 0;
+}
+
 /* ── Tables ──────────────────────────────────────────────────────────────── */
 .mlp-table-raw {
 	font-family: var(--vscode-editor-font-family, monospace);
@@ -234,7 +248,10 @@ html, body {
 table.mlp-table {
 	border-collapse: collapse;
 	width: 100%;
-	margin: 0.5em 0;
+	/* Spacing belongs to the `.mlp-block` wrapper — a `border-collapse` table
+	   can't carry it itself (CSS ignores `padding` on one), and a margin here
+	   would fall outside the box CodeMirror measures. */
+	margin: 0;
 }
 table.mlp-table th, table.mlp-table td {
 	border: 1px solid rgba(127, 127, 127, 0.35);
@@ -254,7 +271,7 @@ table.mlp-table th {
 table.mlp-frontmatter {
 	border-collapse: collapse;
 	width: 100%;
-	margin: 0.5em 0;
+	margin: 0; /* spacing lives on the `.mlp-block` wrapper — see above */
 }
 table.mlp-frontmatter th, table.mlp-frontmatter td {
 	border: 1px solid rgba(127, 127, 127, 0.35);
@@ -274,7 +291,7 @@ table.mlp-frontmatter td pre {
 }
 
 .mlp-frontmatter-error {
-	margin: 0.5em 0;
+	margin: 0; /* spacing lives on the `.mlp-block` wrapper */
 	padding: 8px 13px;
 	border-left: 4px solid var(--vscode-editorError-foreground, #f48771);
 	background: var(--vscode-inputValidation-errorBackground, rgba(244, 135, 113, 0.1));
@@ -307,7 +324,10 @@ table.mlp-frontmatter td pre {
    of view along with the content. */
 .mlp-mermaid-wrap {
 	position: relative;
-	margin: 0.5em 0;
+	/* No margin: spacing lives on the `.mlp-block` wrapper, which also keeps
+	   this element padding-free so the absolutely positioned toolbar below
+	   stays pinned to the diagram's own corner. */
+	margin: 0;
 }
 .mlp-mermaid {
 	max-width: 100%;

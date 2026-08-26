@@ -1,5 +1,6 @@
 import type { EditorState } from '@codemirror/state';
 import { EditorView, WidgetType } from '@codemirror/view';
+import { wrapBlockWidget } from './blockWidgetWrap';
 
 export interface FrontmatterRange {
 	from: number;
@@ -82,7 +83,7 @@ export class FrontmatterWidget extends WidgetType {
 			event.preventDefault();
 			jumpToRange(view, table);
 		});
-		return table;
+		return wrapBlockWidget(table);
 	}
 
 	ignoreEvent(): boolean {
@@ -130,7 +131,7 @@ export class FrontmatterErrorWidget extends WidgetType {
 			event.preventDefault();
 			jumpToRange(view, container);
 		});
-		return container;
+		return wrapBlockWidget(container);
 	}
 
 	ignoreEvent(): boolean {
