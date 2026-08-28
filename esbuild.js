@@ -51,6 +51,31 @@ const webviewEditorConfig = {
 	plugins: [esbuildProblemMatcherPlugin],
 };
 
+/**
+ * Mermaid (plus its cytoscape/KaTeX dependencies) is ~2.5MB — more than half of
+ * what the editor webview used to ship, parsed on every document open even for
+ * Markdown containing no diagrams. It is built as its own entry point here and
+ * fetched on demand by src/webview-editor/mermaidLoader.ts.
+ *
+ * Deliberately IIFE rather than ESM: the editor webview's CSP is
+ * `script-src 'nonce-...'`, and esbuild's ESM code-splitting emits chunk
+ * imports that carry no nonce, so they would be blocked. A classic script the
+ * loader can stamp a nonce onto is the form that policy admits.
+ */
+/** @type {import('esbuild').BuildOptions} */
+const webviewMermaidConfig = {
+	entryPoints: ['src/webview-mermaid/main.ts'],
+	bundle: true,
+	outfile: 'dist/mermaid-chunk.js',
+	platform: 'browser',
+	format: 'iife',
+	target: 'es2022',
+	sourcemap: !production,
+	minify: production,
+	logLevel: 'silent',
+	plugins: [esbuildProblemMatcherPlugin],
+};
+
 /** @type {import('esbuild').BuildOptions} */
 const webviewSidebarConfig = {
 	entryPoints: ['src/webview-sidebar/main.ts'],
@@ -97,6 +122,7 @@ async function main() {
 	const configs = [
 		extensionConfig,
 		webviewEditorConfig,
+		webviewMermaidConfig,
 		webviewSidebarConfig,
 		webviewPreviewConfig,
 		webviewOutlineConfig,

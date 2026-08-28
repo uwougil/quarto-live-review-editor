@@ -91,6 +91,14 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 		const styleUri = webview.asWebviewUri(
 			vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview-editor-theme.css'),
 		);
+		// Mermaid ships as its own bundle, loaded only once a document actually
+		// contains a diagram (see webview-editor/mermaidLoader.ts). The webview
+		// can't build this URI itself — `asWebviewUri` is host-side API — so it's
+		// handed over here, along with the nonce the loader must stamp on the
+		// <script> tag to satisfy the CSP below.
+		const mermaidChunkUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'mermaid-chunk.js'),
+		);
 		const nonce = getNonce();
 
 		return `<!DOCTYPE html>
@@ -103,6 +111,10 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 </head>
 <body>
 	<div id="mlp-root"></div>
+	<script nonce="${nonce}">
+		window.mlpMermaidChunkUri = ${JSON.stringify(mermaidChunkUri.toString())};
+		window.mlpNonce = ${JSON.stringify(nonce)};
+	</script>
 	<script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

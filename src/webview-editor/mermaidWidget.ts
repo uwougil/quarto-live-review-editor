@@ -1,19 +1,16 @@
 import { EditorView, WidgetType } from '@codemirror/view';
 import { wrapBlockWidget } from './blockWidgetWrap';
+import { loadMermaidModule, type MermaidApi } from './mermaidLoader';
 
-let mermaidModulePromise: Promise<typeof import('mermaid')> | null = null;
-
-// The module import is cached, but `initialize()` is re-applied on every call
-// (it's cheap) so a diagram rendered after the user switches VS Code's color
-// theme picks up the new palette instead of being stuck with whatever theme
-// was active the first time any diagram rendered in this webview.
-async function loadMermaid(): Promise<typeof import('mermaid')> {
-	if (!mermaidModulePromise) {
-		mermaidModulePromise = import('mermaid');
-	}
-	const m = await mermaidModulePromise;
+// The module load is cached by `loadMermaidModule`, but `initialize()` is
+// re-applied on every call (it's cheap) so a diagram rendered after the user
+// switches VS Code's color theme picks up the new palette instead of being
+// stuck with whatever theme was active the first time any diagram rendered in
+// this webview.
+async function loadMermaid(): Promise<MermaidApi> {
+	const m = await loadMermaidModule();
 	const isDark = document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast');
-	m.default.initialize({
+	m.initialize({
 		startOnLoad: false,
 		securityLevel: 'strict',
 		theme: isDark ? 'dark' : 'default',
@@ -251,7 +248,7 @@ export class MermaidWidget extends WidgetType {
 		loadMermaid()
 			.then(async (m) => {
 				const id = `mlp-mermaid-${renderCounter++}`;
-				const { svg } = await m.default.render(id, code);
+				const { svg } = await m.render(id, code);
 				canvas.innerHTML = svg;
 				// Defensive: some diagram types still emit an inline `max-width` style
 				// even with `useMaxWidth: false` in the config above. An inline style
