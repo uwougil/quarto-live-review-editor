@@ -10,6 +10,7 @@ sample/**
 aidlc-docs/**
 doc/**
 esbuild.js
+scripts/**
 tsconfig.json
 package-lock.json
 .gitignore

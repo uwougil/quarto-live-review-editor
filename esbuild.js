@@ -118,7 +118,19 @@ const webviewOutlineConfig = {
 	plugins: [esbuildProblemMatcherPlugin],
 };
 
+/**
+ * Shiki's grammars are written to dist/langs/*.json rather than bundled, so
+ * shikiHost.ts can read only the languages a document actually uses. Run before
+ * the bundles so a fresh checkout never produces a dist/ without them.
+ */
+async function buildShikiLangs() {
+	const { execFileSync } = require('node:child_process');
+	execFileSync(process.execPath, ['scripts/build-shiki-langs.mjs'], { stdio: 'inherit' });
+}
+
 async function main() {
+	await buildShikiLangs();
+
 	const configs = [
 		extensionConfig,
 		webviewEditorConfig,

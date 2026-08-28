@@ -3,6 +3,7 @@ import { MarkdownLivePreviewProvider } from './editor/MarkdownLivePreviewProvide
 import { StyleManagerViewProvider } from './sidebar/StyleManagerViewProvider';
 import { StyleStore } from './sidebar/styleStore';
 import { OutlineViewProvider } from './sidebar/OutlineViewProvider';
+import { setGrammarRoot } from './editor/shikiHost';
 
 function getActiveMarkdownUri(): vscode.Uri | undefined {
 	if (vscode.window.activeTextEditor?.document.languageId === 'markdown') {
@@ -140,6 +141,11 @@ async function syncDefaultEditorAssociation(): Promise<void> {
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+	// Syntax grammars are read from disk on first use rather than bundled (see
+	// shikiHost.ts); this is the only place that knows where the extension was
+	// installed to.
+	setGrammarRoot(context.extensionPath);
+
 	const styleStore = new StyleStore(context);
 	await styleStore.initialize();
 
