@@ -440,10 +440,11 @@ html, body {
 	cursor: pointer;
 	opacity: 0;
 	transition: opacity 0.12s ease, background-color 0.12s ease, color 0.12s ease;
-	/* Solid enough to read as a control, since the bar spans the whole edge and
-	   the `+` alone would be easy to miss on a wide table. */
+	/* A faint wash, so the `+` reads clearly against it — a denser fill competed
+	   with the glyph and left the bar looking like a scrollbar. The bar only has
+	   to show how far the target extends; the `+` carries the meaning. */
 	color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground, #ccc));
-	background: rgba(127, 127, 127, 0.3);
+	background: rgba(127, 127, 127, 0.12);
 	border: none;
 	border-radius: 3px;
 	user-select: none;
@@ -482,7 +483,7 @@ html, body {
 .mlp-table-add-btn:focus-visible {
 	opacity: 1;
 	color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground, #ccc));
-	background: rgba(127, 127, 127, 0.5);
+	background: rgba(127, 127, 127, 0.28);
 }
 .mlp-table-add-btn:focus-visible {
 	outline: 1px solid var(--vscode-focusBorder, #0078d4);
