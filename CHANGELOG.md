@@ -7,8 +7,56 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Editable tables.** A table now stays rendered while you work in it, in the
+  style of Obsidian's table editor. Clicking a cell makes that one cell
+  editable in place and shows its raw Markdown, so `**bold**` survives a
+  round-trip; `Tab`/`Shift+Tab` move between cells, `Enter` commits and `Esc`
+  discards. Only the edited cell's own span is written back, leaving the rest
+  of the row's text, padding and pipes byte-identical, so an edit cannot
+  reflow the source or break the table's structure. Column widths are pinned
+  for the duration of an edit, so swapping a cell's rendered text for its
+  longer source no longer makes the whole table lurch sideways.
+- **A `</>` code-mode button on every rendered block** — tables, Mermaid
+  diagrams, frontmatter, and fenced code blocks — for reaching the Markdown
+  behind it. Cell editing cannot change a table's *structure* (adding a row,
+  editing the alignment row, repairing a broken table), so there has to be a
+  deliberate way back to the source; giving every block the same control puts
+  it in the same place whatever the block is. On a code block, whose text is
+  already visible, it reveals the ` ``` ` fence lines and puts the caret on
+  the language tag.
+- **A `⧉` copy button on fenced code blocks.** Selecting a code block by hand
+  sweeps up the hidden ` ``` ` fence lines and any indentation the block is
+  nested under; the button copies the block's contents exactly.
+
+### Changed
+
+- **Clicking a Mermaid diagram now pans it instead of switching to its
+  source.** Any click whose movement fell under the drag threshold used to be
+  read as "show me the source", so a diagram would turn into raw text
+  mid-gesture, exactly when it was being panned or zoomed. The `</>` button is
+  the way to the source now, and the two can no longer be confused.
+- **Table cell text can be selected and copied.** Dragging across cells
+  highlights their text as ordinary text; previously the press was cancelled
+  outright, so the rendered cells could not be selected at all.
+
 ### Fixed
 
+- **A rendered block flipping to its raw source on a stray click.** Clicking
+  near a table — its outer edge, the shared line between two rows, the strip
+  above it — or simply clicking repeatedly could revert it to pipe text, often
+  several times in a row. Three separate causes: the caret was being dragged
+  *through* a block on the way somewhere else and that counted as entering it;
+  the browser's own word-selection on the second click of a rapid pair looked
+  like a drag-select and made the handler bail out; and the block's own bounds
+  were tested rather than its surrounding box, leaving unguarded bands (30px
+  above a table, 7px below) that belonged to no block at all.
+- **A Mermaid diagram's reset (`↺`) not returning to the size it started at.**
+  It reset the zoom but stayed in full-size mode, whose 1× is the diagram's
+  natural width — so from a zoomed-in view the diagram shrank part-way and
+  stopped, still larger than the fitted view it began from. It now goes all
+  the way back.
 - **Table cells rendering differently from every other Markdown renderer once
   their content got the least bit involved.** A cell's content is drawn outside
   CodeMirror, so it was rendered by a handful of hand-written regexes rather
@@ -127,8 +175,51 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### 追加
+
+- **テーブルをその場で編集できるようになりました。** Obsidian のテーブル
+  エディタと同じように、表は描画されたままで作業できます。セルをクリックすると
+  そのセルだけが編集状態になり、生の Markdown が表示されるので `**太字**` の
+  ような装飾も保ったまま直せます。`Tab`/`Shift+Tab` でセル間を移動、`Enter` で
+  確定、`Esc` で取り消しです。書き戻すのは編集したセルの範囲だけなので、行の
+  ほかの文字・空白・`|` は一切変わりません。編集が表の形を崩すことはありません。
+  編集中は列幅を固定するので、短い表示から長いソースに変わっても表全体が
+  横に大きく動くことはありません。
+- **描画されたブロックすべてに `</>`（コードモード）ボタンを追加しました。**
+  テーブル・Mermaid・フロントマター・コードブロックが対象です。セル編集では
+  行の追加や区切り行の変更といった「構造」は変えられないため、元の Markdown に
+  戻る明確な入口が必要でした。どのブロックでも同じ位置に同じボタンがあります。
+  コードブロックは元から文字が見えているので、このボタンでは隠れている
+  ` ``` ` の囲み行を表示し、言語名のところにカーソルを置きます。
+- **コードブロックに `⧉`（コピー）ボタンを追加しました。** 手で範囲選択すると
+  隠れている ` ``` ` の囲み行や、入れ子のときの字下げまで一緒に入ってしまいます。
+  このボタンは中身だけを正確にコピーします。
+
+### 変更
+
+- **Mermaid の図をクリックしても、ソース表示に切り替わらなくなりました。**
+  これまでは、ドラッグと判定されない程度の小さな動きはすべて「ソースを見たい」
+  と解釈していたため、図を動かそう・拡大しようとした最中に生テキストへ化けて
+  いました。ソースを見るのは `</>` ボタンの役割にしたので、移動の操作と
+  取り違えることがなくなりました。
+- **表のセルの文字を選択してコピーできるようになりました。** セルをなぞると
+  普通の文字と同じように選択できます。これまではマウスを押した時点で標準の
+  動作を打ち消していたため、そもそも選択できませんでした。
+
 ### 修正
 
+- **ちょっとしたクリックで、描画されたブロックが生のソースに戻ってしまう問題。**
+  テーブルの外周、行と行の間の線、すぐ上の余白などを触ったときや、単に連打した
+  ときに、生の `|` 記法へ戻ってしまい、しかも何度も続けて起きることがありました。
+  原因は3つありました。ほかの場所へ向かう途中でカーソルがブロックを通過した
+  だけなのに「入った」と判定していたこと。素早い2回クリックでブラウザが単語を
+  自動選択し、それがドラッグ選択に見えて処理が中断していたこと。そして判定に
+  ブロック自身の枠だけを使っていたため、その周り（表の上30px・下7px）に
+  どのブロックにも属さない帯が残っていたことです。
+- **Mermaid の図で、リセット（`↺`）を押しても最初の大きさに戻らない問題。**
+  倍率は 1 に戻していましたが、原寸大モードのままでした。原寸大の1倍は図の
+  本来の幅なので、拡大した状態から押すと途中の大きさで止まり、最初の縮小表示
+  よりも大きいままでした。最後まで戻るようにしました。
 - **表のセルの中身が少し複雑になると、他の Markdown ビューアと表示が変わる問題。**
   セルの中身は CodeMirror の外側で描画するため、パーサではなく手書きの正規表現で
   描いていました。そのため装飾が1つだけの単純な場合を超えると崩れていました。

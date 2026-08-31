@@ -21,6 +21,10 @@ class StubElement implements StubNode {
 	readonly children: StubNode[] = [];
 	readonly attributes = new Map<string, string>();
 	readonly style: Record<string, string> = {};
+	// Deliberately left out of `serialize`: the renderer's `data-mlp-*` entries
+	// are bookkeeping the table editor reads back (source ranges, grid position),
+	// not part of the markup these tests assert on.
+	readonly dataset: Record<string, string> = {};
 	className = '';
 	title = '';
 	src = '';

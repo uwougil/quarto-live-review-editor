@@ -6,7 +6,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from './gfmTableFix';
 import { livePreviewPlugin, createLinkClickHandler, setImageBaseUri } from './livePreviewPlugin';
 import { codeHighlightExtension, setCodeTokens } from './codeHighlightPlugin';
-import { blockDecorationsField } from './blockDecorations';
+import { blockDecorationsField, dragReleaseRefresh } from './blockDecorations';
 import { detectFrontmatter } from './frontmatterWidget';
 import { headingSpaceInputHandler } from './headingSpacePlugin';
 import { backtickInputHandler } from './backtickPairPlugin';
@@ -76,6 +76,7 @@ function createExtensions(): Extension[] {
 		backtickInputHandler,
 		livePreviewPlugin,
 		blockDecorationsField,
+		dragReleaseRefresh,
 		codeHighlightExtension,
 		createLinkClickHandler((href) => postToHost({ type: 'openLink', href })),
 		createImagePasteHandler((atPos, mimeType, dataBase64, needsOwnParagraph) =>

@@ -42,7 +42,10 @@ A dedicated "Outline" view in the activity bar lists every heading (h1–h6) in 
 Fenced code blocks (` ```python `, etc.) are colorized per-language via [Shiki](https://shiki.style/). An `auto` mode follows VS Code's color theme (light/dark), or you can pin a specific palette like GitHub's.
 
 ### Mermaid diagrams
-` ```mermaid ` fences render as an SVG diagram in place. Moving the cursor into it reveals the raw Mermaid source for continued editing.
+` ```mermaid ` fences render as an SVG diagram in place. Hovering the diagram reveals a toolbar: `</>` switches to the Mermaid source for editing, and the zoom controls scale a dense diagram up (drag to pan, `Ctrl`/`⌘`+wheel to zoom) with `↺` returning to the fitted view. Clicking the diagram itself pans it rather than switching to source, so a stray click can't interrupt what you're looking at.
+
+### Editable tables
+A table renders as a real table and stays that way while you work in it: click a cell to edit that cell in place, `Tab`/`Shift+Tab` to move between cells, `Enter` to commit, `Esc` to discard. Only the edited cell is written back, so the rest of the row's spacing and pipes are left untouched. Dragging across cells selects their text to copy. The `</>` button above the table opens the raw Markdown, for the things cell editing can't reach — adding a row, changing the alignment row, repairing a broken table.
 
 ### Sidebar CSS theme manager, live-synced while editing
 The "CSS Themes" view in the Primary Sidebar lets you register and switch between multiple CSS snippets that restyle the preview. Saving a CSS file hot-reloads any open preview.
@@ -83,7 +86,7 @@ To always open `.md` files in Live Preview, change the `mdLivePreview.defaultEdi
 ## Known limitations
 
 - Code highlighting is limited to a curated set of major languages (JS/TS/Python/Java/C/C++/C#/Go/Rust/Ruby/PHP/HTML/CSS/JSON/YAML/Markdown/Bash/SQL/Kotlin/Swift, etc.). Other languages aren't colorized.
-- Editing a table's raw source isn't as smooth as Obsidian's dedicated table UI (moving the cursor into a table reveals the raw pipe syntax as-is).
+- Table editing covers cell contents only. Structural changes — adding or removing rows and columns, changing column alignment — are made in the raw Markdown, reached via the `</>` button.
 - Pasting or dropping multiple images at once only inserts the first one.
 
 ## Feedback and bug reports
@@ -151,6 +154,11 @@ With the `watch` task running, changing the code and reloading the Extension Dev
 14. Select some text and press `Ctrl+B` / `Ctrl+I`; confirm it toggles `**bold**` / `*italic*` on and back off. With no selection, confirm it inserts an empty pair with the cursor placed inside.
 15. Copy an image (e.g. a screenshot) and paste it into Live Preview; confirm an `assets/` folder is created beside the file, the image is saved into it, and `![](assets/...)` is inserted at the cursor. Try dragging an image file from a file explorer too.
 16. Open the "Outline" view in the Primary Sidebar and confirm it lists the document's headings. Click one and confirm the editor jumps to and scrolls to that heading. Switch between multiple Live Preview tabs and confirm the outline follows the active one. Add or remove a heading and confirm the list updates.
+17. Click a table cell and confirm the table stays rendered while that one cell becomes editable, showing its raw Markdown. Type, then `Tab` to the next cell and `Enter` to commit; confirm only the edited cell changed in the source. Press `Esc` mid-edit and confirm the change is discarded.
+18. Drag across several table cells and confirm the text highlights and copies, and that the table does not revert to `|` syntax. Then click around the table repeatedly — including its outer edge and the lines between rows — and confirm it never flips to raw source.
+19. Confirm the `</>` button above the table opens the raw Markdown, and that `</>` on a Mermaid diagram, on frontmatter, and above a code block (which reveals the ` ``` ` fence lines) does the same for each.
+20. Confirm the `⧉` button on a code block copies the block's contents only — no ` ``` ` fences, and no leading indentation when the block is nested.
+21. On a Mermaid diagram, switch to full size, zoom in a few times, then press `↺`; confirm it returns all the way to the original shrink-to-fit view, not to an intermediate size.
 
 </details>
 
@@ -193,7 +201,10 @@ CodeMirror 6ベースのカスタムエディタです。見出し・強調・�
 フェンス付きコードブロック(` ```python `など)を[Shiki](https://shiki.style/)で言語ごとに色分け表示します。VS Codeのカラーテーマ(ライト/ダーク)に自動追従する`auto`モードのほか、GitHub配色などを個別に指定することもできます。
 
 #### Mermaidダイアグラム
-` ```mermaid `フェンスをその場でSVG図として描画します。カーソルを入れると生のMermaid記法に戻り、そのまま編集を続けられます。
+` ```mermaid `フェンスをその場でSVG図として描画します。図にマウスを乗せるとツールバーが出ます。`</>`でMermaid記法の編集に切り替わり、拡大・縮小ボタン(ドラッグで移動、`Ctrl`/`⌘`+ホイールで拡大縮小)で細かい図を大きく表示できます。`↺`で元の縮小表示に戻ります。図をクリックしても記法には切り替わらず移動になるので、誤ってクリックしても図が消えません。
+
+#### 編集できるテーブル
+テーブルは表として描画され、作業中もその見た目のままです。セルをクリックするとそのセルだけをその場で編集でき、`Tab`/`Shift+Tab`でセル間を移動、`Enter`で確定、`Esc`で取り消します。書き戻すのは編集したセルだけなので、行のほかの文字や`|`の位置はそのまま保たれます。セルをなぞれば文字を選択してコピーできます。行の追加や列揃えの変更など、セル編集では届かない部分は、表の上の`</>`ボタンから元のMarkdownを開いて編集します。
 
 #### サイドバーのCSSテーマ管理、編集中はプレビューと同期ハイライト
 プライマリサイドバーの「CSS Themes」ビューから、プレビューの見た目を変えるCSSスニペットを複数登録・切替できます。CSSファイルを保存すると、開いているプレビューにホットリロードされます。
@@ -234,7 +245,7 @@ CodeMirror 6ベースのカスタムエディタです。見出し・強調・�
 ### 既知の制約
 
 - コードハイライトは主要な言語(JS/TS/Python/Java/C/C++/C#/Go/Rust/Ruby/PHP/HTML/CSS/JSON/YAML/Markdown/Bash/SQL/Kotlin/Swiftなど)に限定しています。対象外の言語は色分けされません。
-- テーブルの生編集はObsidianの専用UIほど滑らかではありません(カーソルが入ると生のパイプ記法がそのまま表示されます)。
+- テーブルの編集はセルの中身に限られます。行や列の追加・削除、列揃えの変更といった構造の変更は、`</>`ボタンから開く元のMarkdownで行います。
 - 画像を複数同時に貼付・ドロップした場合、最初の1枚のみが挿入されます。
 
 ### フィードバック・不具合報告
@@ -302,5 +313,10 @@ npm run compile
 14. 文字を選択して`Ctrl+B` / `Ctrl+I`を押し、`**太字**` / `*斜体*`のオン・オフが切り替わることを確認する。選択なしで押すと、空のマーカー対が挿入されカーソルが内側に置かれることを確認する。
 15. 画像(スクリーンショットなど)をコピーしてLive Previewに貼り付け、`assets/`フォルダが作成され画像が保存され、カーソル位置に`![](assets/...)`が挿入されることを確認する。ファイルエクスプローラーから画像ファイルをドラッグ&ドロップしても同様に動作することを確認する。
 16. プライマリサイドバーの「アウトライン」ビューを開き、見出し一覧が表示されることを確認する。クリックすると該当の見出しへジャンプ・スクロールすることを確認する。複数のLive Previewタブを切り替えると、アウトラインが追従することを確認する。見出しを追加・削除すると一覧が更新されることを確認する。
+17. テーブルのセルをクリックし、表が描画されたままそのセルだけが編集状態になり、生のMarkdownが表示されることを確認する。文字を入力して`Tab`で次のセルへ移動し、`Enter`で確定して、元のMarkdownで編集したセルだけが変わっていることを確認する。編集の途中で`Esc`を押すと変更が取り消されることを確認する。
+18. テーブルのセルをまたいでドラッグし、文字が選択できてコピーできること、そのとき表が`|`記法に戻らないことを確認する。続けてテーブルの外周や行間の線を含めて何度もクリックし、生のソース表示に切り替わらないことを確認する。
+19. テーブル上部の`</>`ボタンで元のMarkdownが開くことを確認する。Mermaid・フロントマター・コードブロック(` ``` `の囲み行が現れる)でも同様に動作することを確認する。
+20. コードブロックの`⧉`ボタンで、` ``` `の囲み行を含まず、入れ子の場合も先頭の字下げを含まない、中身だけがコピーされることを確認する。
+21. Mermaidの図を原寸大に切り替えて数回拡大し、`↺`を押す。途中の大きさで止まらず、最初の縮小表示まで戻ることを確認する。
 
 </details>

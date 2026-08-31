@@ -28,9 +28,19 @@ function renderTable(markdownText: string): string {
 	return serialize(renderTableElement(readTableModel(state, table), hooks));
 }
 
-/** Strips the wrapper so a test can assert on rows alone. */
+/**
+ * Strips the wrapper so a test can assert on rows alone.
+ *
+ * The `mlp-table-cell` class every cell carries is dropped too: it is a fixed
+ * hook for the cell-editing CSS and click handling, identical on every cell, so
+ * repeating it in each expectation would only obscure the content and alignment
+ * these tests are actually about.
+ */
 function rowsOf(html: string): string {
-	return html.replace(/^<table class="mlp-table">/, '').replace(/<\/table>$/, '');
+	return html
+		.replace(/^<table class="mlp-table">/, '')
+		.replace(/<\/table>$/, '')
+		.replace(/ class="mlp-table-cell"/g, '');
 }
 
 describe('renderTableElement', () => {

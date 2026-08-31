@@ -1,10 +1,10 @@
-import { StateField, type EditorState, type Range } from '@codemirror/state';
-import { Decoration, DecorationSet, EditorView, WidgetType } from '@codemirror/view';
+import { StateEffect, StateField, type EditorState, type Range } from '@codemirror/state';
+import { Decoration, DecorationSet, EditorView, ViewPlugin, WidgetType } from '@codemirror/view';
 import { syntaxTree } from '@codemirror/language';
 import { parse as parseYaml } from 'yaml';
 import { MermaidWidget } from './mermaidWidget';
 import { buildTableWidget, isLineAligned, alignedBlockRange } from './livePreviewPlugin';
-import { cursorTouchesRange } from './cmUtils';
+import { cursorTouchesRange, onPointerRelease } from './cmUtils';
 import { detectFrontmatter, FrontmatterWidget, FrontmatterEmptyWidget, FrontmatterErrorWidget } from './frontmatterWidget';
 
 /**
@@ -77,6 +77,36 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
 	return Decoration.set(decorations, true);
 }
 
+/** Asks the field below to rebuild even though the editor state is unchanged. */
+const refreshBlocks = StateEffect.define<null>();
+
+/**
+ * Nudges the editor into rebuilding its block decorations when a drag ends.
+ *
+ * `cursorTouchesRange` answers differently once the mouse comes up (see
+ * cmUtils.ts), but a release is not a state change, so nothing would otherwise
+ * schedule the rebuild — a block the caret landed inside during a drag would
+ * stay rendered until the next unrelated edit. Dispatching an empty transaction
+ * re-runs the field's `update` with the selection unchanged.
+ */
+export const dragReleaseRefresh = ViewPlugin.fromClass(
+	class {
+		private readonly off: () => void;
+		constructor(view: EditorView) {
+			this.off = onPointerRelease(() => {
+				// The release fires during the DOM event; let CodeMirror finish
+				// applying its own selection change for that gesture first.
+				setTimeout(() => {
+					if (view.dom.isConnected) view.dispatch({ effects: refreshBlocks.of(null) });
+				}, 0);
+			});
+		}
+		destroy() {
+			this.off();
+		}
+	},
+);
+
 export const blockDecorationsField = StateField.define<DecorationSet>({
 	create(state) {
 		return buildBlockDecorations(state);
@@ -86,7 +116,12 @@ export const blockDecorationsField = StateField.define<DecorationSet>({
 		// its raw source), and when background parsing advances the syntax tree —
 		// the latter matters because blocks near the end of a long document aren't
 		// in the tree yet on the first render.
-		if (tr.docChanged || tr.selection || syntaxTree(tr.startState) !== syntaxTree(tr.state)) {
+		if (
+			tr.docChanged ||
+			tr.selection ||
+			tr.effects.some((e) => e.is(refreshBlocks)) ||
+			syntaxTree(tr.startState) !== syntaxTree(tr.state)
+		) {
 			return buildBlockDecorations(tr.state);
 		}
 		return value;

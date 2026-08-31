@@ -142,6 +142,9 @@ html, body {
 	font-family: var(--vscode-editor-font-family, monospace);
 	padding-left: 1.1em;
 	padding-right: 1.1em;
+	/* Positioning root for the copy button, which is absolutely placed against
+	   the first content line's right edge. */
+	position: relative;
 }
 .cm-line.mlp-line-code-first {
 	border-top-left-radius: 6px;
@@ -152,6 +155,93 @@ html, body {
 	border-bottom-left-radius: 6px;
 	border-bottom-right-radius: 6px;
 	padding-bottom: 0.5em;
+}
+/* Copy button for a fenced code block (CopyCodeWidget in livePreviewPlugin.ts).
+   The host is a zero-size anchor sitting at the start of the first content line
+   — it must not take part in the flow, or it would indent that line's first
+   character by the button's width. The button itself is lifted out with
+   `position: absolute` and pinned to the block's right edge. */
+/* Holds a code block's controls — `</>` then Copy — as one group in the line's
+   top-right corner.
+
+   The host itself is absolutely positioned, rather than each button being
+   positioned separately: two buttons both pinned to `right: 4px` would sit on
+   top of each other. Positioning the group once and laying the buttons out
+   inside it with flex keeps them side by side and lets the group grow leftwards
+   as buttons are added.
+
+   It is deliberately NOT `position: relative` while staying in the flow: an
+   empty inline box's rect is a zero-width sliver at the line's start, so
+   anchoring to it put the buttons off the block's *left* edge. Taking the host
+   out of the flow entirely means it positions against `.cm-line` (which the
+   code-line rule makes relative), and `right` measures from the line's own right
+   edge — which is the block's. */
+.mlp-copy-code-host {
+	position: absolute;
+	/* Kept fully inside the line's own box. A negative `top` looked better but
+	   made the group overhang the line above, and the part of that strip not
+	   covered by a button still belonged to that previous line — so clicking just
+	   beside it put the caret in the paragraph above. */
+	top: 2px;
+	right: 4px;
+	z-index: 2;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+.mlp-copy-code-btn {
+	/* Positioning belongs to `.mlp-copy-code-host`, which places the whole group.
+	   Matches `.mlp-code-mode-btn` exactly — same height, padding, face and size —
+	   so the two controls read as one family rather than two unrelated widgets. */
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: 20px;
+	padding: 0 6px;
+	line-height: 1;
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 11px;
+	cursor: pointer;
+	/* Always present, only dimmed — the same treatment every block control gets,
+	   so one rule covers them all: visible enough to find without hunting, quiet
+	   enough to ignore while reading. Hover-only was tried and dropped: a code
+	   block is a run of sibling `.cm-line`s with nothing wrapping it, so no
+	   selector can say "this block is hovered" without also matching every other
+	   code block in the document. */
+	opacity: 0.55;
+	transition: opacity 0.12s ease, background-color 0.12s ease;
+	color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground, #ccc));
+	background: var(--vscode-editor-background, #1e1e1e);
+	border: 1px solid var(--vscode-contrastBorder, rgba(127, 127, 127, 0.4));
+	border-radius: 4px;
+	/* The button is chrome, not part of the code: a drag that selects the block
+	   must not pick its label up along with the text. */
+	user-select: none;
+	-webkit-user-select: none;
+}
+.cm-line.mlp-line-code:hover .mlp-copy-code-btn,
+.mlp-copy-code-btn:hover,
+.mlp-copy-code-btn:focus-visible {
+	opacity: 1;
+}
+.mlp-copy-code-btn:hover {
+	color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground, #ccc));
+	background: var(--vscode-button-secondaryBackground, rgba(110, 110, 110, 0.4));
+}
+.mlp-copy-code-btn:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder, #0078d4);
+	outline-offset: 1px;
+}
+/* Confirmation states, held briefly after a click. */
+.mlp-copy-code-btn.mlp-copy-code-btn-done {
+	opacity: 1;
+	color: var(--vscode-testing-iconPassed, #4ec9b0);
+	border-color: var(--vscode-testing-iconPassed, #4ec9b0);
+}
+.mlp-copy-code-btn.mlp-copy-code-btn-failed {
+	opacity: 1;
+	color: var(--vscode-errorForeground, #f14c4c);
+	border-color: var(--vscode-errorForeground, #f14c4c);
 }
 
 /* ── Blockquotes ─────────────────────────────────────────────────────────── */
@@ -245,18 +335,123 @@ html, body {
 .mlp-table-raw {
 	font-family: var(--vscode-editor-font-family, monospace);
 }
+/* Positioning root for the code-mode button, which is absolutely placed over
+   the table's top-right corner. It carries no spacing of its own: that stays on
+   the outer `.mlp-block`, the box CodeMirror measures — see blockWidgetWrap.ts. */
+.mlp-table-wrap {
+	position: relative;
+}
+/* Strip above the table holding its controls. Right-aligned so the button lines
+   up with the table's own right edge rather than floating loose. */
+.mlp-table-toolbar {
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	gap: 4px;
+	padding-bottom: 3px;
+}
+/* Positioned box that puts a code-mode button in a block's top-right corner
+   (see withCodeModeButton in codeModeButton.ts). Used by the blocks that have
+   no toolbar of their own — frontmatter — where the button is an overlay
+   rather than a strip in the flow. */
+.mlp-code-mode-host {
+	position: relative;
+}
+.mlp-code-mode-host > .mlp-code-mode-btn {
+	position: absolute;
+	top: 4px;
+	right: 4px;
+	z-index: 1;
+}
+/* Switches a rendered block back to its raw Markdown (codeModeButton.ts). */
+.mlp-code-mode-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: 20px;
+	padding: 0 6px;
+	line-height: 1;
+	/* The `</>` glyph is code, so it is set in the editor's own monospace face. */
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 11px;
+	cursor: pointer;
+	transition: opacity 0.12s ease, background-color 0.12s ease;
+	color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground, #ccc));
+	background: var(--vscode-editor-background, #1e1e1e);
+	border: 1px solid var(--vscode-contrastBorder, rgba(127, 127, 127, 0.4));
+	border-radius: 4px;
+}
+/* Always visible, only dimmed — the same everywhere, so the way to a block's
+   source is in the same place and in the same state whatever the block is.
+   Revealing it on hover was tried and dropped: for Mermaid the button is now
+   the *only* way to reach the source (clicking the diagram pans it instead), so
+   it cannot be hidden until the pointer has already arrived. */
+.mlp-code-mode-btn {
+	opacity: 0.55;
+}
+.mlp-table-wrap:hover .mlp-code-mode-btn,
+.mlp-table-wrap:focus-within .mlp-code-mode-btn,
+.mlp-code-mode-host:hover .mlp-code-mode-btn,
+.mlp-code-mode-host:focus-within .mlp-code-mode-btn,
+.mlp-mermaid-wrap:hover .mlp-code-mode-btn,
+.mlp-mermaid-wrap:focus-within .mlp-code-mode-btn,
+.mlp-code-mode-btn:hover {
+	opacity: 1;
+}
+.mlp-code-mode-btn:hover {
+	color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground, #ccc));
+	background: var(--vscode-button-secondaryBackground, rgba(110, 110, 110, 0.4));
+}
+/* Keyboard focus must stay visible even before the pointer arrives. */
+.mlp-code-mode-btn:focus-visible {
+	opacity: 1;
+	outline: 1px solid var(--vscode-focusBorder, #0078d4);
+	outline-offset: 1px;
+}
 table.mlp-table {
 	border-collapse: collapse;
 	width: 100%;
+	/* A belt-and-braces cap. The real guard against a frozen table overflowing is
+	   that `freezeColumnWidths` pins columns as percentages rather than pixels
+	   (livePreviewPlugin.ts) — under `table-layout: fixed`, per-column pixel
+	   widths beat this `max-width` and the table overflows regardless. */
+	max-width: 100%;
 	/* Spacing belongs to the `.mlp-block` wrapper — a `border-collapse` table
 	   can't carry it itself (CSS ignores `padding` on one), and a margin here
 	   would fall outside the box CodeMirror measures. */
 	margin: 0;
 }
+/* Cells behave like spreadsheet cells (see TableWidget in livePreviewPlugin.ts):
+   dragging across them selects and copies their text, and a plain click edits
+   just that cell in place — the table stays rendered either way. `cursor: text`
+   advertises that, and `user-select: text` overrides any inherited suppression
+   so the drag actually highlights. */
 table.mlp-table th, table.mlp-table td {
 	border: 1px solid rgba(127, 127, 127, 0.35);
 	padding: 5px 11px;
 	text-align: left;
+	cursor: text;
+	user-select: text;
+	-webkit-user-select: text;
+}
+/* The cell being edited shows its raw Markdown. The outline marks it the way a
+   spreadsheet marks its active cell; `outline` rather than `border` so it costs
+   no layout and the columns don't shift as editing moves between cells.
+
+   The wrapping rules matter as much as the highlight: the raw source is far
+   longer than the text it renders to (`t` vs `**[t](https://example.com)**`),
+   and `freezeColumnWidths` in livePreviewPlugin.ts pins the column so it cannot
+   widen to fit. `pre-wrap` lets the source wrap inside that fixed width — the
+   row grows taller instead of the table growing wider — and `overflow-wrap`
+   breaks a long unbroken run (a URL) that has no space to wrap at, which would
+   otherwise spill past the cell's edge. */
+table.mlp-table th.mlp-table-cell-editing, table.mlp-table td.mlp-table-cell-editing {
+	outline: 2px solid var(--vscode-focusBorder, #0078d4);
+	outline-offset: -2px;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+	word-break: break-word;
+	font-family: var(--vscode-editor-font-family, monospace);
 }
 table.mlp-table th {
 	background: rgba(127, 127, 127, 0.12);
@@ -390,12 +585,20 @@ table.mlp-frontmatter td pre {
 	right: 6px;
 	display: flex;
 	gap: 4px;
-	opacity: 0;
-	transition: opacity 0.12s ease;
 	z-index: 1;
 }
-.mlp-mermaid-wrap:hover .mlp-mermaid-toolbar,
-.mlp-mermaid-wrap:focus-within .mlp-mermaid-toolbar {
+/* The zoom/mode controls stay hover-only — they act on a diagram the pointer is
+   already over. The code-mode button does not hide with them: it is the only way
+   to reach the diagram's source now that clicking the diagram pans it instead,
+   so it carries its own always-visible-but-dimmed treatment (see
+   `.mlp-code-mode-btn`) and must not be zeroed out here. */
+.mlp-mermaid-btn {
+	opacity: 0;
+	transition: opacity 0.12s ease;
+}
+.mlp-mermaid-wrap:hover .mlp-mermaid-btn,
+.mlp-mermaid-wrap:focus-within .mlp-mermaid-btn,
+.mlp-mermaid-btn:focus-visible {
 	opacity: 1;
 }
 .mlp-mermaid-btn {

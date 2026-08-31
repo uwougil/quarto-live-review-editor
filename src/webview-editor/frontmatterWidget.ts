@@ -1,6 +1,7 @@
 import type { EditorState } from '@codemirror/state';
 import { EditorView, WidgetType } from '@codemirror/view';
 import { wrapBlockWidget } from './blockWidgetWrap';
+import { withCodeModeButton } from './codeModeButton';
 
 export interface FrontmatterRange {
 	from: number;
@@ -83,7 +84,9 @@ export class FrontmatterWidget extends WidgetType {
 			event.preventDefault();
 			jumpToRange(view, table);
 		});
-		return wrapBlockWidget(table);
+		// Clicking the block already reveals the source; the button makes that
+		// route visible, and matches the one every other rendered block carries.
+		return wrapBlockWidget(withCodeModeButton(view, table, { anchor: table }));
 	}
 
 	ignoreEvent(): boolean {
@@ -131,7 +134,9 @@ export class FrontmatterErrorWidget extends WidgetType {
 			event.preventDefault();
 			jumpToRange(view, container);
 		});
-		return wrapBlockWidget(container);
+		// A parse error is exactly when the source needs reaching, so the button
+		// matters most here.
+		return wrapBlockWidget(withCodeModeButton(view, container, { anchor: container }));
 	}
 
 	ignoreEvent(): boolean {

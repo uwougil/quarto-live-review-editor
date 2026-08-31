@@ -1,6 +1,7 @@
 import { EditorView, WidgetType } from '@codemirror/view';
 import { wrapBlockWidget } from './blockWidgetWrap';
 import { loadMermaidModule, type MermaidApi } from './mermaidLoader';
+import { createCodeModeButton } from './codeModeButton';
 
 // The module load is cached by `loadMermaidModule`, but `initialize()` is
 // re-applied on every call (it's cheap) so a diagram rendered after the user
@@ -125,9 +126,19 @@ export class MermaidWidget extends WidgetType {
 
 		const zoomInBtn = makeButton('+', '拡大 (Ctrl+ホイールでも可)', () => zoomCenter(1.2));
 		const zoomOutBtn = makeButton('−', '縮小', () => zoomCenter(1 / 1.2));
-		const zoomResetBtn = makeButton('↺', '元のサイズに戻す', resetPanZoom);
+		// Resets all the way out to "fit", not just to scale 1. `resetPanZoom`
+		// alone leaves the diagram in native mode, where scale 1 means *full size*
+		// — so from a zoomed-in view the button appeared to only half-work: the
+		// diagram shrank a little and stopped, still larger than the view it
+		// started from. What "back to the original size" means to someone looking
+		// at the diagram is the fitted view they began with.
+		const zoomResetBtn = makeButton('↺', '元の表示に戻す（縮小表示）', () => setMode('fit'));
 		const modeToggleBtn = makeButton('', '', () => setMode(mode === 'fit' ? 'native' : 'fit'));
-		toolbar.append(modeToggleBtn, zoomInBtn, zoomOutBtn, zoomResetBtn);
+		// Same control every rendered block carries, so the way back to the source
+		// is in the same place whatever the block is. Clicking the diagram itself
+		// still works too — this just makes the route visible.
+		const codeModeBtn = createCodeModeButton(view, { anchor: wrap });
+		toolbar.append(codeModeBtn, modeToggleBtn, zoomInBtn, zoomOutBtn, zoomResetBtn);
 		wrap.appendChild(toolbar);
 
 		function setMode(next: DisplayMode): void {
@@ -232,13 +243,12 @@ export class MermaidWidget extends WidgetType {
 					return;
 				}
 			}
-			if (!moved) {
-				// A plain click: drop the cursor into the diagram's source so it can
-				// be edited (the block reverts to raw text while the cursor is on it).
-				const pos = view.posAtDOM(wrap);
-				view.dispatch({ selection: { anchor: pos }, scrollIntoView: true });
-				view.focus();
-			}
+			// A plain click deliberately does nothing. It used to drop the cursor into
+			// the diagram's source, which meant every stray click — and every drag
+			// whose displacement fell under the threshold — replaced the diagram with
+			// raw text mid-gesture, exactly when the user was trying to pan or zoom
+			// it. Reaching the source is the `</>` button's job now, so panning and
+			// clicking can never be mistaken for each other.
 		};
 		container.addEventListener('pointerup', endDrag);
 		container.addEventListener('pointercancel', endDrag);
