@@ -295,6 +295,36 @@ export function buildTableWidget(state: EditorState, node: SyntaxNodeRef): Table
 	return new TableWidget(rows, headerRowCount);
 }
 
+/**
+ * Line numbers inside `item` that `blockDecorationsField` will replace with a
+ * block widget — a table written directly under the item's own text.
+ *
+ * Those lines must not also carry a line decoration. CodeMirror silently drops
+ * a block-replacing decoration whose range overlaps one, so a table nested in a
+ * list item stayed raw pipe-separated text while the identical table at the top
+ * level rendered normally. The list item's own text line keeps its decoration;
+ * only the lines the widget covers are ceded.
+ *
+ * The conditions mirror `buildBlockDecorations` in blockDecorations.ts: if the
+ * two disagree, either the widget is dropped again (line decorated, block
+ * replaced) or list styling is lost for nothing (line skipped, no widget).
+ * Mermaid fences are not checked — one nested in a list item never satisfies
+ * `isLineAligned`, so it is never block-replaced there.
+ */
+export function blockReplacedLines(state: EditorState, item: SyntaxNode): Set<number> {
+	const lines = new Set<number>();
+	for (let child = item.firstChild; child; child = child.nextSibling) {
+		if (child.name !== 'Table') continue;
+		if (cursorTouchesRange(state, child.from, child.to)) continue;
+		const range = alignedBlockRange(state, child.from, child.to);
+		if (!range) continue;
+		const first = state.doc.lineAt(range.from).number;
+		const last = state.doc.lineAt(range.to).number;
+		for (let n = first; n <= last; n++) lines.add(n);
+	}
+	return lines;
+}
+
 /** True when the list item owning this mark is a GFM task item ("- [ ] ..."). */
 function listItemIsTask(state: EditorState, listMark: SyntaxNodeRef): boolean {
 	const line = state.doc.lineAt(listMark.from);
@@ -332,11 +362,15 @@ function buildDecorations(view: EditorView): DecorationSet {
 		const existing = seenLine.get(lineFrom);
 		seenLine.set(lineFrom, existing ? `${existing} ${cls}` : cls);
 	};
+	// A callback returning '' marks a line as deliberately skipped — used where a
+	// block widget will replace that line and a line decoration on it would make
+	// CodeMirror drop the widget.
 	const addLineRange = (from: number, to: number, cls: (lineNumber: number, first: boolean, last: boolean) => string) => {
 		const firstLine = doc.lineAt(from).number;
 		const lastLine = doc.lineAt(to).number;
 		for (let n = firstLine; n <= lastLine; n++) {
-			addLineClass(doc.line(n).from, cls(n, n === firstLine, n === lastLine));
+			const value = cls(n, n === firstLine, n === lastLine);
+			if (value) addLineClass(doc.line(n).from, value);
 		}
 	};
 
@@ -458,7 +492,11 @@ function buildDecorations(view: EditorView): DecorationSet {
 						const parent = node.node.parent;
 						const isFirstItem = !parent || parent.firstChild?.from === node.from;
 						const isLastItem = !parent || parent.lastChild?.to === node.to;
-						addLineRange(node.from, node.to, (_n, first, last) => {
+						// Lines a nested table widget will replace get no line decoration,
+						// or CodeMirror discards the widget and shows raw pipes instead.
+						const replaced = blockReplacedLines(state, node.node);
+						addLineRange(node.from, node.to, (n, first, last) => {
+							if (replaced.has(n)) return '';
 							let cls = 'mlp-line-list';
 							if (first && isFirstItem) cls += ' mlp-line-list-first';
 							if (last && isLastItem) cls += ' mlp-line-list-last';
