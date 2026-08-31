@@ -340,11 +340,17 @@ html, body {
    the outer `.mlp-block`, the box CodeMirror measures — see blockWidgetWrap.ts. */
 .mlp-table-wrap {
 	position: relative;
+	/* Room below the table for the "add row" control. `.mlp-block`'s own half-em
+	   is not enough for a control large enough to show a `+`, and padding here
+	   (rather than margin) keeps the space inside the box CodeMirror measures —
+	   see blockWidgetWrap.ts. Without it the control sat on the table's last rule
+	   and reached down onto the following line. */
+	padding-bottom: 16px;
 	/* Room on the right for the "add column" bar, which sits outside the table's
 	   own box. Without it the bar overhangs the editor's content column and can
 	   be clipped or force a horizontal scrollbar. */
-	padding-right: 9px;
-	margin-right: -9px;
+	padding-right: 13px;
+	margin-right: -13px;
 }
 /* Strip above the table holding its controls. Right-aligned so the button lines
    up with the table's own right edge rather than floating loose. */
@@ -427,14 +433,16 @@ html, body {
 	padding: 0;
 	line-height: 1;
 	font-family: var(--vscode-editor-font-family, monospace);
-	font-size: 12px;
+	/* Small enough to sit in the gap around the table, large enough to read as a
+	   `+`. A tinted bar was tried first and read as a scrollbar; the glyph says
+	   what the control does without needing the tooltip. */
+	font-size: 11px;
 	cursor: pointer;
 	opacity: 0;
-	transition: opacity 0.12s ease, background-color 0.12s ease;
-	/* A tinted strip rather than a bordered button: at 6px a border is most of
-	   the bar, which read as a scrollbar sitting against the table. */
-	background: var(--vscode-focusBorder, #0078d4);
-	border: none;
+	transition: opacity 0.12s ease, background-color 0.12s ease, color 0.12s ease;
+	color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground, #ccc));
+	background: var(--vscode-editor-background, #1e1e1e);
+	border: 1px solid var(--vscode-contrastBorder, rgba(127, 127, 127, 0.4));
 	border-radius: 3px;
 	user-select: none;
 	-webkit-user-select: none;
@@ -447,33 +455,30 @@ html, body {
    bar plus 2px of clearance is under the 8px half-em on a 16px root, and the
    `right`/`bottom` insets keep the two bars from meeting at the corner. */
 .mlp-table-add-row {
-	left: 0;
-	right: 9px;
-	bottom: -7px;
-	height: 6px;
+	left: 50%;
+	transform: translateX(-50%);
+	bottom: 1px;
+	width: 22px;
+	height: 15px;
 }
 .mlp-table-add-col {
-	top: 0;
-	bottom: 9px;
-	right: -7px;
-	width: 6px;
+	top: 50%;
+	transform: translateY(-50%);
+	right: -3px;
+	width: 15px;
+	height: 22px;
 }
-/* The `+` glyph will not fit a 6px bar, so the bar itself is the affordance: a
-   quiet strip that brightens under the pointer. The label survives for assistive
-   tech via `aria-label`, and for pointer users in the tooltip. */
-.mlp-table-add-btn {
-	font-size: 0;
-	overflow: hidden;
-}
-/* Faint until the pointer is on the bar itself, so the two strips do not draw
-   the eye away from the table's own content while it is merely hovered. */
+/* Quiet while the table is merely hovered, so the two marks do not compete with
+   its content; full strength once the pointer is on one. */
 .mlp-table-wrap:hover .mlp-table-add-btn,
 .mlp-table-wrap:focus-within .mlp-table-add-btn {
-	opacity: 0.25;
+	opacity: 0.55;
 }
 .mlp-table-add-btn:hover,
 .mlp-table-add-btn:focus-visible {
-	opacity: 0.9;
+	opacity: 1;
+	color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground, #ccc));
+	background: var(--vscode-button-secondaryBackground, rgba(110, 110, 110, 0.4));
 }
 .mlp-table-add-btn:focus-visible {
 	outline: 1px solid var(--vscode-focusBorder, #0078d4);
@@ -504,6 +509,23 @@ table.mlp-table th, table.mlp-table td {
 	cursor: text;
 	user-select: text;
 	-webkit-user-select: text;
+	/* Reserve the height one line of the *editing* font occupies, so a cell does
+	   not grow the moment it is clicked. A rendered cell is set in the body font
+	   and an edited one in the editor's monospace face; where those differ in
+	   line height — as they do once a CJK fallback is in play — every click
+	   nudged the row taller and the table shifted under the pointer. Matching the
+	   two here means the row is already the size it will need. */
+	line-height: 1.45;
+	/* Reserve the height an *edited* cell needs, so clicking one cannot make its
+	   row grow. An edited cell wraps (`white-space: pre-wrap`) and is set in the
+	   editor's monospace face, both of which can ask for more height than the
+	   rendered text did — measured at 29.8px idle against 34.2px editing, so the
+	   row jumped and the table shifted under the pointer on every click. */
+	/* On a table cell `height` acts as a minimum — the cell still grows for text
+	   that wraps to a second line — so this reserves the space without capping it. */
+	height: 34px;
+	box-sizing: border-box;
+	vertical-align: middle;
 }
 /* The cell being edited shows its raw Markdown. The outline marks it the way a
    spreadsheet marks its active cell; `outline` rather than `border` so it costs
@@ -522,7 +544,11 @@ table.mlp-table th.mlp-table-cell-editing, table.mlp-table td.mlp-table-cell-edi
 	white-space: pre-wrap;
 	overflow-wrap: break-word;
 	word-break: break-word;
-	font-family: var(--vscode-editor-font-family, monospace);
+	/* The same stack the editor itself uses (see the `.cm-content` rule near the
+	   top), CJK fallbacks included. Naming only the monospace face dropped those
+	   fallbacks, so a cell holding Japanese switched font — and line height —
+	   the instant it was clicked. */
+	font-family: var(--vscode-editor-font-family, monospace), "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif;
 }
 table.mlp-table th {
 	background: rgba(127, 127, 127, 0.12);
