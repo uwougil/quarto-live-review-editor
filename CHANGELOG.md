@@ -29,6 +29,11 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **A `⧉` copy button on fenced code blocks.** Selecting a code block by hand
   sweeps up the hidden ` ``` ` fence lines and any indentation the block is
   nested under; the button copies the block's contents exactly.
+- **Adding a row or a column to a table**, from thin strips along its bottom and
+  right edges. Unlike a cell edit, which rewrites one span, these rebuild the
+  table whole — a new column has to appear in the header, the delimiter row and
+  every data row at once — while keeping the column alignments and the
+  indentation of a table nested under a list item.
 
 ### Changed
 
@@ -47,6 +52,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Text typed into a table cell being written twice.** Committing a cell
+  re-renders the table, and the DOM swap that follows fired `focusout` on the
+  old element, committing it a second time — so `Enter`, `Tab` and a structural
+  edit each turned "oneXY" into "oneXYXY".
+- **`Tab` losing whatever was typed in the cell it moved to.** The commit that
+  precedes the move rebuilds the widget, replacing every cell element, so the
+  destination held across it was a node no longer in the document — and the
+  keyboard handler still lived on the discarded table, leaving `Enter`, `Esc`
+  and further `Tab`s dead in the new cell.
 - **A rendered block flipping to its raw source on a stray click.** Clicking
   near a table — its outer edge, the shared line between two rows, the strip
   above it — or simply clicking repeatedly could revert it to pipe text, often
@@ -209,6 +223,11 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **コードブロックに `⧉`（コピー）ボタンを追加しました。** 手で範囲選択すると
   隠れている ` ``` ` の囲み行や、入れ子のときの字下げまで一緒に入ってしまいます。
   このボタンは中身だけを正確にコピーします。
+- **テーブルに行・列を追加できるようになりました。** 表の下端と右端にある細い
+  バーから追加します。セル編集が1マスだけを書き換えるのに対し、こちらは表全体を
+  作り直します（列を足すには見出し行・区切り行・すべてのデータ行を同時に
+  変える必要があるためです）。列揃えの指定や、箇条書き直下のテーブルの字下げは
+  そのまま保たれます。
 
 ### 変更
 
@@ -227,6 +246,15 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### 修正
 
+- **テーブルのセルに入力した文字が二重に入る問題。** セルを確定すると表が
+  描画し直され、そのDOMの入れ替えで古い要素に `focusout` が発生して、もう一度
+  書き込まれていました。`Enter`・`Tab`・行や列の追加のいずれでも、`oneXY` が
+  `oneXYXY` になっていました。
+- **`Tab` で移った先のセルに入力した文字が消える問題。** 移動の前に行う確定で
+  ウィジェットが作り直され、セルの要素がすべて差し替わるため、移動先として
+  掴んでいた要素は文書から外れたものになっていました。キー操作の受け口も古い
+  表に残っていたため、移動先では `Enter`・`Esc`・続けての `Tab` も効きません
+  でした。
 - **ちょっとしたクリックで、描画されたブロックが生のソースに戻ってしまう問題。**
   テーブルの外周、行と行の間の線、すぐ上の余白などを触ったときや、単に連打した
   ときに、生の `|` 記法へ戻ってしまい、しかも何度も続けて起きることがありました。

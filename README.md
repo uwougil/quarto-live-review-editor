@@ -45,7 +45,7 @@ Fenced code blocks (` ```python `, etc.) are colorized per-language via [Shiki](
 ` ```mermaid ` fences render as an SVG diagram in place. Hovering the diagram reveals a toolbar: `</>` switches to the Mermaid source for editing, and the zoom controls scale a dense diagram up (drag to pan, `Ctrl`/`⌘`+wheel to zoom) with `↺` returning to the fitted view. Clicking the diagram itself pans it rather than switching to source, so a stray click can't interrupt what you're looking at.
 
 ### Editable tables
-A table renders as a real table and stays that way while you work in it: click a cell to edit that cell in place, `Tab`/`Shift+Tab` to move between cells, `Enter` to commit, `Esc` to discard. Only the edited cell is written back, so the rest of the row's spacing and pipes are left untouched. Dragging across cells selects their text to copy. The `</>` button above the table opens the raw Markdown, for the things cell editing can't reach — adding a row, changing the alignment row, repairing a broken table.
+A table renders as a real table and stays that way while you work in it: click a cell to edit that cell in place, `Tab`/`Shift+Tab` to move between cells, `Enter` to commit, `Esc` to discard. Only the edited cell is written back, so the rest of the row's spacing and pipes are left untouched. Dragging across cells selects their text to copy. Thin strips along the table's bottom and right edges add a row or a column. The `</>` button above the table opens the raw Markdown, for the things these can't reach — removing a row, changing the alignment row, repairing a broken table.
 
 ### Clickable links
 Clicking a rendered link follows it. A link to a `.md` file or any other file in the workspace is resolved against the document's own folder and opened in the editor, so links between notes work; `https:`, `mailto:` and other schemes are handed to the OS. If the target doesn't exist, you get a message naming the path.
@@ -89,7 +89,7 @@ To always open `.md` files in Live Preview, change the `mdLivePreview.defaultEdi
 ## Known limitations
 
 - Code highlighting is limited to a curated set of major languages (JS/TS/Python/Java/C/C++/C#/Go/Rust/Ruby/PHP/HTML/CSS/JSON/YAML/Markdown/Bash/SQL/Kotlin/Swift, etc.). Other languages aren't colorized.
-- Table editing covers cell contents only. Structural changes — adding or removing rows and columns, changing column alignment — are made in the raw Markdown, reached via the `</>` button.
+- Table editing covers cell contents, plus adding a row or column. Other structural changes — removing rows and columns, reordering them, changing column alignment — are made in the raw Markdown, reached via the `</>` button.
 - Pasting or dropping multiple images at once only inserts the first one.
 
 ## Feedback and bug reports
@@ -162,7 +162,8 @@ With the `watch` task running, changing the code and reloading the Extension Dev
 19. Confirm the `</>` button above the table opens the raw Markdown, and that `</>` on a Mermaid diagram, on frontmatter, and above a code block (which reveals the ` ``` ` fence lines) does the same for each.
 20. Confirm the `⧉` button on a code block copies the block's contents only — no ` ``` ` fences, and no leading indentation when the block is nested.
 21. On a Mermaid diagram, switch to full size, zoom in a few times, then press `↺`; confirm it returns all the way to the original shrink-to-fit view, not to an intermediate size.
-22. Click a link to an external URL and confirm it opens in the browser. Add a link to a neighbouring `.md` file (e.g. `[x](./other.md)`), click it, and confirm that file opens in the editor rather than raising an OS "file not found" dialog — and that in neither case does the link revert to its `[label](url)` source. Point a link at a file that doesn't exist and confirm a message naming the path appears.
+22. Hover a table and confirm thin strips appear along its bottom and right edges. Click each and confirm a row / a column is added, that the table's column alignment survives, and that a table nested under a list item keeps its indentation. Confirm the strips never cover the table's own border or the line below it.
+23. Click a link to an external URL and confirm it opens in the browser. Add a link to a neighbouring `.md` file (e.g. `[x](./other.md)`), click it, and confirm that file opens in the editor rather than raising an OS "file not found" dialog — and that in neither case does the link revert to its `[label](url)` source. Point a link at a file that doesn't exist and confirm a message naming the path appears.
 
 </details>
 
@@ -208,7 +209,7 @@ CodeMirror 6ベースのカスタムエディタです。見出し・強調・�
 ` ```mermaid `フェンスをその場でSVG図として描画します。図にマウスを乗せるとツールバーが出ます。`</>`でMermaid記法の編集に切り替わり、拡大・縮小ボタン(ドラッグで移動、`Ctrl`/`⌘`+ホイールで拡大縮小)で細かい図を大きく表示できます。`↺`で元の縮小表示に戻ります。図をクリックしても記法には切り替わらず移動になるので、誤ってクリックしても図が消えません。
 
 #### 編集できるテーブル
-テーブルは表として描画され、作業中もその見た目のままです。セルをクリックするとそのセルだけをその場で編集でき、`Tab`/`Shift+Tab`でセル間を移動、`Enter`で確定、`Esc`で取り消します。書き戻すのは編集したセルだけなので、行のほかの文字や`|`の位置はそのまま保たれます。セルをなぞれば文字を選択してコピーできます。行の追加や列揃えの変更など、セル編集では届かない部分は、表の上の`</>`ボタンから元のMarkdownを開いて編集します。
+テーブルは表として描画され、作業中もその見た目のままです。セルをクリックするとそのセルだけをその場で編集でき、`Tab`/`Shift+Tab`でセル間を移動、`Enter`で確定、`Esc`で取り消します。書き戻すのは編集したセルだけなので、行のほかの文字や`|`の位置はそのまま保たれます。セルをなぞれば文字を選択してコピーできます。表の下端と右端にある細いバーで、行や列を追加できます。行の削除や列揃えの変更など、これらで届かない部分は、表の上の`</>`ボタンから元のMarkdownを開いて編集します。
 
 #### クリックできるリンク
 描画されたリンクをクリックすると、そのリンク先を開きます。`.md`ファイルなど、ワークスペース内のファイルへのリンクは、その文書自身のフォルダを基準に解決してエディタで開くので、ノート同士のリンクがそのまま使えます。`https:`や`mailto:`などのスキーム付きのリンクはOSに渡します。リンク先が見つからない場合は、パスを添えたメッセージを表示します。
@@ -252,7 +253,7 @@ CodeMirror 6ベースのカスタムエディタです。見出し・強調・�
 ### 既知の制約
 
 - コードハイライトは主要な言語(JS/TS/Python/Java/C/C++/C#/Go/Rust/Ruby/PHP/HTML/CSS/JSON/YAML/Markdown/Bash/SQL/Kotlin/Swiftなど)に限定しています。対象外の言語は色分けされません。
-- テーブルの編集はセルの中身に限られます。行や列の追加・削除、列揃えの変更といった構造の変更は、`</>`ボタンから開く元のMarkdownで行います。
+- テーブルの編集はセルの中身と、行・列の追加までです。行や列の削除・並べ替え、列揃えの変更といったそのほかの構造の変更は、`</>`ボタンから開く元のMarkdownで行います。
 - 画像を複数同時に貼付・ドロップした場合、最初の1枚のみが挿入されます。
 
 ### フィードバック・不具合報告
@@ -325,6 +326,7 @@ npm run compile
 19. テーブル上部の`</>`ボタンで元のMarkdownが開くことを確認する。Mermaid・フロントマター・コードブロック(` ``` `の囲み行が現れる)でも同様に動作することを確認する。
 20. コードブロックの`⧉`ボタンで、` ``` `の囲み行を含まず、入れ子の場合も先頭の字下げを含まない、中身だけがコピーされることを確認する。
 21. Mermaidの図を原寸大に切り替えて数回拡大し、`↺`を押す。途中の大きさで止まらず、最初の縮小表示まで戻ることを確認する。
-22. 外部URLのリンクをクリックし、ブラウザで開くことを確認する。隣のファイルへのリンク(`[x](./other.md)`など)を書いてクリックし、OSの「ファイルが見つかりません」ダイアログではなく、そのファイルがエディタで開くことを確認する。どちらの場合も、リンクが`[表示文字](URL)`のソース表示に戻らないことを確認する。存在しないファイルを指すリンクでは、パスを添えたメッセージが出ることを確認する。
+22. テーブルにマウスを乗せ、下端と右端に細いバーが出ることを確認する。それぞれをクリックして行・列が追加されること、列揃えが保たれること、箇条書き直下のテーブルでもインデントが崩れないことを確認する。バーがテーブルの枠線や下の行にかぶらないことも確認する。
+23. 外部URLのリンクをクリックし、ブラウザで開くことを確認する。隣のファイルへのリンク(`[x](./other.md)`など)を書いてクリックし、OSの「ファイルが見つかりません」ダイアログではなく、そのファイルがエディタで開くことを確認する。どちらの場合も、リンクが`[表示文字](URL)`のソース表示に戻らないことを確認する。存在しないファイルを指すリンクでは、パスを添えたメッセージが出ることを確認する。
 
 </details>

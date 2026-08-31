@@ -340,6 +340,11 @@ html, body {
    the outer `.mlp-block`, the box CodeMirror measures — see blockWidgetWrap.ts. */
 .mlp-table-wrap {
 	position: relative;
+	/* Room on the right for the "add column" bar, which sits outside the table's
+	   own box. Without it the bar overhangs the editor's content column and can
+	   be clipped or force a horizontal scrollbar. */
+	padding-right: 9px;
+	margin-right: -9px;
 }
 /* Strip above the table holding its controls. Right-aligned so the button lines
    up with the table's own right edge rather than floating loose. */
@@ -405,6 +410,72 @@ html, body {
 /* Keyboard focus must stay visible even before the pointer arrives. */
 .mlp-code-mode-btn:focus-visible {
 	opacity: 1;
+	outline: 1px solid var(--vscode-focusBorder, #0078d4);
+	outline-offset: 1px;
+}
+/* "Add a row" / "add a column" controls, on the edge each one grows.
+   Positioned against `.mlp-table-wrap`, and revealed only while the table is
+   hovered or being edited: unlike the `</>` button — which is the only route to
+   a table's source and so is always visible — these are conveniences, and two
+   more permanent `+` marks around every table would be noise while reading. */
+.mlp-table-add-btn {
+	position: absolute;
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	line-height: 1;
+	font-family: var(--vscode-editor-font-family, monospace);
+	font-size: 12px;
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity 0.12s ease, background-color 0.12s ease;
+	/* A tinted strip rather than a bordered button: at 6px a border is most of
+	   the bar, which read as a scrollbar sitting against the table. */
+	background: var(--vscode-focusBorder, #0078d4);
+	border: none;
+	border-radius: 3px;
+	user-select: none;
+	-webkit-user-select: none;
+}
+/* Placed just *outside* the table's border, in the gap `.mlp-block` already
+   leaves around it (0.5em top and bottom), rather than straddling the border.
+   Overlapping it hid the last row's rule and the first column's, and the bottom
+   bar reached past the block into the line below — so the control sat on top of
+   whatever followed the table. Sizes here are chosen to fit that gap: 10px of
+   bar plus 2px of clearance is under the 8px half-em on a 16px root, and the
+   `right`/`bottom` insets keep the two bars from meeting at the corner. */
+.mlp-table-add-row {
+	left: 0;
+	right: 9px;
+	bottom: -7px;
+	height: 6px;
+}
+.mlp-table-add-col {
+	top: 0;
+	bottom: 9px;
+	right: -7px;
+	width: 6px;
+}
+/* The `+` glyph will not fit a 6px bar, so the bar itself is the affordance: a
+   quiet strip that brightens under the pointer. The label survives for assistive
+   tech via `aria-label`, and for pointer users in the tooltip. */
+.mlp-table-add-btn {
+	font-size: 0;
+	overflow: hidden;
+}
+/* Faint until the pointer is on the bar itself, so the two strips do not draw
+   the eye away from the table's own content while it is merely hovered. */
+.mlp-table-wrap:hover .mlp-table-add-btn,
+.mlp-table-wrap:focus-within .mlp-table-add-btn {
+	opacity: 0.25;
+}
+.mlp-table-add-btn:hover,
+.mlp-table-add-btn:focus-visible {
+	opacity: 0.9;
+}
+.mlp-table-add-btn:focus-visible {
 	outline: 1px solid var(--vscode-focusBorder, #0078d4);
 	outline-offset: 1px;
 }

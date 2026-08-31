@@ -7,6 +7,7 @@ import { wrapBlockWidget } from './blockWidgetWrap';
 import { detectFrontmatter } from './frontmatterWidget';
 import { renderInlineInto, type CellInlineHooks } from './tableCellInline';
 import { createCodeModeButton, createCopyCodeButton } from './codeModeButton';
+import { insertRow, insertColumn, renderTableMarkdown, type TableEditModel } from './tableEdit';
 
 const HEADING_LINE_CLASS: Record<string, string> = {
 	ATXHeading1: 'mlp-line-h1',
@@ -330,6 +331,9 @@ class TableWidget extends WidgetType {
 		private readonly headerRowCount: number,
 		private readonly align: ColumnAlign[],
 		private readonly cellRanges: (CellSpan | null)[][],
+		private readonly tableFrom: number,
+		private readonly tableTo: number,
+		private readonly indent: string,
 	) {
 		super();
 	}
@@ -338,12 +342,23 @@ class TableWidget extends WidgetType {
 			JSON.stringify(other.rows) === JSON.stringify(this.rows) &&
 			other.headerRowCount === this.headerRowCount &&
 			JSON.stringify(other.align) === JSON.stringify(this.align) &&
-			JSON.stringify(other.cellRanges) === JSON.stringify(this.cellRanges)
+			JSON.stringify(other.cellRanges) === JSON.stringify(this.cellRanges) &&
+			other.tableFrom === this.tableFrom &&
+			other.tableTo === this.tableTo &&
+			other.indent === this.indent
 		);
 	}
 	toDOM(view: EditorView): HTMLElement {
 		const table = renderTableElement(
-			{ rows: this.rows, headerRowCount: this.headerRowCount, align: this.align, cellRanges: this.cellRanges },
+			{
+				rows: this.rows,
+				headerRowCount: this.headerRowCount,
+				align: this.align,
+				cellRanges: this.cellRanges,
+				tableFrom: this.tableFrom,
+				tableTo: this.tableTo,
+				indent: this.indent,
+			},
 			cellInlineHooks,
 		);
 		// Positioning root for the code-mode button, which floats over the table's
@@ -370,6 +385,38 @@ class TableWidget extends WidgetType {
 		// ends so the code-mode button can put the caret back where the user was.
 		let lastCell: HTMLElement | null = null;
 
+		// Bound to the cell being edited, not to the table. A Tab that moves to the
+		// next cell commits first, which rebuilds this widget — the table element
+		// these listeners live on is replaced, so a handler on it never sees the
+		// keys typed into the new cell, and Enter/Escape/Tab stopped working after
+		// the first move. `beginEditing` attaches this to whichever cell is live.
+		function onCellKeydown(event: KeyboardEvent): void {
+			if (!editing) return;
+			const ref = readCellRef(editing);
+			if (!ref) return;
+			if (event.key === 'Tab') {
+				event.preventDefault();
+				const current = editing;
+				if (!moveFocus(ref, event.shiftKey ? -1 : 1)) commit(current);
+				return;
+			}
+			if (event.key === 'Enter') {
+				// A newline cannot live inside a cell, so Enter means "done".
+				event.preventDefault();
+				commit(editing);
+				view.focus();
+				return;
+			}
+			if (event.key === 'Escape') {
+				event.preventDefault();
+				// Restoring the original text makes `commit` see no change, so the
+				// edit is discarded rather than written back.
+				editing.textContent = ref.source;
+				commit(editing);
+				view.focus();
+			}
+		}
+
 		/**
 		 * Writes a cell's edited text back to its own span of the document.
 		 *
@@ -378,6 +425,16 @@ class TableWidget extends WidgetType {
 		 * change in length. Null when nothing was written.
 		 */
 		const commit = (cell: HTMLElement): number | null => {
+			// Write-back happens exactly once per cell. Committing re-renders the
+			// table, and the DOM swap that follows fires `focusout` on the old
+			// element — whose listener belongs to the *previous* widget instance and
+			// so has its own `editing`, making an instance-level check useless. The
+			// spent mark lives on the element itself, which is the thing both paths
+			// share: without it the typed text was written twice ("oneXY" became
+			// "oneXYXY") on Enter, on Tab, and on a structural edit.
+			if (cell.dataset.mlpCommitted === '1') return null;
+			cell.dataset.mlpCommitted = '1';
+			cell.removeEventListener('keydown', onCellKeydown);
 			const ref = readCellRef(cell);
 			cell.contentEditable = 'false';
 			cell.classList.remove('mlp-table-cell-editing');
@@ -496,6 +553,12 @@ class TableWidget extends WidgetType {
 			}
 			editing = cell;
 			lastCell = cell;
+			// Clear the spent mark: this cell is being edited afresh, and its next
+			// commit must go through even if an earlier one already did. Tabbing
+			// back onto a cell edited a moment ago otherwise silently discarded the
+			// new text.
+			delete cell.dataset.mlpCommitted;
+			cell.addEventListener('keydown', onCellKeydown);
 			cell.classList.add('mlp-table-cell-editing');
 			cell.contentEditable = 'true';
 			cell.textContent = ref.source;
@@ -518,11 +581,36 @@ class TableWidget extends WidgetType {
 			if (!width) return false;
 			const index = ref.row * width + ref.col + delta;
 			if (index < 0 || index >= this.rows.length * width) return false;
-			const next = cellAt(Math.floor(index / width), index % width);
-			if (!next) return false;
-			// Tab selects the whole cell it lands on, the way a spreadsheet does, so
-			// typing straight away replaces the old value.
-			beginEditing(next, 'all');
+			const row = Math.floor(index / width);
+			const col = index % width;
+			if (!cellAt(row, col)) return false;
+
+			// Saving the cell being left rewrites the document, and CodeMirror
+			// answers that by rebuilding this widget — every cell element, including
+			// the one Tab is moving to, is replaced. Holding a reference across the
+			// commit therefore landed the edit on a node no longer in the document:
+			// the caret went nowhere and whatever was typed next was lost. The
+			// destination is identified by its grid position instead, and looked up
+			// again afterwards, in the table that is on screen by then.
+			if (editing) commit(editing);
+			const finish = (): void => {
+				// Scoped to *this* table's replacement, not the first one in the
+				// document: a file with several tables would otherwise start editing
+				// the wrong one. `domAtPos` resolves the widget now occupying this
+				// table's position back to its element.
+				const host = view.domAtPos(Math.min(this.tableFrom, view.state.doc.length)).node as HTMLElement | null;
+				const scope = (host?.nodeType === 1 ? host : host?.parentElement)?.closest('.mlp-table-wrap');
+				const live = (scope ?? document).querySelector<HTMLElement>(
+					`.mlp-table-cell[data-mlp-row="${row}"][data-mlp-col="${col}"]`,
+				);
+				// Tab selects the whole cell it lands on, the way a spreadsheet does,
+				// so typing straight away replaces the old value.
+				if (live) beginEditing(live, 'all');
+			};
+			// The rebuild lands in a measure/update cycle, so the new element does not
+			// exist yet; `requestAnimationFrame` runs after it has been mounted.
+			if (typeof requestAnimationFrame === 'function') requestAnimationFrame(finish);
+			else finish();
 			return true;
 		};
 
@@ -614,32 +702,6 @@ class TableWidget extends WidgetType {
 			}
 		});
 
-		table.addEventListener('keydown', (event) => {
-			if (!editing) return;
-			const ref = readCellRef(editing);
-			if (!ref) return;
-			if (event.key === 'Tab') {
-				event.preventDefault();
-				const current = editing;
-				if (!moveFocus(ref, event.shiftKey ? -1 : 1)) commit(current);
-				return;
-			}
-			if (event.key === 'Enter') {
-				// A newline cannot live inside a cell, so Enter means "done".
-				event.preventDefault();
-				commit(editing);
-				view.focus();
-				return;
-			}
-			if (event.key === 'Escape') {
-				event.preventDefault();
-				// Restoring the original text makes `commit` see no change, so the
-				// edit is discarded rather than written back.
-				editing.textContent = ref.source;
-				commit(editing);
-				view.focus();
-			}
-		});
 
 		// Clicking or tabbing away saves, mirroring a spreadsheet. Moving to
 		// another cell is handled by `beginEditing` before this fires.
@@ -650,6 +712,113 @@ class TableWidget extends WidgetType {
 			if (next && cell.contains(next)) return;
 			commit(cell);
 		});
+
+		/**
+		 * Reads this table back out of the document as it stands right now.
+		 *
+		 * Returns null when the range no longer holds a table — the document was
+		 * edited out from under this widget, and rewriting through a stale range
+		 * would overwrite unrelated text.
+		 */
+		const currentTableModel = (): { model: TableEditModel; from: number; to: number } | null => {
+			const state = view.state;
+			const pos = Math.min(this.tableFrom, state.doc.length);
+			let found: SyntaxNode | null = null;
+			syntaxTree(state).iterate({
+				from: pos,
+				to: Math.min(this.tableTo, state.doc.length),
+				enter(node) {
+					if (!found && node.name === 'Table') found = node.node;
+				},
+			});
+			if (!found) return null;
+			const table = found as SyntaxNode;
+			const read = readTableModel(state, table);
+			return {
+				model: {
+					rows: read.rows,
+					headerRowCount: read.headerRowCount,
+					align: read.align,
+					indent: read.indent,
+				},
+				from: read.tableFrom,
+				to: read.tableTo,
+			};
+		};
+
+		/**
+		 * Rebuilds the whole table through `change` and replaces it in the
+		 * document.
+		 *
+		 * Unlike a cell edit, which writes back one span, a structural change
+		 * touches every line — a new column has to appear in the header, the
+		 * delimiter row and every data row at once — so the table is re-rendered
+		 * from its model and swapped in whole.
+		 */
+		const applyStructuralEdit = (change: (model: TableEditModel) => TableEditModel): void => {
+			// Any half-finished cell edit is saved first, or it would be discarded by
+			// the rewrite that follows. `commit` clears `editing` itself, so the
+			// `focusout` this button's click also triggers finds nothing left to do
+			// — without that, both paths committed and the typed text was written
+			// twice ("oneXY" became "oneXYXY").
+			if (editing) commit(editing);
+			// Re-read the table from the document rather than using this widget's own
+			// fields. Those describe the document as it stood when the widget was
+			// built, and the `commit` above may just have changed it — rebuilding
+			// from the stale copy wrote the old cell text back over the new, leaving
+			// the row mangled. Re-reading also makes a widget outlive an edit from
+			// anywhere else (another tab, an undo) safely.
+			const current = currentTableModel();
+			if (!current) return;
+			const { model, from, to } = current;
+			const next = change(model);
+			const insert = renderTableMarkdown(next);
+			if (view.state.sliceDoc(from, to) === insert) return;
+			const doc = view.state.doc;
+			// The caret must not land inside the rebuilt table: a caret on a table
+			// line withholds the widget, so the table would show as raw pipe text
+			// straight after the row was added. `from + insert.length` is its very
+			// end — still on the last table line — so the line *after* it is the
+			// nearest safe spot, and the end of the document if there is none.
+			const nextLength = doc.length - (to - from) + insert.length;
+			const endOfTable = from + insert.length;
+			const anchor = Math.min(endOfTable + 1, nextLength);
+			view.dispatch({ changes: { from, to, insert }, selection: { anchor } });
+		};
+
+		const makeAddButton = (label: string, title: string, onClick: () => void): HTMLButtonElement => {
+			const button = document.createElement('button');
+			button.type = 'button';
+			button.className = 'mlp-table-add-btn';
+			button.textContent = label;
+			button.title = title;
+			button.setAttribute('aria-label', title);
+			// The press must not reach the table underneath, or the cell below the
+			// button starts editing before the click runs.
+			button.addEventListener('mousedown', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+			});
+			button.addEventListener('click', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				onClick();
+			});
+			return button;
+		};
+
+		// Row and column are added at the end, which is what a `+` on the table's
+		// bottom and right edges reads as. Inserting elsewhere is a different
+		// gesture (a handle on the row or column itself) and is not offered here.
+		const addRowBtn = makeAddButton('+', '行を追加', () =>
+			applyStructuralEdit((m) => insertRow(m, m.rows.length)),
+		);
+		addRowBtn.classList.add('mlp-table-add-row');
+		const addColBtn = makeAddButton('+', '列を追加', () =>
+			applyStructuralEdit((m) => insertColumn(m, m.align.length || m.rows[0]?.length || 0)),
+		);
+		addColBtn.classList.add('mlp-table-add-col');
+		wrap.append(addRowBtn, addColBtn);
 
 		return wrapBlockWidget(wrap);
 	}
@@ -860,6 +1029,17 @@ export interface TableModel {
 	 * as `null` and are not directly editable.
 	 */
 	cellRanges: (CellSpan | null)[][];
+	/**
+	 * The table's whole range in the document, and the indentation its lines
+	 * carry (two spaces for a table nested under a list item, say).
+	 *
+	 * Cell editing does not need these — it writes one span at a time — but a
+	 * structural edit does: adding a row or a column changes every line, so the
+	 * table is rebuilt and this range is what the result replaces.
+	 */
+	tableFrom: number;
+	tableTo: number;
+	indent: string;
 }
 
 /** The cell grid and column alignment a `Table` node renders as. */
@@ -877,17 +1057,28 @@ export function readTableModel(state: EditorState, tableNode: SyntaxNode): Table
 	// The delimiter row is authoritative for the column count; fall back to the
 	// header's own width if it somehow yielded nothing.
 	const width = align.length || (spanRows.length ? spanRows[0].length : 0);
+	// Whatever precedes the table on its first line is pure indentation — the
+	// block decoration is only applied when that holds (see `alignedBlockRange`).
+	const firstLine = state.doc.lineAt(tableNode.from);
 	return {
 		rows: spanRows.map((cells) => fitRow(cells.map((c) => c.text), width)),
 		cellRanges: spanRows.map((cells) => fitRow<CellSpan | null>(cells, width, null)),
 		headerRowCount,
 		align,
+		// Widened to the start of the line, the way `alignedBlockRange` widens the
+		// decoration's own range. The parser's `from` sits *after* a nested table's
+		// indentation, so replacing from there would leave the original indent in
+		// front of the rebuilt first line while every other line carried the indent
+		// this model reapplies — the first row ending up doubly indented.
+		tableFrom: firstLine.from,
+		tableTo: tableNode.to,
+		indent: state.sliceDoc(firstLine.from, tableNode.from),
 	};
 }
 
 export function buildTableWidget(state: EditorState, node: SyntaxNodeRef): TableWidget {
-	const { rows, headerRowCount, align, cellRanges } = readTableModel(state, node.node);
-	return new TableWidget(rows, headerRowCount, align, cellRanges);
+	const { rows, headerRowCount, align, cellRanges, tableFrom, tableTo, indent } = readTableModel(state, node.node);
+	return new TableWidget(rows, headerRowCount, align, cellRanges, tableFrom, tableTo, indent);
 }
 
 /**
