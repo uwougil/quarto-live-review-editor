@@ -345,12 +345,12 @@ html, body {
 	   (rather than margin) keeps the space inside the box CodeMirror measures —
 	   see blockWidgetWrap.ts. Without it the control sat on the table's last rule
 	   and reached down onto the following line. */
-	padding-bottom: 16px;
+	padding-bottom: 18px;
 	/* Room on the right for the "add column" bar, which sits outside the table's
 	   own box. Without it the bar overhangs the editor's content column and can
 	   be clipped or force a horizontal scrollbar. */
-	padding-right: 13px;
-	margin-right: -13px;
+	padding-right: 18px;
+	margin-right: -18px;
 }
 /* Strip above the table holding its controls. Right-aligned so the button lines
    up with the table's own right edge rather than floating loose. */
@@ -440,9 +440,11 @@ html, body {
 	cursor: pointer;
 	opacity: 0;
 	transition: opacity 0.12s ease, background-color 0.12s ease, color 0.12s ease;
+	/* Solid enough to read as a control, since the bar spans the whole edge and
+	   the `+` alone would be easy to miss on a wide table. */
 	color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground, #ccc));
-	background: var(--vscode-editor-background, #1e1e1e);
-	border: 1px solid var(--vscode-contrastBorder, rgba(127, 127, 127, 0.4));
+	background: rgba(127, 127, 127, 0.3);
+	border: none;
 	border-radius: 3px;
 	user-select: none;
 	-webkit-user-select: none;
@@ -455,18 +457,20 @@ html, body {
    bar plus 2px of clearance is under the 8px half-em on a 16px root, and the
    `right`/`bottom` insets keep the two bars from meeting at the corner. */
 .mlp-table-add-row {
-	left: 50%;
-	transform: translateX(-50%);
+	/* Spans the table's width: the shape says "a whole row", and the target is
+	   easy to hit anywhere along the bottom edge rather than only at its middle.
+	   Inset on the right so it does not run into the column control's corner. */
+	left: 0;
+	right: 16px;
 	bottom: 1px;
-	width: 22px;
-	height: 15px;
+	height: 13px;
 }
 .mlp-table-add-col {
-	top: 50%;
-	transform: translateY(-50%);
-	right: -3px;
-	width: 15px;
-	height: 22px;
+	/* The same idea turned ninety degrees: full height, saying "a whole column". */
+	top: 0;
+	bottom: 16px;
+	right: 1px;
+	width: 13px;
 }
 /* Quiet while the table is merely hovered, so the two marks do not compete with
    its content; full strength once the pointer is on one. */
@@ -478,7 +482,7 @@ html, body {
 .mlp-table-add-btn:focus-visible {
 	opacity: 1;
 	color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground, #ccc));
-	background: var(--vscode-button-secondaryBackground, rgba(110, 110, 110, 0.4));
+	background: rgba(127, 127, 127, 0.5);
 }
 .mlp-table-add-btn:focus-visible {
 	outline: 1px solid var(--vscode-focusBorder, #0078d4);

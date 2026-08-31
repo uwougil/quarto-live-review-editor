@@ -89,6 +89,19 @@ const refreshBlocks = StateEffect.define<null>();
  * stay rendered until the next unrelated edit. Dispatching an empty transaction
  * re-runs the field's `update` with the selection unchanged.
  */
+/** Whether two decoration sets cover exactly the same ranges. */
+function sameRanges(a: DecorationSet, b: DecorationSet): boolean {
+	if (a.size !== b.size) return false;
+	const ia = a.iter();
+	const ib = b.iter();
+	while (ia.value || ib.value) {
+		if (!ia.value || !ib.value || ia.from !== ib.from || ia.to !== ib.to) return false;
+		ia.next();
+		ib.next();
+	}
+	return true;
+}
+
 export const dragReleaseRefresh = ViewPlugin.fromClass(
 	class {
 		private readonly off: () => void;
@@ -97,7 +110,14 @@ export const dragReleaseRefresh = ViewPlugin.fromClass(
 				// The release fires during the DOM event; let CodeMirror finish
 				// applying its own selection change for that gesture first.
 				setTimeout(() => {
-					if (view.dom.isConnected) view.dispatch({ effects: refreshBlocks.of(null) });
+					if (!view.dom.isConnected) return;
+					// Only when the rebuild would actually change something. The
+					// release sets the post-gesture suppression, so an unconditional
+					// refresh re-rendered the very block whose source the user had
+					// just opened — it flashed back to a rendered table for a frame,
+					// until the next keystroke lifted the suppression again.
+					if (sameRanges(buildBlockDecorations(view.state), view.state.field(blockDecorationsField))) return;
+					view.dispatch({ effects: refreshBlocks.of(null) });
 				}, 0);
 			});
 		}
