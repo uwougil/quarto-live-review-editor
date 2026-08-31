@@ -5,6 +5,7 @@ import type { SyntaxNode, SyntaxNodeRef } from '@lezer/common';
 import { cursorTouchesRange } from './cmUtils';
 import { wrapBlockWidget } from './blockWidgetWrap';
 import { detectFrontmatter } from './frontmatterWidget';
+import { renderInlineInto, type CellInlineHooks } from './tableCellInline';
 
 const HEADING_LINE_CLASS: Record<string, string> = {
 	ATXHeading1: 'mlp-line-h1',
@@ -73,6 +74,14 @@ export function resolveImageSrc(src: string, baseUri: string): string {
 		return src;
 	}
 }
+
+// Cells render their own images, so they need the same base-URI rewriting the
+// document's ImageWidget applies. Read through a getter rather than captured:
+// `setImageBaseUri` runs on the `init` message, potentially after this module
+// is first evaluated.
+const cellInlineHooks: CellInlineHooks = {
+	resolveImageSrc: (src) => resolveImageSrc(src, imageBaseUri),
+};
 
 class ImageWidget extends WidgetType {
 	constructor(
@@ -166,81 +175,46 @@ class CheckboxWidget extends WidgetType {
 	}
 }
 
-// Render the common inline Markdown constructs inside a table cell — the rich
-// TableWidget is a rendered DOM tree, not CodeMirror text, so the live-preview
-// decorations don't reach it and cell content would otherwise show its raw
-// `code`, **bold**, etc. markup. Emphasis is applied only to the runs *between*
-// inline-code spans, since code spans are literal and must win.
-function appendInlineEmphasis(parent: HTMLElement, text: string): void {
-	const re = /\*\*([^*]+)\*\*|~~([^~]+)~~|\*([^*]+)\*|\[([^\]]+)\]\(([^)\s]+)\)/g;
-	let last = 0;
-	let m: RegExpExecArray | null;
-	while ((m = re.exec(text))) {
-		if (m.index > last) parent.appendChild(document.createTextNode(text.slice(last, m.index)));
-		if (m[1] !== undefined) {
-			const el = document.createElement('strong');
-			el.className = 'mlp-strong';
-			el.textContent = m[1];
-			parent.appendChild(el);
-		} else if (m[2] !== undefined) {
-			const el = document.createElement('del');
-			el.className = 'mlp-strikethrough';
-			el.textContent = m[2];
-			parent.appendChild(el);
-		} else if (m[3] !== undefined) {
-			const el = document.createElement('em');
-			el.className = 'mlp-em';
-			el.textContent = m[3];
-			parent.appendChild(el);
-		} else {
-			const a = document.createElement('a');
-			a.className = 'mlp-link';
-			a.textContent = m[4];
-			a.setAttribute('data-href', m[5]);
-			parent.appendChild(a);
-		}
-		last = m.index + m[0].length;
-	}
-	if (last < text.length) parent.appendChild(document.createTextNode(text.slice(last)));
-}
+export type ColumnAlign = 'left' | 'center' | 'right' | null;
 
-function renderCellInline(cell: HTMLElement, text: string): void {
-	const codeRe = /`([^`]+)`/g;
-	let last = 0;
-	let m: RegExpExecArray | null;
-	while ((m = codeRe.exec(text))) {
-		if (m.index > last) appendInlineEmphasis(cell, text.slice(last, m.index));
-		const code = document.createElement('code');
-		code.className = 'mlp-inline-code';
-		code.textContent = m[1];
-		cell.appendChild(code);
-		last = m.index + m[0].length;
-	}
-	if (last < text.length) appendInlineEmphasis(cell, text.slice(last));
+/**
+ * Builds the `<table>` for a parsed table model. Split out of `TableWidget` so
+ * the rendered markup can be asserted on directly, without an `EditorView`.
+ */
+export function renderTableElement(model: TableModel, hooks: CellInlineHooks): HTMLElement {
+	const table = document.createElement('table');
+	table.className = 'mlp-table';
+	model.rows.forEach((cells, rowIndex) => {
+		const tr = document.createElement('tr');
+		cells.forEach((cellText, columnIndex) => {
+			const cell = document.createElement(rowIndex < model.headerRowCount ? 'th' : 'td');
+			const align = model.align[columnIndex];
+			if (align) cell.style.textAlign = align;
+			renderInlineInto(cell, cellText, hooks);
+			tr.appendChild(cell);
+		});
+		table.appendChild(tr);
+	});
+	return table;
 }
 
 class TableWidget extends WidgetType {
 	constructor(
 		private readonly rows: string[][],
 		private readonly headerRowCount: number,
+		private readonly align: ColumnAlign[],
 	) {
 		super();
 	}
 	eq(other: TableWidget): boolean {
-		return JSON.stringify(other.rows) === JSON.stringify(this.rows) && other.headerRowCount === this.headerRowCount;
+		return (
+			JSON.stringify(other.rows) === JSON.stringify(this.rows) &&
+			other.headerRowCount === this.headerRowCount &&
+			JSON.stringify(other.align) === JSON.stringify(this.align)
+		);
 	}
 	toDOM(view: EditorView): HTMLElement {
-		const table = document.createElement('table');
-		table.className = 'mlp-table';
-		this.rows.forEach((cells, rowIndex) => {
-			const tr = document.createElement('tr');
-			for (const cellText of cells) {
-				const cell = document.createElement(rowIndex < this.headerRowCount ? 'th' : 'td');
-				renderCellInline(cell, cellText);
-				tr.appendChild(cell);
-			}
-			table.appendChild(tr);
-		});
+		const table = renderTableElement({ rows: this.rows, headerRowCount: this.headerRowCount, align: this.align }, cellInlineHooks);
 		table.addEventListener('mousedown', (event) => {
 			event.preventDefault();
 			const pos = view.posAtDOM(table);
@@ -282,17 +256,80 @@ export function readCells(state: EditorState, rowNode: SyntaxNode): string[] {
 	return cells.map((c) => c.trim());
 }
 
-export function buildTableWidget(state: EditorState, node: SyntaxNodeRef): TableWidget {
+/**
+ * Per-column alignment from a table's delimiter row (`|:--|:-:|--:|`).
+ *
+ * The row sits directly under `Table` as the one multi-character
+ * `TableDelimiter` child — the single "|" delimiters inside header/data rows
+ * are nested under those rows instead, never under `Table` itself.
+ */
+export function readColumnAlign(state: EditorState, tableNode: SyntaxNode): ColumnAlign[] {
+	for (const child of tableNode.getChildren('TableDelimiter')) {
+		const text = state.sliceDoc(child.from, child.to);
+		if (text.length <= 1) continue;
+		return splitDelimiterCells(text).map((spec) => {
+			const left = spec.startsWith(':');
+			const right = spec.endsWith(':');
+			if (left && right) return 'center';
+			if (right) return 'right';
+			if (left) return 'left';
+			return null;
+		});
+	}
+	return [];
+}
+
+/** Splits a delimiter row into its per-column specs (":--", ":-:", "--:", "-"). */
+function splitDelimiterCells(text: string): string[] {
+	const cells = text.split('|').map((c) => c.trim());
+	if (cells.length > 1 && cells[0] === '') cells.shift();
+	if (cells.length > 1 && cells[cells.length - 1] === '') cells.pop();
+	return cells;
+}
+
+/**
+ * Pads a short row with empty cells and drops a long row's overflow, so every
+ * row has exactly `width` columns.
+ *
+ * GFM defines the delimiter row as fixing the table's column count: a data row
+ * with fewer cells is filled out with empty ones, and any cell beyond that
+ * count is discarded. Rendering rows at their own natural width instead
+ * produced a ragged table wherever the source was not perfectly aligned —
+ * visibly different from every other Markdown renderer.
+ */
+function fitRow(cells: string[], width: number): string[] {
+	if (cells.length === width) return cells;
+	if (cells.length > width) return cells.slice(0, width);
+	return cells.concat(new Array(width - cells.length).fill(''));
+}
+
+export interface TableModel {
+	rows: string[][];
+	headerRowCount: number;
+	align: ColumnAlign[];
+}
+
+/** The cell grid and column alignment a `Table` node renders as. */
+export function readTableModel(state: EditorState, tableNode: SyntaxNode): TableModel {
+	const align = readColumnAlign(state, tableNode);
 	const rows: string[][] = [];
 	let headerRowCount = 0;
-	for (const child of node.node.getChildren('TableHeader')) {
+	for (const child of tableNode.getChildren('TableHeader')) {
 		rows.push(readCells(state, child));
 		headerRowCount = rows.length;
 	}
-	for (const child of node.node.getChildren('TableRow')) {
+	for (const child of tableNode.getChildren('TableRow')) {
 		rows.push(readCells(state, child));
 	}
-	return new TableWidget(rows, headerRowCount);
+	// The delimiter row is authoritative for the column count; fall back to the
+	// header's own width if it somehow yielded nothing.
+	const width = align.length || (rows.length ? rows[0].length : 0);
+	return { rows: rows.map((cells) => fitRow(cells, width)), headerRowCount, align };
+}
+
+export function buildTableWidget(state: EditorState, node: SyntaxNodeRef): TableWidget {
+	const { rows, headerRowCount, align } = readTableModel(state, node.node);
+	return new TableWidget(rows, headerRowCount, align);
 }
 
 /**

@@ -262,6 +262,13 @@ table.mlp-table th {
 	background: rgba(127, 127, 127, 0.12);
 	font-weight: 600;
 }
+/* An image inside a cell sits on the text baseline of a single line, so the
+   vertical margin `.mlp-image` carries for a standalone block image would just
+   inflate the row. */
+table.mlp-table img.mlp-table-image {
+	margin: 0;
+	vertical-align: middle;
+}
 
 /* ── Frontmatter ─────────────────────────────────────────────────────────
    Fixed app-chrome styling, like table.mlp-table above — not part of the

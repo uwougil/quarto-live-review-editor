@@ -5,6 +5,28 @@
 All notable changes to this extension are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Table cells rendering differently from every other Markdown renderer once
+  their content got the least bit involved.** A cell's content is drawn outside
+  CodeMirror, so it was rendered by a handful of hand-written regexes rather
+  than by the parser. Anything past one flat construct came out wrong:
+  `***bold italic***` kept stray asterisks, `**a *b* c**` and `**2 * 3**`
+  collapsed into nonsense, `_underscore_` emphasis and images were not
+  recognised at all, a lone `*` used as a multiplication sign turned into
+  spurious italics, multi-backtick code spans broke apart, links with a title
+  stayed raw text, and a link nested in bold never became a link. Cells now go
+  through the same parser the rest of the document uses, so they follow GFM
+  exactly. Backslash escapes, `<`/`&`, autolinks and `<br>` are handled too;
+  any other raw HTML in a cell is shown literally rather than injected.
+- **Column alignment (`|:--|:-:|--:|`) was ignored.** Every column rendered
+  left-aligned.
+- **Rows with too few or too many cells rendered ragged.** GFM fixes a table's
+  column count at its delimiter row: short rows are now padded with empty cells
+  and any overflow is dropped, so the table stays rectangular.
+
 ## [0.0.10] — 2026-08-27
 
 ### Fixed
@@ -102,6 +124,26 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 この拡張機能の主な変更点をまとめています。
 バージョン番号は [セマンティック バージョニング](https://semver.org/lang/ja/) に従っています。
+
+## [Unreleased]
+
+### 修正
+
+- **表のセルの中身が少し複雑になると、他の Markdown ビューアと表示が変わる問題。**
+  セルの中身は CodeMirror の外側で描画するため、パーサではなく手書きの正規表現で
+  描いていました。そのため装飾が1つだけの単純な場合を超えると崩れていました。
+  `***太字斜体***` はアスタリスクが残り、`**a *b* c**` や `**2 * 3**` は表示が
+  壊れ、`_アンダースコア_` の強調と画像はそもそも認識されず、掛け算の意味で
+  書いた `*` が斜体になり、バッククォート2個以上のコードは分断され、タイトル
+  付きリンクは生のまま、太字の中のリンクはリンクになりませんでした。セルの中身も
+  文書本体と同じパーサに通すようにしたので、GFM の規則どおりに表示されます。
+  バックスラッシュのエスケープ、`<` や `&`、自動リンク、`<br>` にも対応しました。
+  それ以外の生の HTML は、埋め込まずに文字としてそのまま表示します。
+- **列揃え（`|:--|:-:|--:|`）が効いていなかった問題。** すべての列が左揃えで
+  表示されていました。
+- **セルの数が足りない行・多すぎる行で、表がガタついていた問題。** GFM では
+  区切り行が列数を決めます。足りない行は空のセルで補い、多すぎる分は捨てるように
+  したので、表の形が揃います。
 
 ## [0.0.10] — 2026-08-27
 
