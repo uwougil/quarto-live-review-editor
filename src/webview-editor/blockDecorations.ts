@@ -4,7 +4,7 @@ import { syntaxTree } from '@codemirror/language';
 import { parse as parseYaml } from 'yaml';
 import { MermaidWidget } from './mermaidWidget';
 import { buildTableWidget, isLineAligned, alignedBlockRange } from './livePreviewPlugin';
-import { blockCursorTouchesRange, onPointerRelease } from './cmUtils';
+import { blockCursorTouchesRange, noteRevealed, onPointerRelease } from './cmUtils';
 import { detectFrontmatter, FrontmatterWidget, FrontmatterEmptyWidget, FrontmatterErrorWidget } from './frontmatterWidget';
 
 /**
@@ -33,7 +33,9 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
 	// silently produce zero decorations for the *entire* document whenever
 	// frontmatter was present, not just inside the frontmatter block).
 	const fm = detectFrontmatter(state);
-	if (fm && !blockCursorTouchesRange(state, fm.from, fm.to)) {
+	const fmRevealed = fm ? blockCursorTouchesRange(state, fm.from, fm.to) : false;
+	if (fm) noteRevealed(fm.from, fm.to, fmRevealed);
+	if (fm && !fmRevealed) {
 		let widget: WidgetType;
 		try {
 			const data = parseYaml(fm.yamlText) ?? {};
@@ -52,7 +54,9 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
 				const infoNode = node.node.getChild('CodeInfo');
 				const lang = infoNode ? state.sliceDoc(infoNode.from, infoNode.to).trim().toLowerCase() : '';
 				if (lang !== 'mermaid') return;
-				if (blockCursorTouchesRange(state, node.from, node.to)) return;
+				const mermaidRevealed = blockCursorTouchesRange(state, node.from, node.to);
+				noteRevealed(node.from, node.to, mermaidRevealed);
+				if (mermaidRevealed) return;
 				if (!isLineAligned(state, node.from, node.to)) return;
 				const textNode = node.node.getChild('CodeText');
 				const code = textNode ? state.sliceDoc(textNode.from, textNode.to) : '';
@@ -63,7 +67,9 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
 				return false;
 			}
 			if (node.name === 'Table') {
-				if (blockCursorTouchesRange(state, node.from, node.to)) return;
+				const tableRevealed = blockCursorTouchesRange(state, node.from, node.to);
+				noteRevealed(node.from, node.to, tableRevealed);
+				if (tableRevealed) return;
 				const range = alignedBlockRange(state, node.from, node.to);
 				if (!range) return;
 				decorations.push(

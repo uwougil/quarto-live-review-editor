@@ -2,7 +2,7 @@ import { EditorView, ViewPlugin, ViewUpdate, Decoration, DecorationSet, WidgetTy
 import { syntaxTree } from '@codemirror/language';
 import type { Range, EditorState } from '@codemirror/state';
 import type { SyntaxNode, SyntaxNodeRef } from '@lezer/common';
-import { cursorTouchesRange, blockCursorTouchesRange } from './cmUtils';
+import { cursorTouchesRange, blockCursorTouchesRange, noteRevealed } from './cmUtils';
 import { wrapBlockWidget } from './blockWidgetWrap';
 import { detectFrontmatter } from './frontmatterWidget';
 import { renderInlineInto, type CellInlineHooks } from './tableCellInline';
@@ -1415,7 +1415,9 @@ function buildDecorations(view: EditorView): DecorationSet {
 						return false;
 					}
 					case 'Table': {
-						if (!blockCursorTouchesRange(state, node.from, node.to) && alignedBlockRange(state, node.from, node.to)) {
+						const tableRevealed = blockCursorTouchesRange(state, node.from, node.to);
+						noteRevealed(node.from, node.to, tableRevealed);
+						if (!tableRevealed && alignedBlockRange(state, node.from, node.to)) {
 							// Rendered as a rich table by blockDecorationsField. Block
 							// decorations may not be supplied from a view plugin, so emit
 							// nothing here and let the state field replace this range.

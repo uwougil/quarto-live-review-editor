@@ -90,7 +90,14 @@ if (typeof document !== 'undefined') {
 			// misread repeats, which is what made rapid clicking flip to source in
 			// runs rather than once. Hit-testing the point has no such window.
 			pressTouchedBlock = pointIsInsideRenderedBlock(event.clientX, event.clientY);
-			suppressUntilNextPress = false;
+			// Cleared only when the press is *not* on a rendered block. Clearing it
+			// unconditionally made the block under the caret re-render for the one
+			// instant between this press and `pointerDown` taking effect — visible
+			// as the source flashing back to a table on every click into it. A press
+			// on a block does not need it cleared here anyway: `release` sets the
+			// flag again for exactly that case, and the `</>` button lifts it
+			// through `allowRevealOnce`.
+			if (!pressTouchedBlock) suppressUntilNextPress = false;
 		},
 		true,
 	);
@@ -148,6 +155,37 @@ export function allowRevealOnce(): void {
 	suppressUntilNextPress = false;
 }
 
+/**
+ * Block ranges whose source is currently on screen.
+ *
+ * Recorded as the decorations are built (`noteRevealed`), and consulted on the
+ * next build so an open block is not closed by a mouse gesture inside it. Keyed
+ * by range rather than held per widget because the widget does not exist while
+ * the source is showing.
+ */
+const revealedRanges = new Set<string>();
+
+function rangeKey(from: number, to: number): string {
+	return from + ':' + to;
+}
+
+/**
+ * Records whether the block at [from, to] is showing its source this build.
+ *
+ * Called by the decoration builders for every block they consider, so the set
+ * tracks the document as it is now rather than accumulating stale ranges.
+ */
+export function noteRevealed(from: number, to: number, revealed: boolean): void {
+	const key = rangeKey(from, to);
+	if (revealed) revealedRanges.add(key);
+	else revealedRanges.delete(key);
+}
+
+/** Test seam: clears the remembered reveal state. */
+export function clearRevealedForTesting(): void {
+	revealedRanges.clear();
+}
+
 /** Test seam: drives the post-gesture suppression without a real pointer. */
 export function setSuppressForTesting(value: boolean): void {
 	suppressUntilNextPress = value;
@@ -172,12 +210,23 @@ export function setPointerDownForTesting(value: boolean): void {
  * problem these guards exist for.
  */
 export function blockCursorTouchesRange(state: EditorState, from: number, to: number): boolean {
+	const touching = cursorTouchesRange(state, from, to);
+	if (!touching) return false;
+	// A block already showing its source keeps showing it, whatever the mouse is
+	// doing. The guards below exist to stop a *rendered* block being revealed by
+	// a stray click; applying them to one that is already open made it flip back
+	// to its rendered form for an instant on every press inside it — the caret
+	// was in the source, so nothing was being protected, and the flash was the
+	// only visible effect. `wasRevealed` is remembered per block range because
+	// the DOM cannot answer this: while the source shows there is no widget under
+	// the pointer to hit-test.
+	if (revealedRanges.has(rangeKey(from, to))) return true;
 	// A gesture still in progress has not resolved into anything yet.
 	if (pointerDown) return false;
 	// The gesture touched a rendered block, so its caret is not a request to
 	// edit that block's source — see `suppressUntilNextPress`.
 	if (suppressUntilNextPress) return false;
-	return cursorTouchesRange(state, from, to);
+	return true;
 }
 
 /**

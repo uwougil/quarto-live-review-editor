@@ -6,6 +6,8 @@ import {
 	setPointerDownForTesting,
 	setSuppressForTesting,
 	allowRevealOnce,
+	noteRevealed,
+	clearRevealedForTesting,
 } from './cmUtils';
 
 const DOC = 'above\n| a | b |\n|---|---|\n| 1 | 2 |\nbelow\n';
@@ -71,6 +73,7 @@ describe('blockCursorTouchesRange', () => {
 	beforeEach(() => {
 		setPointerDownForTesting(false);
 		setSuppressForTesting(false);
+		clearRevealedForTesting();
 	});
 
 	it('agrees with cursorTouchesRange when no gesture is in play', () => {
@@ -106,6 +109,41 @@ describe('blockCursorTouchesRange', () => {
 		const state = stateWithSelection(0);
 		const { from, to } = tableRange(state);
 		const inside = state.doc.line(3).from + 2;
+		setSuppressForTesting(true);
+		expect(blockCursorTouchesRange(stateWithSelection(inside), from, to)).toBe(false);
+	});
+
+	// A block already showing its source must keep showing it whatever the mouse
+	// does. Applying the guards to one that is already open made it flip back to
+	// its rendered form for an instant on every click inside it — visible as the
+	// source flashing to a table while it was being edited.
+	it('keeps a block open once its source is already showing', () => {
+		const state = stateWithSelection(0);
+		const { from, to } = tableRange(state);
+		const inside = state.doc.line(3).from + 2;
+		noteRevealed(from, to, true);
+		setSuppressForTesting(true);
+		expect(blockCursorTouchesRange(stateWithSelection(inside), from, to)).toBe(true);
+		setPointerDownForTesting(true);
+		expect(blockCursorTouchesRange(stateWithSelection(inside), from, to)).toBe(true);
+	});
+
+	it('stops exempting a block once it is rendered again', () => {
+		const state = stateWithSelection(0);
+		const { from, to } = tableRange(state);
+		const inside = state.doc.line(3).from + 2;
+		noteRevealed(from, to, true);
+		noteRevealed(from, to, false);
+		setSuppressForTesting(true);
+		expect(blockCursorTouchesRange(stateWithSelection(inside), from, to)).toBe(false);
+	});
+
+	// The exemption must not leak to a block the caret is not in.
+	it('does not exempt a block whose range was never revealed', () => {
+		const state = stateWithSelection(0);
+		const { from, to } = tableRange(state);
+		const inside = state.doc.line(3).from + 2;
+		noteRevealed(from + 100, to + 100, true);
 		setSuppressForTesting(true);
 		expect(blockCursorTouchesRange(stateWithSelection(inside), from, to)).toBe(false);
 	});
