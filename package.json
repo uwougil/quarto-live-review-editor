@@ -8,10 +8,16 @@
   "icon": "media/icon-128.png",
   "keywords": [
     "markdown",
+    "markdown editor",
+    "markdown preview",
     "live preview",
     "wysiwyg",
     "obsidian",
+    "note taking",
+    "notes",
     "mermaid",
+    "preview",
+    "css theme",
     "editor"
   ],
   "galleryBanner": {
@@ -30,6 +36,8 @@
     "vscode": "^1.90.0"
   },
   "categories": [
+    "Programming Languages",
+    "Visualization",
     "Other"
   ],
   "activationEvents": [],
