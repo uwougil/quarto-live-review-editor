@@ -5,7 +5,7 @@
 All notable changes to this extension are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.0.11] — 2026-09-01
 
 ### Added
 
@@ -202,7 +202,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 この拡張機能の主な変更点をまとめています。
 バージョン番号は [セマンティック バージョニング](https://semver.org/lang/ja/) に従っています。
 
-## [Unreleased]
+## [0.0.11] — 2026-09-01
 
 ### 追加
 
