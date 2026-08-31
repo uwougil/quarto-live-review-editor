@@ -2,7 +2,7 @@ import { EditorView, ViewPlugin, ViewUpdate, Decoration, DecorationSet, WidgetTy
 import { syntaxTree } from '@codemirror/language';
 import type { Range, EditorState } from '@codemirror/state';
 import type { SyntaxNode, SyntaxNodeRef } from '@lezer/common';
-import { cursorTouchesRange } from './cmUtils';
+import { cursorTouchesRange, blockCursorTouchesRange } from './cmUtils';
 import { wrapBlockWidget } from './blockWidgetWrap';
 import { detectFrontmatter } from './frontmatterWidget';
 import { renderInlineInto, type CellInlineHooks } from './tableCellInline';
@@ -484,6 +484,16 @@ class TableWidget extends WidgetType {
 			// Must run before the cell's text is swapped below, while the columns
 			// still hold their rendered widths.
 			freezeColumnWidths();
+			// Park the document caret on this cell's own line. It is not used for
+			// typing — the contenteditable cell below handles that — but it has to
+			// go *somewhere*, and wherever it was left is a line whose inline markup
+			// then shows its source: clicking a table cell would reveal the `#` on a
+			// heading elsewhere in the document. The table's own line is safe,
+			// because this widget is exempt from that reveal while a cell is being
+			// edited (see `blockCursorTouchesRange`).
+			if (ref.from <= view.state.doc.length) {
+				view.dispatch({ selection: { anchor: ref.from } });
+			}
 			editing = cell;
 			lastCell = cell;
 			cell.classList.add('mlp-table-cell-editing');
@@ -900,7 +910,7 @@ export function blockReplacedLines(state: EditorState, item: SyntaxNode): Set<nu
 	const lines = new Set<number>();
 	for (let child = item.firstChild; child; child = child.nextSibling) {
 		if (child.name !== 'Table') continue;
-		if (cursorTouchesRange(state, child.from, child.to)) continue;
+		if (blockCursorTouchesRange(state, child.from, child.to)) continue;
 		const range = alignedBlockRange(state, child.from, child.to);
 		if (!range) continue;
 		const first = state.doc.lineAt(range.from).number;
@@ -1132,11 +1142,18 @@ function buildDecorations(view: EditorView): DecorationSet {
 					case 'FencedCode': {
 						const infoNode = node.node.getChild('CodeInfo');
 						const lang = infoNode ? state.sliceDoc(infoNode.from, infoNode.to).trim().toLowerCase() : '';
-						const cursorAway = !cursorTouchesRange(state, node.from, node.to);
-						if (lang === 'mermaid' && cursorAway && isLineAligned(state, node.from, node.to)) {
+						// Must use the same test blockDecorationsField uses to decide
+						// whether the diagram renders — if the two disagree, either the
+						// widget is dropped or the fence is styled as code underneath it.
+						if (
+							lang === 'mermaid' &&
+							!blockCursorTouchesRange(state, node.from, node.to) &&
+							isLineAligned(state, node.from, node.to)
+						) {
 							// Rendered as a diagram by blockDecorationsField; skip entirely.
 							return false;
 						}
+						const cursorAway = !cursorTouchesRange(state, node.from, node.to);
 						const firstLineNum = doc.lineAt(node.from).number;
 						const lastLineNum = doc.lineAt(node.to).number;
 						// The opening/closing ``` fence lines have no visible text once their
@@ -1207,7 +1224,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 						return false;
 					}
 					case 'Table': {
-						if (!cursorTouchesRange(state, node.from, node.to) && alignedBlockRange(state, node.from, node.to)) {
+						if (!blockCursorTouchesRange(state, node.from, node.to) && alignedBlockRange(state, node.from, node.to)) {
 							// Rendered as a rich table by blockDecorationsField. Block
 							// decorations may not be supplied from a view plugin, so emit
 							// nothing here and let the state field replace this range.

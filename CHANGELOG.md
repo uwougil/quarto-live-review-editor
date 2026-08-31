@@ -55,7 +55,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   the browser's own word-selection on the second click of a rapid pair looked
   like a drag-select and made the handler bail out; and the block's own bounds
   were tested rather than its surrounding box, leaving unguarded bands (30px
-  above a table, 7px below) that belonged to no block at all.
+  above a table, 7px below) that belonged to no block at all. The guards apply
+  only to block widgets: they also gate whether a heading shows its `#` and
+  whether `**bold**` shows its asterisks, so applying them everywhere would
+  stop a click placing the caret for editing on any ordinary line.
 - **Links to files failing with an OS "file not found (0x2)" dialog.** Every
   link was passed to the shell via `Uri.parse`, which is right only for one
   that already carries a scheme. A relative link — `./notes.md`, `../img/a.png`,
@@ -231,7 +234,10 @@ This project follows [Semantic Versioning](https://semver.org/).
   だけなのに「入った」と判定していたこと。素早い2回クリックでブラウザが単語を
   自動選択し、それがドラッグ選択に見えて処理が中断していたこと。そして判定に
   ブロック自身の枠だけを使っていたため、その周り（表の上30px・下7px）に
-  どのブロックにも属さない帯が残っていたことです。
+  どのブロックにも属さない帯が残っていたことです。なお、この保護はブロック
+  （表・Mermaid など）だけに効かせています。同じ判定は見出しの `#` や
+  `**太字**` の記号を出すかどうかにも使われているため、文書全体に効かせると、
+  普通の行をクリックしても編集用のカーソルが入らなくなってしまいます。
 - **ファイルへのリンクを開くと、OS の「指定されたファイルが見つかりません
   (0x2)」というダイアログが出る問題。** すべてのリンクを `Uri.parse` で
   そのまま OS に渡していました。これはスキーム付きのリンクにしか正しくありません。

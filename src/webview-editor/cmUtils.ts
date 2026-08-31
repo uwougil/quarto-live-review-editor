@@ -155,6 +155,27 @@ export function setPointerDownForTesting(value: boolean): void {
 }
 
 /**
+ * `cursorTouchesRange`, plus the mouse-gesture guards that only *block widgets*
+ * want.
+ *
+ * The guards are deliberately not part of `cursorTouchesRange` itself. That
+ * function also decides whether a heading shows its `#`, whether `**bold**`
+ * shows its asterisks, and so on for every inline construct — and suppressing
+ * those after a mouse gesture meant clicking a heading moved the caret there
+ * but left the markup hidden, so the line could not be edited by mouse at all.
+ * Only a block that replaces its whole source with a rendered widget has the
+ * problem these guards exist for.
+ */
+export function blockCursorTouchesRange(state: EditorState, from: number, to: number): boolean {
+	// A gesture still in progress has not resolved into anything yet.
+	if (pointerDown) return false;
+	// The gesture touched a rendered block, so its caret is not a request to
+	// edit that block's source — see `suppressUntilNextPress`.
+	if (suppressUntilNextPress) return false;
+	return cursorTouchesRange(state, from, to);
+}
+
+/**
  * True if the caret sits on a line spanned by [from, to] — the condition that
  * makes a rendered block (table, diagram, frontmatter) give way to its source.
  *
@@ -168,11 +189,6 @@ export function setPointerDownForTesting(value: boolean): void {
  *   has not resolved into anything yet. See `pointerDown` above.
  */
 export function cursorTouchesRange(state: EditorState, from: number, to: number): boolean {
-	if (pointerDown) return false;
-	// The caret was dragged in from outside rather than aimed at this block; see
-	// `pressBeganInWidget`. Only suppressed for a *mouse* gesture — a caret moved
-	// by the keyboard leaves this flag false and still reveals the source.
-	if (suppressUntilNextPress) return false;
 	const startLine = state.doc.lineAt(Math.min(from, state.doc.length)).number;
 	const endLine = state.doc.lineAt(Math.min(to, state.doc.length)).number;
 	for (const range of state.selection.ranges) {

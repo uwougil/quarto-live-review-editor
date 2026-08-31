@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { EditorState } from '@codemirror/state';
-import { cursorTouchesRange, setPointerDownForTesting, setSuppressForTesting, allowRevealOnce } from './cmUtils';
+import {
+	cursorTouchesRange,
+	blockCursorTouchesRange,
+	setPointerDownForTesting,
+	setSuppressForTesting,
+	allowRevealOnce,
+} from './cmUtils';
 
 const DOC = 'above\n| a | b |\n|---|---|\n| 1 | 2 |\nbelow\n';
 
@@ -46,12 +52,45 @@ describe('cursorTouchesRange', () => {
 	// there and dragging down reads as a plain caret move whose head lands inside
 	// the table — indistinguishable from a click on it. Suppressing while the
 	// button is held is what keeps the block from flipping to source mid-gesture.
+	// The mouse-gesture guards live in `blockCursorTouchesRange`, not here.
+	// `cursorTouchesRange` also decides whether a heading shows its `#` and
+	// whether `**bold**` shows its asterisks; guarding it meant clicking a
+	// heading moved the caret but left the markup hidden, so the line could not
+	// be edited by mouse at all.
+	it('ignores the mouse-gesture guards, which are not its concern', () => {
+		const state = stateWithSelection(0);
+		const { from, to } = tableRange(state);
+		const inside = state.doc.line(3).from + 2;
+		setPointerDownForTesting(true);
+		setSuppressForTesting(true);
+		expect(cursorTouchesRange(stateWithSelection(inside), from, to)).toBe(true);
+	});
+});
+
+describe('blockCursorTouchesRange', () => {
+	beforeEach(() => {
+		setPointerDownForTesting(false);
+		setSuppressForTesting(false);
+	});
+
+	it('agrees with cursorTouchesRange when no gesture is in play', () => {
+		const state = stateWithSelection(0);
+		const { from, to } = tableRange(state);
+		const inside = state.doc.line(3).from + 2;
+		expect(blockCursorTouchesRange(stateWithSelection(inside), from, to)).toBe(true);
+		expect(blockCursorTouchesRange(stateWithSelection(1), from, to)).toBe(false);
+	});
+
+	// A blank line above a table resolves to document position 0, so pressing
+	// there and dragging down reads as a plain caret move whose head lands inside
+	// the table — indistinguishable from a click on it. Suppressing while the
+	// button is held keeps the block from flipping to source mid-gesture.
 	it('is false while a mouse gesture is in progress', () => {
 		const state = stateWithSelection(0);
 		const { from, to } = tableRange(state);
 		const inside = state.doc.line(3).from + 2;
 		setPointerDownForTesting(true);
-		expect(cursorTouchesRange(stateWithSelection(inside), from, to)).toBe(false);
+		expect(blockCursorTouchesRange(stateWithSelection(inside), from, to)).toBe(false);
 	});
 
 	it('reveals the source again once the gesture ends', () => {
@@ -60,20 +99,7 @@ describe('cursorTouchesRange', () => {
 		const inside = state.doc.line(3).from + 2;
 		setPointerDownForTesting(true);
 		setPointerDownForTesting(false);
-		expect(cursorTouchesRange(stateWithSelection(inside), from, to)).toBe(true);
-	});
-
-	// The suppression is what keeps a rendered block from flipping to source on a
-	// stray click; `allowRevealOnce` is the code-mode button's way past it, since
-	// that button's press never reaches the block to clear the flag itself.
-	it('lets allowRevealOnce lift the suppression', () => {
-		const state = stateWithSelection(0);
-		const { from, to } = tableRange(state);
-		const inside = state.doc.line(3).from + 2;
-		setSuppressForTesting(true);
-		expect(cursorTouchesRange(stateWithSelection(inside), from, to)).toBe(false);
-		allowRevealOnce();
-		expect(cursorTouchesRange(stateWithSelection(inside), from, to)).toBe(true);
+		expect(blockCursorTouchesRange(stateWithSelection(inside), from, to)).toBe(true);
 	});
 
 	it('suppresses the reveal for a caret dragged into a block', () => {
@@ -81,6 +107,18 @@ describe('cursorTouchesRange', () => {
 		const { from, to } = tableRange(state);
 		const inside = state.doc.line(3).from + 2;
 		setSuppressForTesting(true);
-		expect(cursorTouchesRange(stateWithSelection(inside), from, to)).toBe(false);
+		expect(blockCursorTouchesRange(stateWithSelection(inside), from, to)).toBe(false);
+	});
+
+	// `allowRevealOnce` is the code-mode button's way past the suppression, since
+	// that button's press never reaches the block to clear the flag itself.
+	it('lets allowRevealOnce lift the suppression', () => {
+		const state = stateWithSelection(0);
+		const { from, to } = tableRange(state);
+		const inside = state.doc.line(3).from + 2;
+		setSuppressForTesting(true);
+		expect(blockCursorTouchesRange(stateWithSelection(inside), from, to)).toBe(false);
+		allowRevealOnce();
+		expect(blockCursorTouchesRange(stateWithSelection(inside), from, to)).toBe(true);
 	});
 });

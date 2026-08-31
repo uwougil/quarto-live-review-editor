@@ -4,7 +4,7 @@ import { syntaxTree } from '@codemirror/language';
 import { parse as parseYaml } from 'yaml';
 import { MermaidWidget } from './mermaidWidget';
 import { buildTableWidget, isLineAligned, alignedBlockRange } from './livePreviewPlugin';
-import { cursorTouchesRange, onPointerRelease } from './cmUtils';
+import { blockCursorTouchesRange, onPointerRelease } from './cmUtils';
 import { detectFrontmatter, FrontmatterWidget, FrontmatterEmptyWidget, FrontmatterErrorWidget } from './frontmatterWidget';
 
 /**
@@ -33,7 +33,7 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
 	// silently produce zero decorations for the *entire* document whenever
 	// frontmatter was present, not just inside the frontmatter block).
 	const fm = detectFrontmatter(state);
-	if (fm && !cursorTouchesRange(state, fm.from, fm.to)) {
+	if (fm && !blockCursorTouchesRange(state, fm.from, fm.to)) {
 		let widget: WidgetType;
 		try {
 			const data = parseYaml(fm.yamlText) ?? {};
@@ -52,7 +52,7 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
 				const infoNode = node.node.getChild('CodeInfo');
 				const lang = infoNode ? state.sliceDoc(infoNode.from, infoNode.to).trim().toLowerCase() : '';
 				if (lang !== 'mermaid') return;
-				if (cursorTouchesRange(state, node.from, node.to)) return;
+				if (blockCursorTouchesRange(state, node.from, node.to)) return;
 				if (!isLineAligned(state, node.from, node.to)) return;
 				const textNode = node.node.getChild('CodeText');
 				const code = textNode ? state.sliceDoc(textNode.from, textNode.to) : '';
@@ -63,7 +63,7 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
 				return false;
 			}
 			if (node.name === 'Table') {
-				if (cursorTouchesRange(state, node.from, node.to)) return;
+				if (blockCursorTouchesRange(state, node.from, node.to)) return;
 				const range = alignedBlockRange(state, node.from, node.to);
 				if (!range) return;
 				decorations.push(
@@ -83,7 +83,7 @@ const refreshBlocks = StateEffect.define<null>();
 /**
  * Nudges the editor into rebuilding its block decorations when a drag ends.
  *
- * `cursorTouchesRange` answers differently once the mouse comes up (see
+ * `blockCursorTouchesRange` answers differently once the mouse comes up (see
  * cmUtils.ts), but a release is not a state change, so nothing would otherwise
  * schedule the rebuild — a block the caret landed inside during a drag would
  * stay rendered until the next unrelated edit. Dispatching an empty transaction
