@@ -47,6 +47,9 @@ Fenced code blocks (` ```python `, etc.) are colorized per-language via [Shiki](
 ### Editable tables
 A table renders as a real table and stays that way while you work in it: click a cell to edit that cell in place, `Tab`/`Shift+Tab` to move between cells, `Enter` to commit, `Esc` to discard. Only the edited cell is written back, so the rest of the row's spacing and pipes are left untouched. Dragging across cells selects their text to copy. The `</>` button above the table opens the raw Markdown, for the things cell editing can't reach — adding a row, changing the alignment row, repairing a broken table.
 
+### Clickable links
+Clicking a rendered link follows it. A link to a `.md` file or any other file in the workspace is resolved against the document's own folder and opened in the editor, so links between notes work; `https:`, `mailto:` and other schemes are handed to the OS. If the target doesn't exist, you get a message naming the path.
+
 ### Sidebar CSS theme manager, live-synced while editing
 The "CSS Themes" view in the Primary Sidebar lets you register and switch between multiple CSS snippets that restyle the preview. Saving a CSS file hot-reloads any open preview.
 
@@ -159,6 +162,7 @@ With the `watch` task running, changing the code and reloading the Extension Dev
 19. Confirm the `</>` button above the table opens the raw Markdown, and that `</>` on a Mermaid diagram, on frontmatter, and above a code block (which reveals the ` ``` ` fence lines) does the same for each.
 20. Confirm the `⧉` button on a code block copies the block's contents only — no ` ``` ` fences, and no leading indentation when the block is nested.
 21. On a Mermaid diagram, switch to full size, zoom in a few times, then press `↺`; confirm it returns all the way to the original shrink-to-fit view, not to an intermediate size.
+22. Click a link to an external URL and confirm it opens in the browser. Add a link to a neighbouring `.md` file (e.g. `[x](./other.md)`), click it, and confirm that file opens in the editor rather than raising an OS "file not found" dialog — and that in neither case does the link revert to its `[label](url)` source. Point a link at a file that doesn't exist and confirm a message naming the path appears.
 
 </details>
 
@@ -205,6 +209,9 @@ CodeMirror 6ベースのカスタムエディタです。見出し・強調・�
 
 #### 編集できるテーブル
 テーブルは表として描画され、作業中もその見た目のままです。セルをクリックするとそのセルだけをその場で編集でき、`Tab`/`Shift+Tab`でセル間を移動、`Enter`で確定、`Esc`で取り消します。書き戻すのは編集したセルだけなので、行のほかの文字や`|`の位置はそのまま保たれます。セルをなぞれば文字を選択してコピーできます。行の追加や列揃えの変更など、セル編集では届かない部分は、表の上の`</>`ボタンから元のMarkdownを開いて編集します。
+
+#### クリックできるリンク
+描画されたリンクをクリックすると、そのリンク先を開きます。`.md`ファイルなど、ワークスペース内のファイルへのリンクは、その文書自身のフォルダを基準に解決してエディタで開くので、ノート同士のリンクがそのまま使えます。`https:`や`mailto:`などのスキーム付きのリンクはOSに渡します。リンク先が見つからない場合は、パスを添えたメッセージを表示します。
 
 #### サイドバーのCSSテーマ管理、編集中はプレビューと同期ハイライト
 プライマリサイドバーの「CSS Themes」ビューから、プレビューの見た目を変えるCSSスニペットを複数登録・切替できます。CSSファイルを保存すると、開いているプレビューにホットリロードされます。
@@ -318,5 +325,6 @@ npm run compile
 19. テーブル上部の`</>`ボタンで元のMarkdownが開くことを確認する。Mermaid・フロントマター・コードブロック(` ``` `の囲み行が現れる)でも同様に動作することを確認する。
 20. コードブロックの`⧉`ボタンで、` ``` `の囲み行を含まず、入れ子の場合も先頭の字下げを含まない、中身だけがコピーされることを確認する。
 21. Mermaidの図を原寸大に切り替えて数回拡大し、`↺`を押す。途中の大きさで止まらず、最初の縮小表示まで戻ることを確認する。
+22. 外部URLのリンクをクリックし、ブラウザで開くことを確認する。隣のファイルへのリンク(`[x](./other.md)`など)を書いてクリックし、OSの「ファイルが見つかりません」ダイアログではなく、そのファイルがエディタで開くことを確認する。どちらの場合も、リンクが`[表示文字](URL)`のソース表示に戻らないことを確認する。存在しないファイルを指すリンクでは、パスを添えたメッセージが出ることを確認する。
 
 </details>

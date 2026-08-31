@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { EditorToHostMessage, HostToEditorMessage, TextChange } from '../shared/messages';
 import { pickCodeTheme, tokenizeDocument } from './shikiHost';
 import { extensionForMimeType, generateImageFileName } from '../shared/imageAssets';
+import { resolveLinkTarget } from '../shared/linkTarget';
 
 const REHIGHLIGHT_DEBOUNCE_MS = 150;
 
@@ -74,11 +75,50 @@ export class DocumentSyncSession {
 				this.editQueue = this.editQueue.catch(() => undefined).then(() => vscode.commands.executeCommand('redo'));
 				break;
 			case 'openLink':
-				void vscode.env.openExternal(vscode.Uri.parse(message.href));
+				void this.openLink(message.href);
 				break;
 			case 'pasteImage':
 				void this.handlePasteImage(message.atPos, message.mimeType, message.dataBase64, message.needsOwnParagraph);
 				break;
+		}
+	}
+
+	/**
+	 * Follows a link from the preview.
+	 *
+	 * `openExternal(Uri.parse(href))` was used for every link, which is right
+	 * only for one that already carries a scheme. A relative link — `./notes.md`,
+	 * `../img/a.png`, or a bare `notes.md`, the common case in a Markdown file —
+	 * parses into a scheme-less URI that resolves against nothing, and the shell
+	 * was handed a path it could not find ("0x2"). Those are resolved against the
+	 * document's own folder instead, and opened in the editor rather than the
+	 * shell, which is what following a link between notes should do.
+	 */
+	private async openLink(href: string): Promise<void> {
+		const target = resolveLinkTarget(href);
+		if (target.kind === 'ignore') return;
+		if (target.kind === 'external') {
+			await vscode.env.openExternal(vscode.Uri.parse(target.href));
+			return;
+		}
+
+		const docDir = vscode.Uri.joinPath(this.document.uri, '..');
+		const uri = vscode.Uri.joinPath(docDir, target.path);
+		try {
+			// Confirm it exists before opening. `vscode.open` on a missing file
+			// raises its own OS-level error dialog, which is the very thing being
+			// fixed here; a message naming the path is more use than "0x2".
+			await vscode.workspace.fs.stat(uri);
+		} catch {
+			void vscode.window.showWarningMessage(`リンク先が見つかりません: ${target.path}`);
+			return;
+		}
+		try {
+			await vscode.commands.executeCommand('vscode.open', uri);
+		} catch {
+			// Not something the editor can display (a PDF, an archive, an
+			// executable): let the OS decide what to do with it.
+			await vscode.env.openExternal(uri);
 		}
 	}
 

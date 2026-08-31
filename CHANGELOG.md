@@ -40,6 +40,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **Table cell text can be selected and copied.** Dragging across cells
   highlights their text as ordinary text; previously the press was cancelled
   outright, so the rendered cells could not be selected at all.
+- **Clicking a link follows it.** Opening a link used to require Ctrl/Cmd-click;
+  a plain click fell through to the editor, which put the caret in the text and
+  unrendered the link into its `[label](url)` source. Ctrl/Cmd-click still
+  works.
 
 ### Fixed
 
@@ -52,6 +56,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   like a drag-select and made the handler bail out; and the block's own bounds
   were tested rather than its surrounding box, leaving unguarded bands (30px
   above a table, 7px below) that belonged to no block at all.
+- **Links to files failing with an OS "file not found (0x2)" dialog.** Every
+  link was passed to the shell via `Uri.parse`, which is right only for one
+  that already carries a scheme. A relative link — `./notes.md`, `../img/a.png`,
+  or a bare `notes.md`, the ordinary case in a Markdown file — parsed into a
+  scheme-less URI that resolved against nothing. Relative links are now resolved
+  against the document's own folder and opened in the editor, with a fragment
+  (`#heading`) split off and percent-encoding decoded first; a missing target
+  gets a message naming the path instead of an OS error.
 - **A Mermaid diagram's reset (`↺`) not returning to the size it started at.**
   It reset the zoom but stayed in full-size mode, whose 1× is the diagram's
   natural width — so from a zoomed-in view the diagram shrank part-way and
@@ -205,6 +217,10 @@ This project follows [Semantic Versioning](https://semver.org/).
 - **表のセルの文字を選択してコピーできるようになりました。** セルをなぞると
   普通の文字と同じように選択できます。これまではマウスを押した時点で標準の
   動作を打ち消していたため、そもそも選択できませんでした。
+- **リンクをクリックすると、そのまま開くようになりました。** これまでは
+  Ctrl/Cmd を押しながらクリックする必要があり、普通にクリックするとエディタ側の
+  処理になってカーソルが入り、`[表示文字](URL)` のソース表示に戻っていました。
+  Ctrl/Cmd + クリックも今までどおり使えます。
 
 ### 修正
 
@@ -216,6 +232,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   自動選択し、それがドラッグ選択に見えて処理が中断していたこと。そして判定に
   ブロック自身の枠だけを使っていたため、その周り（表の上30px・下7px）に
   どのブロックにも属さない帯が残っていたことです。
+- **ファイルへのリンクを開くと、OS の「指定されたファイルが見つかりません
+  (0x2)」というダイアログが出る問題。** すべてのリンクを `Uri.parse` で
+  そのまま OS に渡していました。これはスキーム付きのリンクにしか正しくありません。
+  `./notes.md`、`../img/a.png`、あるいは単に `notes.md` のような相対リンクは
+  Markdown ではごく普通ですが、スキームのない URI になり、何も基準にせず
+  解決されていました。相対リンクはその文書自身のフォルダを基準に解決し、
+  エディタで開くようにしました。`#見出し` の部分は切り離し、`%20` などの
+  エスケープも元に戻します。リンク先が見つからない場合は、OS のエラーではなく
+  パスを添えたメッセージを表示します。
 - **Mermaid の図で、リセット（`↺`）を押しても最初の大きさに戻らない問題。**
   倍率は 1 に戻していましたが、原寸大モードのままでした。原寸大の1倍は図の
   本来の幅なので、拡大した状態から押すと途中の大きさで止まり、最初の縮小表示

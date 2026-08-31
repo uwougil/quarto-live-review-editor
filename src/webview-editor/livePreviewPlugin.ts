@@ -1245,19 +1245,40 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
 	{ decorations: (v) => v.decorations },
 );
 
+/**
+ * Opens a rendered link when it is clicked.
+ *
+ * A plain click follows the link, which is what a link that *looks* like a
+ * link is expected to do — it used to require Ctrl/Cmd, and a plain click fell
+ * through to CodeMirror instead, putting the caret in the text and unrendering
+ * the link into its `[label](url)` source. Ctrl/Cmd-click keeps working, so
+ * the habit from the old behaviour still does the right thing.
+ *
+ * Editing a link's own text is still possible: click just outside it, or use
+ * the keyboard. That is the same trade every rendered block makes here.
+ */
 export function createLinkClickHandler(onOpen: (href: string) => void) {
+	const handle = (event: MouseEvent): boolean => {
+		// Only the primary button; a right-click belongs to the context menu.
+		if (event.button !== 0) return false;
+		const target = event.target as HTMLElement | null;
+		const linkEl = target?.closest('.mlp-link') as HTMLElement | null;
+		const href = linkEl?.getAttribute('data-href');
+		if (!href) return false;
+		event.preventDefault();
+		onOpen(href);
+		return true;
+	};
 	return EditorView.domEventHandlers({
-		mousedown(event) {
-			if (!(event.ctrlKey || event.metaKey)) return false;
+		// Taken on the press, before CodeMirror's own mousedown handler can move
+		// the caret into the link and reveal its source.
+		mousedown: handle,
+		// The click that follows is swallowed too, so nothing acts on it twice.
+		click: (event) => {
 			const target = event.target as HTMLElement | null;
-			const linkEl = target?.closest('.mlp-link') as HTMLElement | null;
-			const href = linkEl?.getAttribute('data-href');
-			if (href) {
-				event.preventDefault();
-				onOpen(href);
-				return true;
-			}
-			return false;
+			if (!target?.closest('.mlp-link')) return false;
+			event.preventDefault();
+			return true;
 		},
 	});
 }
