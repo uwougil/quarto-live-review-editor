@@ -1,0 +1,24 @@
+Terms for the bundled AWS architecture shapes
+=============================================
+
+The shape geometry in dist/aws4-shapes.json is vendored from the draw.io
+project (https://github.com/jgraph/drawio), file
+src/main/webapp/stencils/aws4.xml.
+
+draw.io's source code is licensed under the Apache License 2.0. Its icon sets
+and stencil libraries carry the additional restriction reproduced verbatim
+below, from src/main/webapp/stencils/LICENSE:
+
+----------------------------------------------------------------------
+
+The icon sets and stencil libraries included in this software, and any derivatives thereof (including conversions to other formats, traced reproductions, substantially similar visual representations, or AI-generated images created using these icons as reference or training input), may not be used as software assets in, distributed for use with, or incorporated into Atlassian products or products distributed through the Atlassian marketplace or plugin ecosystem, without explicit written permission.
+
+This restriction does not apply to end-user diagram output (such as exported images or documents) created using this software.
+----------------------------------------------------------------------
+
+The Apache License 2.0, covering the draw.io source, is available at
+https://www.apache.org/licenses/LICENSE-2.0
+
+The shapes depict Amazon Web Services products. Amazon Web Services, AWS, and
+the names of AWS services are trademarks of Amazon.com, Inc. or its
+affiliates. See THIRD-PARTY-NOTICES.md.

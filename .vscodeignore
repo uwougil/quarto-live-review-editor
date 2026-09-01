@@ -11,6 +11,7 @@ aidlc-docs/**
 doc/**
 esbuild.js
 scripts/**
+vendor/aws4.xml
 tsconfig.json
 package-lock.json
 .gitignore

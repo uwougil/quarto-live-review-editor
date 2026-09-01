@@ -128,8 +128,20 @@ async function buildShikiLangs() {
 	execFileSync(process.execPath, ['scripts/build-shiki-langs.mjs'], { stdio: 'inherit' });
 }
 
+/**
+ * draw.io's AWS stencils are converted to a path table at dist/aws4-shapes.json
+ * rather than bundled into the webview: at ~2.3MB it is far larger than the
+ * editor bundle itself, and a document with no AWS diagram never needs it. The
+ * webview fetches it on demand, the same way the Mermaid chunk is loaded.
+ */
+async function buildAwsShapes() {
+	const { execFileSync } = require('node:child_process');
+	execFileSync(process.execPath, ['scripts/build-aws-shapes.mjs'], { stdio: 'inherit' });
+}
+
 async function main() {
 	await buildShikiLangs();
+	await buildAwsShapes();
 
 	const configs = [
 		extensionConfig,
