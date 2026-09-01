@@ -11,6 +11,7 @@
 
 **A VS Code extension that lets you edit the Markdown preview itself, Obsidian-style.**
 Your file keeps its formatted look while you type, but what's actually saved to disk is always plain Markdown.
+**Mermaid and draw.io diagrams** are drawn in place, from the text you write in a fenced code block.
 
 ## Why this extension?
 
@@ -98,7 +99,24 @@ Please use [GitHub Issues](https://github.com/t-shoot/md-live-preview-editor/iss
 
 ## License
 
-[MIT](LICENSE)
+The source code of this extension is licensed under the [MIT License](LICENSE).
+
+`.drawio` files are parsed and drawn by this extension's own code — it does not
+bundle or run any part of the draw.io application.
+
+What is taken from draw.io is the **outline geometry of the AWS architecture
+shapes** (`dist/aws4-shapes.json`: each shape's width, height and SVG path
+data), so that a diagram using those shapes renders as the intended symbols
+rather than as plain boxes. That geometry is **not** covered by the MIT license:
+it is vendored unmodified from the [draw.io](https://github.com/jgraph/drawio)
+project and redistributed under its terms (see
+[LICENSE-SHAPES](LICENSE-SHAPES) and
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)).
+
+Amazon Web Services, AWS, and the names of AWS services are trademarks of
+Amazon.com, Inc. or its affiliates. draw.io and diagrams.net are trademarks of
+JGraph Ltd. **This extension is an independent project and is not affiliated
+with, sponsored by, or endorsed by Amazon Web Services or JGraph Ltd.**
 
 ---
 
@@ -175,6 +193,7 @@ With the `watch` task running, changing the code and reloading the Extension Dev
 
 **Obsidianのライブプレビューのように、Markdownのプレビュー自体を直接編集できるVS Code拡張機能。**
 ファイルの見た目を保ったまま書けて、保存されるのは常に素のMarkdownです。
+**Mermaid図とdraw.io図**は、コードフェンスに書いたテキストがその場で図になります。
 
 ### なぜこの拡張機能?
 
@@ -262,7 +281,23 @@ CodeMirror 6ベースのカスタムエディタです。見出し・強調・�
 
 ### ライセンス
 
-[MIT](LICENSE)
+この拡張機能の**ソースコード**は [MIT ライセンス](LICENSE)です。
+
+`.drawio` ファイルの解析と描画は、この拡張機能の独自実装です。draw.io 本体の
+コードは一切同梱も実行もしていません。
+
+draw.io から取り込んでいるのは、**AWS アーキテクチャ図形の輪郭データ**だけです
+（`dist/aws4-shapes.json`。各図形の幅・高さと SVG パスデータ）。これがないと、
+AWS 図形を使った図が単なる四角形として描かれてしまうためです。この図形データは
+**MIT の対象外**で、[draw.io](https://github.com/jgraph/drawio) から**改変せずに**
+取り込み、同プロジェクトの条件のもとで再配布しています
+（[LICENSE-SHAPES](LICENSE-SHAPES) および
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) を参照）。
+
+Amazon Web Services、AWS および AWS の各サービス名は、Amazon.com, Inc. または
+その関連会社の商標です。draw.io および diagrams.net は JGraph Ltd. の商標です。
+**この拡張機能は独立したプロジェクトであり、Amazon Web Services および
+JGraph Ltd. とは提携しておらず、これらによる出資・推奨も受けていません。**
 
 ---
 
