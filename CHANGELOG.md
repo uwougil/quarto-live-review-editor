@@ -5,6 +5,27 @@
 All notable changes to this extension are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.0.12] — 2026-09-02
+
+### Added
+
+- **draw.io diagrams render in place**, the same way a Mermaid diagram already
+  does. Write one two ways: a ` ```drawio ` fence holding the diagram XML, or a
+  `![](diagram.drawio)` reference to a `.drawio` file sitting beside the
+  document. Putting the cursor in a fence reveals its source, as with every
+  other block. A file with more than one page shows a page indicator in its
+  toolbar.
+- **AWS architecture shapes are included**, so a diagram drawn with them shows
+  the intended symbols rather than a grid of plain boxes. Shape colours come
+  from the diagram file itself — nothing is substituted or re-themed, in either
+  a light or a dark editor.
+
+### Security
+
+- A `.drawio` file reference is read only from the document's own folder tree,
+  and only up to 5MB. The path in a `![](…)` is just text in the document, so
+  without this an opened Markdown file could have pointed at any path on disk.
+
 ## [0.0.11] — 2026-09-01
 
 ### Added
@@ -201,6 +222,28 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 この拡張機能の主な変更点をまとめています。
 バージョン番号は [セマンティック バージョニング](https://semver.org/lang/ja/) に従っています。
+
+## [0.0.12] — 2026-09-02
+
+### 追加
+
+- **draw.io の図をその場で表示できるようになりました。** Mermaid と同じ扱いです。
+  書き方は2通りあります。ひとつは ` ```drawio ` の囲みの中に図の XML を書く方法、
+  もうひとつは `![](diagram.drawio)` のように、文書のとなりに置いた `.drawio`
+  ファイルを参照する方法です。囲みの中にカーソルを置くと、ほかのブロックと
+  同じように元のテキストが表示されます。ページが複数ある図では、ページ番号が
+  ツールバーに表示されます。
+- **AWS のアーキテクチャ図形を同梱しました。** これがないと AWS の図形で描いた
+  図がただの四角の羅列になってしまいます。図形の色は図のファイルに書かれた色を
+  そのまま使います。明るいテーマでも暗いテーマでも、色を置き換えたり塗り直したり
+  はしません。
+
+### セキュリティ
+
+- `.drawio` ファイルの読み込みは、その文書があるフォルダの中だけに限定し、
+  大きさも 5MB までとしました。`![](…)` に書かれたパスは文書の中の「ただの文字」
+  なので、この制限がないと、受け取った Markdown を開いただけでパソコン内の
+  どのファイルでも読まれてしまうおそれがあります。
 
 ## [0.0.11] — 2026-09-01
 
