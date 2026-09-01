@@ -721,6 +721,46 @@ table.mlp-frontmatter td pre {
 .mlp-mermaid-btn:hover {
 	background: var(--vscode-button-secondaryHoverBackground, rgba(110, 110, 110, 0.95));
 }
+/* draw.io diagrams reuse every `.mlp-mermaid-*` rule above — the two are the
+   same kind of block (a fence that became a picture) and behave identically, so
+   splitting the styling would only let them drift apart. What is specific to
+   draw.io is the page indicator in the toolbar, shown only for a file that has
+   more than one page.
+
+   It follows `.mlp-mermaid-btn`'s hover-to-reveal treatment so the toolbar
+   appears and disappears as one piece rather than leaving a stray number
+   floating over the diagram. */
+.mlp-drawio-page-label {
+	opacity: 0;
+	transition: opacity 0.12s ease;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 30px;
+	height: 24px;
+	padding: 0 4px;
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+	border-radius: 4px;
+	color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground, #ccc));
+	background: var(--vscode-button-secondaryBackground, rgba(90, 90, 90, 0.85));
+	border: 1px solid var(--vscode-contrastBorder, rgba(127, 127, 127, 0.4));
+}
+.mlp-drawio-wrap:hover .mlp-drawio-page-label,
+.mlp-drawio-wrap:focus-within .mlp-drawio-page-label {
+	opacity: 1;
+}
+
+/* The rendered diagram is a plain <svg>; in "fit" mode it shrinks to the
+   available width the same way Mermaid's does. `height: auto` keeps the aspect
+   ratio, which the viewBox alone does not guarantee once a width is imposed. */
+.mlp-mermaid:not(.mlp-mermaid-native) .mlp-drawio-wrap svg,
+.mlp-drawio-wrap .mlp-mermaid:not(.mlp-mermaid-native) .mlp-mermaid-canvas svg {
+	max-width: 100%;
+	height: auto;
+}
+
 .mlp-mermaid-error {
 	color: var(--vscode-errorForeground, #f14c4c);
 	font-family: var(--vscode-editor-font-family, monospace);

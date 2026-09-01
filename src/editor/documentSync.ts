@@ -3,6 +3,29 @@ import type { EditorToHostMessage, HostToEditorMessage, TextChange } from '../sh
 import { pickCodeTheme, tokenizeDocument } from './shikiHost';
 import { extensionForMimeType, generateImageFileName } from '../shared/imageAssets';
 import { resolveLinkTarget } from '../shared/linkTarget';
+import { isPathInside } from '../shared/pathContainment';
+
+/**
+ * Largest `.drawio` file that will be read and parsed.
+ *
+ * A hand-drawn diagram is a few hundred kilobytes at most; well past that the
+ * file is either machine-generated or not a diagram, and parsing it would lock
+ * up the webview's single thread with nothing useful to show at the end.
+ */
+const MAX_DRAWIO_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Whether `target` sits inside the `dir` tree.
+ *
+ * Compared over `fsPath` rather than the URI string so that percent-encoding
+ * differences (a space as `%20` on one side and a literal space on the other)
+ * cannot make an inside path look outside. Case-insensitivity follows the
+ * platform: only Windows treats `C:\Notes` and `c:\notes` as one folder.
+ */
+function isInside(dir: vscode.Uri, target: vscode.Uri): boolean {
+	if (dir.scheme !== target.scheme || dir.authority !== target.authority) return false;
+	return isPathInside(dir.fsPath, target.fsPath, process.platform === 'win32');
+}
 
 const REHIGHLIGHT_DEBOUNCE_MS = 150;
 
@@ -80,6 +103,58 @@ export class DocumentSyncSession {
 			case 'pasteImage':
 				void this.handlePasteImage(message.atPos, message.mimeType, message.dataBase64, message.needsOwnParagraph);
 				break;
+			case 'readDrawioFile':
+				void this.handleReadDrawioFile(message.requestId, message.src);
+				break;
+		}
+	}
+
+	/**
+	 * Reads a `.drawio` file referenced from the document and sends its text back.
+	 *
+	 * The webview cannot touch the filesystem, and an `<img>` cannot render
+	 * mxGraph XML, so a `![](diagram.drawio)` reference has to come through here.
+	 *
+	 * The path is confined to the document's own folder tree. `src` comes
+	 * straight out of the Markdown, so it can say `../../../../etc/passwd`, and
+	 * this handler would otherwise happily read it and hand the contents to the
+	 * webview — turning "open a Markdown file someone sent you" into an arbitrary
+	 * file read. Resolving first and then checking that the result is still under
+	 * the document's directory is what closes that, and it is done on the
+	 * resolved path because `..` segments only cancel out after resolution.
+	 */
+	private async handleReadDrawioFile(requestId: number, src: string): Promise<void> {
+		const reply = (payload: { text?: string; error?: string }) => {
+			void this.webviewPanel.webview.postMessage({ type: 'drawioFile', requestId, ...payload });
+		};
+
+		const target = resolveLinkTarget(src);
+		if (target.kind !== 'relative') {
+			// A remote diagram would mean the webview fetching over the network on
+			// behalf of a file the user merely opened; only local files are read.
+			reply({ error: 'ローカルの .drawio ファイルのみ表示できます。' });
+			return;
+		}
+
+		const docDir = vscode.Uri.joinPath(this.document.uri, '..');
+		const uri = vscode.Uri.joinPath(docDir, target.path);
+		if (!isInside(docDir, uri)) {
+			reply({ error: 'ドキュメントのフォルダ外のファイルは読み込めません。' });
+			return;
+		}
+
+		try {
+			const bytes = await vscode.workspace.fs.readFile(uri);
+			// Guard against a file large enough to lock up the webview's parser. A
+			// hand-drawn diagram is a few hundred kilobytes at most; well past that
+			// is either machine-generated or not a diagram at all.
+			if (bytes.byteLength > MAX_DRAWIO_BYTES) {
+				reply({ error: 'ファイルが大きすぎます（5MB を超えています）。' });
+				return;
+			}
+			reply({ text: new TextDecoder('utf-8').decode(bytes) });
+		} catch {
+			reply({ error: `ファイルを読み込めません: ${target.path}` });
 		}
 	}
 

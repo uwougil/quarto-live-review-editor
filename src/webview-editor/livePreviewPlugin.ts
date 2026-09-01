@@ -3,6 +3,9 @@ import { syntaxTree } from '@codemirror/language';
 import type { Range, EditorState } from '@codemirror/state';
 import type { SyntaxNode, SyntaxNodeRef } from '@lezer/common';
 import { cursorTouchesRange, blockCursorTouchesRange, noteRevealed } from './cmUtils';
+import { isDiagramLang } from './diagramLang';
+import { isDrawioPath } from './drawioFileClient';
+import { DrawioFileWidget } from './drawioWidget';
 import { wrapBlockWidget } from './blockWidgetWrap';
 import { detectFrontmatter } from './frontmatterWidget';
 import { renderInlineInto, type CellInlineHooks } from './tableCellInline';
@@ -1094,8 +1097,8 @@ export function buildTableWidget(state: EditorState, node: SyntaxNodeRef): Table
  * The conditions mirror `buildBlockDecorations` in blockDecorations.ts: if the
  * two disagree, either the widget is dropped again (line decorated, block
  * replaced) or list styling is lost for nothing (line skipped, no widget).
- * Mermaid fences are not checked — one nested in a list item never satisfies
- * `isLineAligned`, so it is never block-replaced there.
+ * Diagram fences (Mermaid, draw.io) are not checked — one nested in a list item
+ * never satisfies `isLineAligned`, so it is never block-replaced there.
  */
 export function blockReplacedLines(state: EditorState, item: SyntaxNode): Set<number> {
 	const lines = new Set<number>();
@@ -1337,7 +1340,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 						// whether the diagram renders — if the two disagree, either the
 						// widget is dropped or the fence is styled as code underneath it.
 						if (
-							lang === 'mermaid' &&
+							isDiagramLang(lang) !== null &&
 							!blockCursorTouchesRange(state, node.from, node.to) &&
 							isLineAligned(state, node.from, node.to)
 						) {
@@ -1410,7 +1413,13 @@ function buildDecorations(view: EditorView): DecorationSet {
 						const src = urlNode ? state.sliceDoc(urlNode.from, urlNode.to) : '';
 						const alt = state.sliceDoc(altFrom, altTo);
 						if (!cursorTouchesRange(state, node.from, node.to)) {
-							pushReplace(node.from, node.to, Decoration.replace({ widget: new ImageWidget(src, alt) }));
+							// A `.drawio` reference is XML, not an image format: an <img>
+							// pointed at it renders nothing at all, so it goes to the
+							// diagram widget (which reads the file through the host)
+							// instead. `.drawio.svg`/`.drawio.png` deliberately do not —
+							// those are real images that an <img> already shows correctly.
+							const widget = isDrawioPath(src) ? new DrawioFileWidget(src, alt) : new ImageWidget(src, alt);
+							pushReplace(node.from, node.to, Decoration.replace({ widget }));
 						}
 						return false;
 					}

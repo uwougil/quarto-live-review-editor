@@ -28,6 +28,11 @@ export type HostToEditorMessage =
 	| { type: 'codeTokens'; blocks: CodeBlockTokens[] }
 	| { type: 'applyCss'; css: string }
 	| { type: 'jumpToLine'; line: number }
+	// Reply to `readDrawioFile`. `text` is the file's contents, or `error` says
+	// why it could not be read; exactly one of the two is set. `requestId`
+	// matches the reply to the widget that asked, since several diagrams in one
+	// document can have requests in flight at the same time.
+	| { type: 'drawioFile'; requestId: number; text?: string; error?: string }
 	| { type: 'setCursor'; pos: number };
 
 export type EditorToHostMessage =
@@ -36,7 +41,12 @@ export type EditorToHostMessage =
 	| { type: 'undo' }
 	| { type: 'redo' }
 	| { type: 'openLink'; href: string }
-	| { type: 'pasteImage'; atPos: number; mimeType: string; dataBase64: string; needsOwnParagraph: boolean };
+	| { type: 'pasteImage'; atPos: number; mimeType: string; dataBase64: string; needsOwnParagraph: boolean }
+	// A `![](diagram.drawio)` reference: the webview cannot read workspace files
+	// itself, and an <img> cannot render mxGraph XML, so the host reads the file
+	// and sends its text back for the widget to parse. `src` is the raw, relative
+	// path exactly as written in the Markdown; the host resolves it.
+	| { type: 'readDrawioFile'; requestId: number; src: string };
 
 export interface StyleEntry {
 	id: string;

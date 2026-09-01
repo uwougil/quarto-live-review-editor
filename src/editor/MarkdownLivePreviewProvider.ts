@@ -99,13 +99,18 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 		const mermaidChunkUri = webview.asWebviewUri(
 			vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'mermaid-chunk.js'),
 		);
+		// The AWS shape table is data, not code, so the webview fetches it rather
+		// than loading it as a script — but it still cannot build the URI itself.
+		const awsShapesUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'aws4-shapes.json'),
+		);
 		const nonce = getNonce();
 
 		return `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8" />
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src ${webview.cspSource};" />
 	<link rel="stylesheet" href="${styleUri}" />
 	<title>Markdown Live Preview</title>
 </head>
@@ -113,6 +118,7 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 	<div id="mlp-root"></div>
 	<script nonce="${nonce}">
 		window.mlpMermaidChunkUri = ${JSON.stringify(mermaidChunkUri.toString())};
+		window.mlpAwsShapesUri = ${JSON.stringify(awsShapesUri.toString())};
 		window.mlpNonce = ${JSON.stringify(nonce)};
 	</script>
 	<script nonce="${nonce}" src="${scriptUri}"></script>

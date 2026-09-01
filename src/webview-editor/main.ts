@@ -13,6 +13,7 @@ import { backtickInputHandler } from './backtickPairPlugin';
 import { toggleEmphasisCommand } from './emphasisShortcuts';
 import { createImagePasteHandler } from './imagePasteHandler';
 import { postToHost, onHostMessage } from './vscodeApi';
+import { setDrawioFilePoster, handleDrawioFileMessage, clearDrawioFileCache } from './drawioFileClient';
 import { adaptMarkdownCss } from '../shared/cssAdapter';
 import type { TextChange } from '../shared/messages';
 
@@ -149,12 +150,23 @@ function resetView(text: string) {
 	view.setState(initialStateFor(text));
 }
 
+// The drawio file client cannot reach the host on its own (it is imported by
+// widget code that has no business acquiring the VS Code API); hand it the
+// poster this module already owns.
+setDrawioFilePoster((message) => postToHost(message as Parameters<typeof postToHost>[0]));
+
 onHostMessage((message) => {
+	// `drawioFile` replies are routed to whichever widget requested them, not
+	// handled by the switch below.
+	if (handleDrawioFileMessage(message)) return;
 	switch (message.type) {
 		case 'init':
 			baseVersion = message.version;
 			setImageBaseUri(message.baseUri);
 			applyUserCss(message.css);
+			// A re-init means a different document (or the same one reloaded), so
+			// files read for the previous one must not be served from cache.
+			clearDrawioFileCache();
 			resetView(message.text);
 			break;
 		case 'ackEdit':
