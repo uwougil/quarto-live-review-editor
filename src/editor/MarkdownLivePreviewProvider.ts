@@ -91,6 +91,9 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 		const styleUri = webview.asWebviewUri(
 			vscode.Uri.joinPath(this.context.extensionUri, 'media', 'webview-editor-theme.css'),
 		);
+		const katexStyleUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this.context.extensionUri, 'media', 'katex.min.css'),
+		);
 		// Mermaid ships as its own bundle, loaded only once a document actually
 		// contains a diagram (see webview-editor/mermaidLoader.ts). The webview
 		// can't build this URI itself — `asWebviewUri` is host-side API — so it's
@@ -112,6 +115,7 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 	<meta charset="UTF-8" />
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src ${webview.cspSource};" />
 	<link rel="stylesheet" href="${styleUri}" />
+	<link rel="stylesheet" href="${katexStyleUri}" />
 	<title>Markdown Live Preview</title>
 </head>
 <body>

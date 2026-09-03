@@ -6,8 +6,9 @@ import { OutlineViewProvider } from './sidebar/OutlineViewProvider';
 import { setGrammarRoot } from './editor/shikiHost';
 
 function getActiveMarkdownUri(): vscode.Uri | undefined {
-	if (vscode.window.activeTextEditor?.document.languageId === 'markdown') {
-		return vscode.window.activeTextEditor.document.uri;
+	const activeDocument = vscode.window.activeTextEditor?.document;
+	if (activeDocument && (activeDocument.languageId === 'markdown' || /\.qmd$/i.test(activeDocument.uri.path))) {
+		return activeDocument.uri;
 	}
 	const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
 	if (input instanceof vscode.TabInputText) {
@@ -48,7 +49,7 @@ function isMarkdownTab(input: vscode.TabInputText): boolean {
 	const uriKey = input.uri.toString();
 	const openDoc = vscode.workspace.textDocuments.find((doc) => doc.uri.toString() === uriKey);
 	if (openDoc) return openDoc.languageId === 'markdown';
-	return /\.md$/i.test(input.uri.path);
+	return /\.(md|qmd)$/i.test(input.uri.path);
 }
 
 // Short, bounded backoff for `maybeReopenAsLivePreview` retries below — covers
@@ -131,10 +132,13 @@ async function syncDefaultEditorAssociation(): Promise<void> {
 
 	if (mode === 'livePreview') {
 		associations['*.md'] = MarkdownLivePreviewProvider.viewType;
+		associations['*.qmd'] = MarkdownLivePreviewProvider.viewType;
 	} else if (mode === 'default') {
 		associations['*.md'] = 'default';
+		associations['*.qmd'] = 'default';
 	} else {
 		delete associations['*.md'];
+		delete associations['*.qmd'];
 	}
 
 	await rootConfig.update('workbench.editorAssociations', associations, vscode.ConfigurationTarget.Global);

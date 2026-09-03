@@ -53,9 +53,12 @@
         "viewType": "mdLivePreview.editor",
         "displayName": "Markdown Live Preview",
         "selector": [
-          {
-            "filenamePattern": "*.md"
-          },
+            {
+              "filenamePattern": "*.md"
+            },
+            {
+              "filenamePattern": "*.qmd"
+            },
           {
             "filenamePattern": "**/temp/readonly/*"
           }
@@ -110,7 +113,7 @@
       "editor/title": [
         {
           "command": "mdLivePreview.openWithLivePreview",
-          "when": "resourceLangId == markdown && activeCustomEditorId != mdLivePreview.editor",
+          "when": "(resourceLangId == markdown || resourceExtname == .qmd) && activeCustomEditorId != mdLivePreview.editor",
           "group": "navigation"
         },
         {
@@ -208,6 +211,7 @@
     "@shikijs/engine-javascript": "^1.24.0",
     "@shikijs/langs": "^1.24.0",
     "@shikijs/themes": "^1.24.0",
+    "katex": "^0.16.47",
     "mermaid": "^11.4.1",
     "yaml": "^2.9.0"
   }

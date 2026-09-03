@@ -1,0 +1,48 @@
+---
+title: "Quarto Live Preview Test"
+format: html
+---
+
+# Quarto Live Preview
+
+普通 Markdown **bold** and *italic*.
+
+Inline math:
+
+Berry curvature is $\Omega_n(\mathbf{k})$.
+
+Energy is $E = \hbar \omega$.
+
+Display math:
+
+$$
+\Omega_n(\mathbf{k})
+=
+\nabla_{\mathbf{k}}
+\times
+\mathbf{A}_n(\mathbf{k})
+$$
+
+Another expression:
+
+$$
+g_{\alpha\beta}(\omega)
+=
+-\frac{iD}{\omega^2}
+\int_{\mathrm{BZ}}
+\delta(\hbar\omega-\varepsilon_{cv})
+R_\beta
+\frac{\partial\Omega_\alpha}{\partial k_\beta}
+$$
+
+## Code
+
+```{python}
+import numpy as np
+
+k = np.linspace(-1, 1, 100)
+```
+
+::: {.callout-note}
+Quarto-specific syntax should remain safe even if it is not rendered yet.
+:::
