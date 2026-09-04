@@ -18,6 +18,9 @@ import { adaptMarkdownCss } from '../shared/cssAdapter';
 import type { TextChange } from '../shared/messages';
 import { documentDialect, type DocumentDialect } from '../quarto/dialect';
 import { mathRangesField } from '../quarto/math';
+import { installDebugView } from './debug';
+import { viewportSyntaxPlugin } from './viewportSyntax';
+import { mathDecorationsField } from './mathDecorations';
 
 const remoteChange = Annotation.define<boolean>();
 const FLUSH_DEBOUNCE_MS = 250;
@@ -69,7 +72,9 @@ function createExtensions(dialect: DocumentDialect): Extension[] {
 	return [
 		documentDialect.of(dialect),
 		mathRangesField,
+		mathDecorationsField,
 		markdownSupport,
+		viewportSyntaxPlugin,
 		// Extend closeBrackets' default pair set (`( [ { ' "`) with the emphasis
 		// marks so `*bold/italic*` and `_italic_` also auto-pair and wrap a
 		// selection when typed — the same mechanism VS Code and most editors use
@@ -139,6 +144,7 @@ function createView(text: string, dialect: DocumentDialect) {
 		state: initialStateFor(text, dialect),
 		parent: root,
 	});
+	installDebugView(view);
 }
 
 function resetView(text: string, dialect: DocumentDialect) {

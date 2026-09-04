@@ -1,0 +1,136 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Quarto Live Review long-document browser harness</title>
+<link rel="stylesheet" href="../media/webview-editor-theme.css">
+<style>
+	:root {
+		--vscode-editor-background: #ffffff;
+		--vscode-editor-foreground: #202124;
+		--vscode-editor-font-family: Arial, sans-serif;
+		--vscode-editor-font-size: 15px;
+		--vscode-editorCursor-foreground: #1358d4;
+		--vscode-textCodeBlock-background: #f1f3f5;
+		--vscode-panel-border: #d0d7de;
+	}
+	html, body { height: 100%; overflow: hidden; }
+	#mlp-root { width: 100%; height: 100%; }
+	.cm-editor { height: 100%; }
+</style>
+<div id="mlp-root"></div>
+<script>
+	const testParams = new URLSearchParams(location.search);
+	window.__MLP_ENABLE_TEST_HOOKS__ = true;
+	window.__MLP_DISABLE_VIEWPORT_PARSE_FOR_TEST__ = testParams.get('baseline') === '1';
+	window.acquireVsCodeApi = () => ({
+		postMessage() {},
+		getState() { return null; },
+		setState() {},
+	});
+</script>
+<script src="../dist/webview-editor.js"></script>
+<script>
+	function buildRealisticFixture() {
+		const lines = ['---', 'title: "Long scientific document fixture"', 'format: html', 'jupyter: python3', '---', ''];
+		const longSentence = 'This deliberately long logical line contains wrapping text, inline mathematics $\\Omega_n(\\mathbf{k}) = -2\\operatorname{Im}\\langle \\partial_{k_x}u_n \\mid \\partial_{k_y}u_n \\rangle$, a [cross-reference](#sec-method), an HTML anchor <a id="fixture-anchor"></a>, Unicode 中文、 日本語、β and a small image ![atom](data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=). ';
+		for (let section = 1; section <= 24; section++) {
+			lines.push(`## Section ${section}: symmetry, topology and transport`, `<a id="sec-${section}"></a>`);
+			for (let paragraph = 1; paragraph <= 18; paragraph++) {
+				let line = `${section}.${paragraph} ` + longSentence.repeat(3 + (paragraph % 2));
+				if (paragraph % 6 === 0) line += ` The measured response remains finite near the ${paragraph}th sampling point, and the conclusion is recorded for later reference.`;
+				lines.push(line);
+				if (paragraph % 9 === 0) lines.push('$$', '\\sigma_{xy} = -\\frac{e^2}{\\hbar}\\sum_n\\int_{\\mathrm{BZ}} \\frac{d^3 k}{(2\\pi)^3} f_{n\\mathbf{k}} \\Omega_{n,z}(\\mathbf{k}) .', '$$');
+			}
+			lines.push('| quantity | value | uncertainty |', '|:--|--:|--:|', `| Section ${section} | ${section * 3.14} | ${0.01 * section} |`);
+		}
+		lines.push('', '## References', '[1]: https://example.org/reference', '## End of fixture', 'EOF-MARKER');
+		const markerLines = new Map();
+		for (const marker of ['25', '50', '75', '90', '99']) {
+			const index = Math.floor(lines.length * Number(marker) / 100);
+			lines[index] = `BROWSER-MARKER-${marker} ` + lines[index];
+			markerLines.set(marker, index + 1);
+		}
+		return { text: lines.join('\n'), markerLines: Object.fromEntries(markerLines) };
+	}
+
+	function buildBenchmarkFixture(lineCount) {
+		const lines = ['# Browser benchmark', ''];
+		for (let line = 1; line <= lineCount - 3; line++) {
+			lines.push(`benchmark line ${line}: a wrapped paragraph with inline $x_${line}$, [a link](https://example.org/${line}), Unicode 中文、日本語、β, and enough ordinary words to exercise CodeMirror's height map without making one logical line artificially short.`);
+		}
+		lines.push('', 'EOF-MARKER');
+		return { text: lines.join('\n'), markerLines: {} };
+	}
+
+	async function loadSource() {
+		const benchmarkLines = Number(testParams.get('lines'));
+		if (Number.isInteger(benchmarkLines) && benchmarkLines >= 10) return { ...buildBenchmarkFixture(benchmarkLines), kind: `benchmark-${benchmarkLines}` };
+		const sourcePath = testParams.get('source');
+		if (!sourcePath) return { text: buildRealisticFixture().text, kind: 'synthetic' };
+		const response = await fetch('/' + sourcePath.replace(/^\/+/, ''));
+		if (!response.ok) throw new Error(`source fetch failed: ${response.status}`);
+		return { text: await response.text(), kind: 'real-index' };
+	}
+
+	function dispatchInit(text) {
+		window.dispatchEvent(new MessageEvent('message', { data: {
+			type: 'init', text, version: 1, css: '', codeTheme: 'light-plus', baseUri: location.origin + '/', dialect: 'markdown',
+		} }));
+	}
+
+	const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+	async function waitFor(predicate, timeoutMs = 2500, intervalMs = 25) {
+		const start = performance.now();
+		while (performance.now() - start < timeoutMs) {
+			const value = predicate();
+			if (value) return value;
+			await sleep(intervalMs);
+		}
+		return predicate();
+	}
+
+	function snapshot() { return window.__mlpDebugSnapshot ? window.__mlpDebugSnapshot() : null; }
+	function visibleDomText() { return document.querySelector('.cm-content')?.textContent ?? ''; }
+
+	async function captureScroll(label, top) {
+		window.__mlpDebugScrollTo(top);
+		await sleep(40);
+		const parsed = await waitFor(() => snapshot()?.syntaxTreeAvailableToViewport, 1600, 20);
+		await sleep(30);
+		return { label, requestedTop: top, parserCaughtUp: Boolean(parsed), snapshot: snapshot(), domTextLength: visibleDomText().length };
+	}
+
+	async function run() {
+		const source = await loadSource();
+		dispatchInit(source.text);
+		await waitFor(() => snapshot()?.docLength === source.text.length, 2500);
+		const initial = snapshot();
+		if (!initial) throw new Error('debug snapshot was not installed');
+		const maxScroll = () => Math.max(0, (snapshot()?.scrollHeight ?? 0) - (snapshot()?.clientHeight ?? 0));
+		const samples = [];
+		for (const fraction of [0, 0.25, 0.5, 0.75, 0.9, 0.99]) samples.push(await captureScroll(`scroll-${fraction}`, maxScroll() * fraction));
+		const eof = await captureScroll('eof', Number.MAX_SAFE_INTEGER);
+		const markers = [];
+		const markerTexts = source.kind === 'real-index'
+			? [['previous-failure-paragraph', 'The case of', 'The case of'], ['soc-section', '## SOC tensor', 'SOC tensor'], ['dft-section', '### DFT calculations', 'DFT calculations'], ['extended-data', '## Extended Data', 'Extended Data'], ['references', '## References', 'References'], ['eof', '[^50]: Monkhorst', 'Monkhorst']]
+			: [['marker-25', 'BROWSER-MARKER-25', 'BROWSER-MARKER-25'], ['marker-50', 'BROWSER-MARKER-50', 'BROWSER-MARKER-50'], ['marker-75', 'BROWSER-MARKER-75', 'BROWSER-MARKER-75'], ['marker-90', 'BROWSER-MARKER-90', 'BROWSER-MARKER-90'], ['marker-99', 'BROWSER-MARKER-99', 'BROWSER-MARKER-99'], ['eof', 'EOF-MARKER', 'EOF-MARKER']];
+		for (const [label, sourceText, domText] of markerTexts) {
+			const pos = source.text.indexOf(sourceText);
+			if (pos < 0) { markers.push({ label, found: false }); continue; }
+			window.__mlpDebugScrollToPosition(pos);
+			await sleep(80);
+			const current = snapshot();
+			const dom = visibleDomText();
+			markers.push({ label, found: true, pos, viewportContains: Boolean(current && pos >= current.viewport.from && pos <= current.viewport.to), domContainsMarker: dom.includes(domText), snapshot: current });
+		}
+		const finalSample = await captureScroll('final-eof', Number.MAX_SAFE_INTEGER);
+		const final = finalSample.snapshot;
+		const markerFailures = markers.filter((marker) => marker.found && (!marker.viewportContains || !marker.domContainsMarker));
+		const ok = final && final.docLength === source.text.length && final.docLines === source.text.split('\n').length && final.scrollTop + final.clientHeight >= final.scrollHeight - 3 && final.viewport.to >= final.docLength - 2 && final.syntaxTreeAvailableToViewport && markerFailures.length === 0;
+		return { ok: Boolean(ok), baseline: window.__MLP_DISABLE_VIEWPORT_PARSE_FOR_TEST__ === true, sourceKind: source.kind, sourceLength: source.text.length, sourceLines: source.text.split('\n').length, initial, samples, eof, markers, final, markerFailures };
+	}
+
+	(async () => {
+		try { window.__mlpLongDocumentResult = await run(); }
+		catch (error) { window.__mlpLongDocumentResult = { ok: false, error: String(error?.stack || error) }; }
+	})();
+</script>

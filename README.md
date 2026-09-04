@@ -62,6 +62,8 @@ Quarto 特有的 callout、shortcode、citation、cross-reference 和代码单�
 
 数学范围只在文档创建或内容发生变化时全文扫描；光标/选区移动和视口变化只复用缓存，因此不会触发全文数学解析。
 
+多行 `$$...$$` 使用 StateField 提供的块装饰，避免把会吞掉换行的替换装饰放进 ViewPlugin；编辑器仍按视口虚拟化 DOM。视口解析只通过有时间上限的 `forceParsing` 追到当前视口末端，不会打开文档时主动解析整篇文档。
+
 ## 设置
 
 | 设置 | 说明 |
@@ -76,9 +78,12 @@ Quarto 特有的 callout、shortcode、citation、cross-reference 和代码单�
 npm run typecheck
 npm test
 npm run compile
+npm run test:browser
 ```
 
 Quarto 示例位于 [examples/quarto-live-preview.qmd](examples/quarto-live-preview.qmd)，科研回归 fixture 位于 [examples/quarto-scientific.qmd](examples/quarto-scientific.qmd)。
+
+`npm run test:browser` 会启动真实 Chromium 和真实 CodeMirror `EditorView`，优先加载科研日志中的 `academic-clipper/.../index.md`；找不到该文件时自动使用包含长行、换行、行内/块公式、链接、HTML 锚点、表格、图片和 Unicode 的 realistic fixture。测试会滚动到 25%、50%、75%、90%、99% 和 EOF，并检查文档长度、视口、滚动高度、语法树覆盖范围及实际 DOM 内容。使用 `python scripts/run-long-document-browser-test.py --benchmark` 可记录 1k、5k、10k、20k 行文档的浏览器回归耗时。
 
 ## 当前限制
 

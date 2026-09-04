@@ -11,9 +11,8 @@ import { detectFrontmatter } from './frontmatterWidget';
 import { renderInlineInto, type CellInlineHooks } from './tableCellInline';
 import { createCodeModeButton, createCopyCodeButton } from './codeModeButton';
 import { insertRow, insertColumn, renderTableMarkdown, type TableEditModel } from './tableEdit';
-import katex from 'katex';
-import { mathRangesForState, mathRangeTouchesSelection, type MathRange } from './math';
 import { parseFenceInfo } from '../quarto/fence';
+import { recordDecorationRebuild } from './debug';
 
 const HEADING_LINE_CLASS: Record<string, string> = {
 	ATXHeading1: 'mlp-line-h1',
@@ -114,42 +113,6 @@ class ImageWidget extends WidgetType {
 		img.addEventListener('load', remeasure);
 		img.addEventListener('error', remeasure);
 		return img;
-	}
-}
-
-class MathWidget extends WidgetType {
-	constructor(private readonly range: MathRange) {
-		super();
-	}
-
-	eq(other: MathWidget): boolean {
-		return this.range.from === other.range.from && this.range.to === other.range.to && this.range.tex === other.range.tex;
-	}
-
-	toDOM(view: EditorView): HTMLElement {
-		const element = document.createElement(this.range.display ? 'div' : 'span');
-		element.className = this.range.display ? 'mlp-math mlp-math-display' : 'mlp-math mlp-math-inline';
-		element.setAttribute('role', 'math');
-		element.setAttribute('aria-label', this.range.tex);
-		try {
-			element.innerHTML = katex.renderToString(this.range.tex, {
-				displayMode: this.range.display,
-				throwOnError: false,
-				output: 'htmlAndMathml',
-			});
-		} catch {
-			element.textContent = this.range.tex;
-		}
-		element.addEventListener('mousedown', (event) => {
-			event.preventDefault();
-			view.dispatch({ selection: { anchor: this.range.from + 1 }, scrollIntoView: true });
-			view.focus();
-		});
-		return element;
-	}
-
-	ignoreEvent(): boolean {
-		return false;
 	}
 }
 
@@ -1496,16 +1459,6 @@ function buildDecorations(view: EditorView): DecorationSet {
 		});
 	}
 
-	// Math is intentionally parsed independently of the Markdown syntax tree:
-	// the stock CodeMirror Markdown grammar does not own Pandoc's $ delimiters.
-	// These are presentation-only replacements; the document remains untouched.
-	for (const range of mathRangesForState(state)) {
-		if (!view.visibleRanges.some((visible) => range.to >= visible.from && range.from <= visible.to)) continue;
-		if (!mathRangeTouchesSelection(state, range)) {
-			decorations.push(Decoration.replace({ widget: new MathWidget(range) }).range(range.from, range.to));
-		}
-	}
-
 	for (const [lineFrom, cls] of seenLine) {
 		decorations.push(Decoration.line({ class: cls }).range(lineFrom));
 	}
@@ -1518,12 +1471,17 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
 		decorations: DecorationSet;
 
 		constructor(view: EditorView) {
+			const start = performance.now();
 			this.decorations = buildDecorations(view);
+			recordDecorationRebuild('initial', view, performance.now() - start);
 		}
 
 		update(update: ViewUpdate) {
-			if (decorationRebuildReason(update)) {
+			const reason = decorationRebuildReason(update);
+			if (reason) {
+				const start = performance.now();
 				this.decorations = buildDecorations(update.view);
+				recordDecorationRebuild(reason, update.view, performance.now() - start);
 			}
 		}
 	},
