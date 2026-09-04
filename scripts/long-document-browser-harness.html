@@ -28,6 +28,20 @@
 	});
 </script>
 <script>
+	const longTaskEntries = [];
+	let longTaskObserver = null;
+	if (window.PerformanceObserver) {
+		try {
+			longTaskObserver = new PerformanceObserver((list) => {
+				for (const entry of list.getEntries()) longTaskEntries.push(entry.duration);
+			});
+			longTaskObserver.observe({ type: 'longtask', buffered: true });
+		} catch (_) {
+			longTaskObserver = null;
+		}
+	}
+</script>
+<script>
 	const bundlePath = testParams.get('bundle') || '../dist/webview-editor.js';
 	document.write(`<script src="${bundlePath}"><\/script>`);
 </script>
@@ -44,8 +58,12 @@
 				if (paragraph % 9 === 0) lines.push('$$', '\\sigma_{xy} = -\\frac{e^2}{\\hbar}\\sum_n\\int_{\\mathrm{BZ}} \\frac{d^3 k}{(2\\pi)^3} f_{n\\mathbf{k}} \\Omega_{n,z}(\\mathbf{k}) .', '$$');
 			}
 			lines.push('| quantity | value | uncertainty |', '|:--|--:|--:|', `| Section ${section} | ${section * 3.14} | ${0.01 * section} |`);
+			if (section % 4 === 0) {
+				lines.push('```{python}', `value_${section} = ${section}  # Quarto executable-cell syntax`, '```', '');
+				lines.push('```mermaid', 'flowchart LR', `A${section}[输入] --> B${section}[输出]`, '```', '');
+			}
 		}
-		lines.push('', '## References', '[1]: https://example.org/reference', '## End of fixture', 'EOF-MARKER');
+		lines.push('', '## References', '[1]: https://example.org/reference', '文献 [1] 与脚注[^note] 用于检查引用附近的导航。', '', '[^note]: 这是一个脚注回归标记。', '## End of fixture', 'EOF-MARKER');
 		const markerLines = new Map();
 		for (const marker of ['25', '50', '75', '90', '99']) {
 			const index = Math.floor(lines.length * Number(marker) / 100);
@@ -71,12 +89,21 @@
 		if (!sourcePath) return { text: buildRealisticFixture().text, kind: 'synthetic' };
 		const response = await fetch('/' + sourcePath.replace(/^\/+/, ''));
 		if (!response.ok) throw new Error(`source fetch failed: ${response.status}`);
-		return { text: await response.text(), kind: 'real-index' };
+		return { text: await response.text(), kind: 'repository-source' };
 	}
 
-	function dispatchInit(text) {
+	async function loadThemeCss() {
+		const theme = testParams.get('theme');
+		if (!theme) return '';
+		if (!/^[a-z0-9-]+\.css$/i.test(theme)) throw new Error('invalid theme filename');
+		const response = await fetch('/media/sample-styles/' + theme);
+		if (!response.ok) throw new Error(`theme fetch failed: ${response.status}`);
+		return response.text();
+	}
+
+	function dispatchInit(text, css = '') {
 		window.dispatchEvent(new MessageEvent('message', { data: {
-			type: 'init', text, version: 1, css: '', codeTheme: 'light-plus', baseUri: location.origin + '/', dialect: 'markdown',
+			type: 'init', text, version: 1, css, codeTheme: 'light-plus', baseUri: location.origin + '/', dialect: 'markdown',
 		} }));
 	}
 
@@ -95,17 +122,21 @@
 	function visibleDomText() { return document.querySelector('.cm-content')?.textContent ?? ''; }
 
 	async function captureScroll(label, top) {
+		const started = performance.now();
 		window.__mlpDebugScrollTo(top);
 		await sleep(40);
 		const parsed = await waitFor(() => snapshot()?.syntaxTreeAvailableToViewport, 1600, 20);
 		await sleep(30);
-		return { label, requestedTop: top, parserCaughtUp: Boolean(parsed), snapshot: snapshot(), domTextLength: visibleDomText().length };
+		return { label, requestedTop: top, parserCaughtUp: Boolean(parsed), elapsedMs: Number((performance.now() - started).toFixed(1)), snapshot: snapshot(), domTextLength: visibleDomText().length };
 	}
 
 	async function run() {
+		const started = performance.now();
 		const source = await loadSource();
-		dispatchInit(source.text);
+		const themeCss = await loadThemeCss();
+		dispatchInit(source.text, themeCss);
 		await waitFor(() => snapshot()?.docLength === source.text.length, 2500);
+		const readyMs = Number((performance.now() - started).toFixed(1));
 		const initial = snapshot();
 		if (!initial) throw new Error('debug snapshot was not installed');
 		const maxScroll = () => Math.max(0, (snapshot()?.scrollHeight ?? 0) - (snapshot()?.clientHeight ?? 0));
@@ -113,9 +144,9 @@
 		for (const fraction of [0, 0.25, 0.5, 0.75, 0.9, 0.99]) samples.push(await captureScroll(`scroll-${fraction}`, maxScroll() * fraction));
 		const eof = await captureScroll('eof', Number.MAX_SAFE_INTEGER);
 		const markers = [];
-		const markerTexts = source.kind === 'real-index'
-			? [['previous-failure-paragraph', 'The case of', 'The case of'], ['soc-section', '## SOC tensor', 'SOC tensor'], ['dft-section', '### DFT calculations', 'DFT calculations'], ['extended-data', '## Extended Data', 'Extended Data'], ['references', '## References', 'References'], ['eof', '[^50]: Monkhorst', 'Monkhorst']]
-			: [['marker-25', 'BROWSER-MARKER-25', 'BROWSER-MARKER-25'], ['marker-50', 'BROWSER-MARKER-50', 'BROWSER-MARKER-50'], ['marker-75', 'BROWSER-MARKER-75', 'BROWSER-MARKER-75'], ['marker-90', 'BROWSER-MARKER-90', 'BROWSER-MARKER-90'], ['marker-99', 'BROWSER-MARKER-99', 'BROWSER-MARKER-99'], ['eof', 'EOF-MARKER', 'EOF-MARKER']];
+		const markerTexts = source.kind === 'synthetic'
+			? [['marker-25', 'BROWSER-MARKER-25', 'BROWSER-MARKER-25'], ['marker-50', 'BROWSER-MARKER-50', 'BROWSER-MARKER-50'], ['marker-75', 'BROWSER-MARKER-75', 'BROWSER-MARKER-75'], ['marker-90', 'BROWSER-MARKER-90', 'BROWSER-MARKER-90'], ['marker-99', 'BROWSER-MARKER-99', 'BROWSER-MARKER-99'], ['eof', 'EOF-MARKER', 'EOF-MARKER']]
+			: [];
 		for (const [label, sourceText, domText] of markerTexts) {
 			const pos = source.text.indexOf(sourceText);
 			if (pos < 0) { markers.push({ label, found: false }); continue; }
@@ -129,7 +160,9 @@
 		const final = finalSample.snapshot;
 		const markerFailures = markers.filter((marker) => marker.found && (!marker.viewportContains || !marker.domContainsMarker));
 		const ok = final && final.docLength === source.text.length && final.docLines === source.text.split('\n').length && final.scrollTop + final.clientHeight >= final.scrollHeight - 3 && final.viewport.to >= final.docLength - 2 && final.syntaxTreeAvailableToViewport && markerFailures.length === 0;
-		return { ok: Boolean(ok), baseline: window.__MLP_DISABLE_VIEWPORT_PARSE_FOR_TEST__ === true, sourceKind: source.kind, sourceLength: source.text.length, sourceLines: source.text.split('\n').length, initial, samples, eof, markers, final, markerFailures };
+		if (longTaskObserver) longTaskObserver.disconnect();
+		const longTaskTotalMs = Number(longTaskEntries.reduce((sum, duration) => sum + duration, 0).toFixed(1));
+		return { ok: Boolean(ok), baseline: window.__MLP_DISABLE_VIEWPORT_PARSE_FOR_TEST__ === true, sourceKind: source.kind, sourceLength: source.text.length, sourceLines: source.text.split('\n').length, readyMs, initial, samples, eof, markers, final, markerFailures, longTaskCount: longTaskEntries.length, longTaskTotalMs };
 	}
 
 	async function runBugProbe() {

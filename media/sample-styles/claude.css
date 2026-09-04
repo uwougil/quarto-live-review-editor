@@ -6,7 +6,7 @@
  * cssAdapter.ts 与下方的 .mlp-* 补充规则共同覆盖。
  * 不依赖外部字体、图片、渐变或网络资源。
  */
-:root {
+body {
 	--claude-page: #faf8f3;
 	--claude-paper: #fffdf9;
 	--claude-text: #302e2b;

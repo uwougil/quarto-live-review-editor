@@ -11,6 +11,7 @@
 - Mermaid 和 draw.io 图表原地渲染。
 - 表格单元格原地编辑、行列添加和源码安全保存。
 - 代码块语法高亮、图片粘贴、文档大纲和 CSS 主题管理。
+- 内置 CSS 主题：VS Code、Dark、GitHub Light、Claude 和 GitHub Dark；主题之间互相独立，可在侧栏切换。
 - ` ```{python} `、` ```{r} `、` ```{julia} ` 和 ` ```{.python} ` 使用统一的 Quarto/Pandoc 围栏解析入口，并交给现有 Shiki 高亮体系。
 
 ## 安装开发版
@@ -60,7 +61,7 @@ Quarto 特有的 callout、shortcode、citation、cross-reference 和代码单�
 
 这不是完整 Quarto/Pandoc 解析器。未来的 callout、citation、cross-reference 和代码单元 UI 可以在该边界上逐步扩展，同时保留源码作为唯一事实来源。
 
-数学范围只在文档创建或内容发生变化时全文扫描；光标/选区移动和视口变化只复用缓存，因此不会触发全文数学解析。
+数学范围只在文档创建时全文扫描；普通的不含 `$` 或反引号的编辑会映射缓存范围，可能改变公式语义的编辑则安全地回退到全文扫描。光标/选区移动和视口变化只复用缓存，因此不会触发数学解析。
 
 多行 `$$...$$` 使用 StateField 提供的块装饰，避免把会吞掉换行的替换装饰放进 ViewPlugin；编辑器仍按视口虚拟化 DOM。视口解析只通过有时间上限的 `forceParsing` 追到当前视口末端，不会打开文档时主动解析整篇文档。
 
@@ -83,7 +84,7 @@ npm run test:browser
 
 Quarto 示例位于 [examples/quarto-live-preview.qmd](examples/quarto-live-preview.qmd)，科研回归 fixture 位于 [examples/quarto-scientific.qmd](examples/quarto-scientific.qmd)。
 
-`npm run test:browser` 会启动真实 Chromium 和真实 CodeMirror `EditorView`，优先加载科研日志中的 `academic-clipper/.../index.md`；找不到该文件时自动使用包含长行、换行、行内/块公式、链接、HTML 锚点、表格、图片和 Unicode 的 realistic fixture。测试会滚动到 25%、50%、75%、90%、99% 和 EOF，并检查文档长度、视口、滚动高度、语法树覆盖范围及实际 DOM 内容。使用 `python scripts/run-long-document-browser-test.py --benchmark` 可记录 1k、5k、10k、20k 行文档的浏览器回归耗时。
+`npm run test:browser` 会启动真实 Chromium 和真实 CodeMirror `EditorView`，默认使用仓库内确定性的 realistic fixture，不依赖其他仓库或本机目录。fixture 覆盖前置元数据、标题、长段落、Unicode/CJK、行内/多行块公式、围栏代码、Quarto 代码单元、表格、Mermaid、链接、图片、引用和脚注。测试会滚动到 0%、25%、50%、75%、90%、99% 和 EOF，并检查文档长度、视口、滚动高度、语法树覆盖范围及实际 DOM 内容；`--source path/to/file.qmd` 可显式指定仓库内的其他夹具。使用 `python scripts/run-long-document-browser-test.py --benchmark` 可记录 1k、5k、10k、20k 行文档的就绪、滚动和 EOF 耗时、DOM 行数、装饰重建数、长任务及页面错误。
 
 ## 当前限制
 

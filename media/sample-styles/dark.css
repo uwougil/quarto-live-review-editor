@@ -1,105 +1,107 @@
 /*
- * Typora GitHub — 明亮、紧凑的科研笔记主题。
+ * Dark — 独立的深色阅读主题。
  *
- * 这里使用 VS Code Markdown 预览同样的 HTML 选择器；实时编辑器会通过
- * cssAdapter.ts 将标题、段落、引用和代码块映射到对应的 .mlp-* 行样式。
- * 不依赖外部字体、图片或网络资源。
+ * 这是通用的深色编辑主题，不复用 GitHub Dark 的配色：页面采用深蓝灰底色，
+ * 正文使用柔和的暖灰白，交互强调色使用青绿色。选择器兼容 VS Code Markdown
+ * 预览格式，并为实时编辑器的 .mlp-* 小部件提供对应样式。
+ * 不依赖外部字体、图片、网络资源或渐变。
  */
-:root {
-	--typora-page: #ffffff;
-	--typora-text: #1f2328;
-	--typora-muted: #59636e;
-	--typora-border: #d0d7de;
-	--typora-soft: #f6f8fa;
-	--typora-blue: #0969da;
-	--typora-purple: #8250df;
+body {
+	--dark-page: #1f232b;
+	--dark-panel: #282d36;
+	--dark-code: #171a20;
+	--dark-text: #e4e6eb;
+	--dark-muted: #a9afb9;
+	--dark-border: #454c58;
+	--dark-soft-border: #343b47;
+	--dark-accent: #83d6c3;
+	--dark-accent-strong: #9ce6d4;
 }
 
 body {
 	margin: 0 auto;
-	max-width: 980px;
-	padding: 2.25rem clamp(1.05rem, 4vw, 3rem) 3rem;
+	max-width: 940px;
+	padding: 2rem clamp(1rem, 3.5vw, 2.6rem) 3rem;
 	box-sizing: border-box;
-	color: var(--typora-text);
-	background: var(--typora-page);
+	color: var(--dark-text);
+	background: var(--dark-page);
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
 		"Noto Sans CJK SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
 	font-size: 15px;
-	font-weight: 400;
-	line-height: 1.62;
+	line-height: 1.68;
 	word-wrap: break-word;
 	-webkit-font-smoothing: antialiased;
 }
 
-/* The editor has its own reading column; these rules keep the visual width and
-   gutters identical to the static Markdown preview used by the style preview. */
 .cm-editor .cm-content {
 	width: 100%;
-	max-width: 980px;
+	max-width: 940px;
 	margin: 0 auto;
 	box-sizing: border-box;
-	padding: 2.25rem clamp(1.05rem, 4vw, 3rem) 45vh;
-	color: var(--typora-text);
-	background: var(--typora-page);
+	padding: 2rem clamp(1rem, 3.5vw, 2.6rem) 45vh;
+	color: var(--dark-text);
+	background: var(--dark-page);
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
 		"Noto Sans CJK SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
-	line-height: 1.62;
+	line-height: 1.68;
 }
 
 h1, h2, h3, h4, h5, h6 {
-	color: var(--typora-text);
-	font-weight: 600;
-	line-height: 1.28;
+	color: #f0f1f3;
+	font-weight: 650;
+	line-height: 1.3;
 }
 
 h1 {
 	margin-top: 0;
-	margin-bottom: 0.72em;
+	margin-bottom: 0.78em;
 	padding-bottom: 0.28em;
-	font-size: 1.92em;
-	border-bottom: 1px solid var(--typora-border);
+	font-size: 1.9em;
+	border-bottom: 1px solid var(--dark-border);
 }
 
 h2 {
 	margin-top: 1.55em;
-	margin-bottom: 0.62em;
+	margin-bottom: 0.66em;
 	padding-bottom: 0.22em;
-	font-size: 1.46em;
-	border-bottom: 1px solid color-mix(in srgb, var(--typora-border) 72%, transparent);
+	font-size: 1.48em;
+	border-bottom: 1px solid var(--dark-soft-border);
 }
 
 h3 {
 	margin-top: 1.35em;
-	margin-bottom: 0.48em;
+	margin-bottom: 0.5em;
 	font-size: 1.22em;
+	color: #e8d7bc;
 }
 
 h4 {
 	margin-top: 1.15em;
-	margin-bottom: 0.4em;
+	margin-bottom: 0.42em;
 	font-size: 1.06em;
 }
 
 h5 {
 	margin-top: 1em;
-	margin-bottom: 0.35em;
+	margin-bottom: 0.36em;
 	font-size: 0.98em;
 }
 
 h6 {
 	margin-top: 1em;
-	margin-bottom: 0.3em;
+	margin-bottom: 0.32em;
 	font-size: 0.92em;
-	color: var(--typora-muted);
+	color: var(--dark-muted);
 }
 
 p {
 	margin-top: 0;
-	margin-bottom: 0.86em;
+	margin-bottom: 0.9em;
 }
 
 strong, b {
-	font-weight: 650;
+	font-weight: 700;
+	color: #f0f1f3;
 }
 
 em, dfn {
@@ -107,52 +109,53 @@ em, dfn {
 }
 
 del, s {
-	color: var(--typora-muted);
+	color: var(--dark-muted);
 	text-decoration: line-through;
 }
 
 a {
-	color: var(--typora-blue);
+	color: var(--dark-accent-strong);
 	text-decoration: none;
 	text-underline-offset: 0.16em;
 }
 
 a:hover {
+	color: #b8f1e3;
 	text-decoration: underline;
 }
 
 hr {
 	height: 0;
-	margin: 1.45rem 0;
+	margin: 1.55rem 0;
 	border: 0;
-	border-top: 1px solid var(--typora-border);
+	border-top: 1px solid var(--dark-border);
 }
 
 ul, ol {
 	margin-top: 0;
-	margin-bottom: 0.82em;
-	padding-left: 1.8em;
+	margin-bottom: 0.9em;
+	padding-left: 1.85em;
 }
 
 li {
-	margin: 0.12em 0;
+	margin: 0.14em 0;
 }
 
 li + li {
-	margin-top: 0.18em;
+	margin-top: 0.2em;
 }
 
 li > p {
-	margin-bottom: 0.55em;
+	margin-bottom: 0.58em;
 }
 
 blockquote {
-	margin: 0 0 0.9em;
+	margin: 0 0 0.98em;
 	padding: 0 1em;
-	color: var(--typora-muted);
-	background: var(--typora-soft);
-	border-left: 0.28rem solid var(--typora-border);
-	border-radius: 0 4px 4px 0;
+	color: var(--dark-muted);
+	background: rgba(40, 45, 54, 0.72);
+	border-left: 3px solid #648f88;
+	border-radius: 0 5px 5px 0;
 }
 
 blockquote > :first-child {
@@ -170,23 +173,23 @@ code, kbd, pre, samp {
 
 code {
 	padding: 0.12em 0.34em;
-	color: var(--typora-purple);
-	background: #eff1f3;
-	border: 1px solid #e5e7eb;
+	color: #f0c78a;
+	background: var(--dark-panel);
+	border: 1px solid var(--dark-soft-border);
 	border-radius: 4px;
 	font-size: 0.9em;
 	white-space: break-spaces;
 }
 
 pre {
-	margin: 0 0 1em;
-	padding: 0.88rem 1rem;
-	color: var(--typora-text);
-	background: var(--typora-soft);
-	border: 1px solid var(--typora-border);
+	margin: 0 0 1.05em;
+	padding: 0.92rem 1rem;
+	color: #d9dde5;
+	background: var(--dark-code);
+	border: 1px solid var(--dark-border);
 	border-radius: 6px;
 	font-size: 0.9em;
-	line-height: 1.5;
+	line-height: 1.52;
 	overflow: auto;
 }
 
@@ -204,7 +207,7 @@ table {
 	display: block;
 	width: max-content;
 	max-width: 100%;
-	margin: 0 0 1em;
+	margin: 0 0 1.05em;
 	border-spacing: 0;
 	border-collapse: collapse;
 	overflow: auto;
@@ -212,33 +215,34 @@ table {
 }
 
 th, td {
-	padding: 0.42rem 0.72rem;
-	border: 1px solid var(--typora-border);
+	padding: 0.44rem 0.72rem;
+	border: 1px solid var(--dark-border);
 	text-align: left;
 	vertical-align: top;
 }
 
 th {
-	font-weight: 600;
-	background: var(--typora-soft);
+	font-weight: 650;
+	background: var(--dark-panel);
 }
 
 tr:nth-child(even) {
-	background: #fbfcfd;
+	background: rgba(40, 45, 54, 0.58);
 }
 
 img {
 	display: block;
 	max-width: 100%;
 	height: auto;
-	margin: 0.85em auto;
+	margin: 0.9em auto;
 	box-sizing: border-box;
+	border-radius: 5px;
 }
 
 mark {
 	padding: 0.05em 0.18em;
-	background: #fff8c5;
-	color: inherit;
+	color: #20242b;
+	background: #e7c873;
 }
 
 sub, sup {
@@ -247,17 +251,15 @@ sub, sup {
 }
 
 /* ── Live-editor widgets ────────────────────────────────────────────────── */
-/* Widget roots are measured by CodeMirror. Padding keeps the deliberate gap
-   inside that measured box, while margin would make cursor positions drift. */
 .mlp-block {
 	padding: 0.62rem 0;
 }
 
 .mlp-inline-code {
 	padding: 0.12em 0.34em;
-	color: var(--typora-purple);
-	background: #eff1f3;
-	border: 1px solid #e5e7eb;
+	color: #f0c78a;
+	background: var(--dark-panel);
+	border: 1px solid var(--dark-soft-border);
 	border-radius: 4px;
 	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
 		"Liberation Mono", "DejaVu Sans Mono", monospace;
@@ -276,7 +278,7 @@ sub, sup {
 	display: block;
 	max-width: 100%;
 	box-sizing: border-box;
-	padding: 0.7em 0;
+	padding: 0.78em 0;
 	overflow-x: auto;
 	overflow-y: hidden;
 	text-align: center;
@@ -288,11 +290,11 @@ sub, sup {
 }
 
 .mlp-hr {
-	border-top: 1px solid var(--typora-border);
+	border-top: 1px solid var(--dark-border);
 }
 
 .mlp-link {
-	color: var(--typora-blue);
+	color: var(--dark-accent-strong);
 	text-decoration: none;
 }
 
@@ -303,8 +305,8 @@ sub, sup {
 .mlp-image {
 	max-width: 100%;
 	height: auto;
-	margin: 0.85em auto;
-	border-radius: 4px;
+	margin: 0.9em auto;
+	border-radius: 5px;
 }
 
 .mlp-checkbox {
@@ -312,14 +314,14 @@ sub, sup {
 	height: 1.05em;
 	box-sizing: border-box;
 	vertical-align: -0.18em;
-	background: #ffffff;
-	border: 1px solid #8c959f;
+	background: var(--dark-panel);
+	border: 1px solid #87919f;
 	border-radius: 3px;
 }
 
 .mlp-checkbox-checked {
-	background: var(--typora-blue);
-	border-color: var(--typora-blue);
+	background: #4d9f8d;
+	border-color: #83d6c3;
 }
 
 .mlp-checkbox-checked::after {
@@ -339,33 +341,33 @@ table.mlp-table th,
 table.mlp-table td,
 table.mlp-frontmatter th,
 table.mlp-frontmatter td {
-	padding: 0.42rem 0.72rem;
-	border: 1px solid var(--typora-border);
+	padding: 0.44rem 0.72rem;
+	border: 1px solid var(--dark-border);
 	line-height: 1.45;
 }
 
 table.mlp-table th,
 table.mlp-frontmatter th {
-	background: var(--typora-soft);
+	background: var(--dark-panel);
 }
 
 table.mlp-table tr:nth-child(even) {
-	background: #fbfcfd;
+	background: rgba(40, 45, 54, 0.58);
 }
 
 table.mlp-table th.mlp-table-cell-editing,
 table.mlp-table td.mlp-table-cell-editing {
-	outline: 2px solid var(--typora-blue);
+	outline: 2px solid var(--dark-accent);
 	outline-offset: -2px;
-	background: #ffffff;
+	background: #303641;
 }
 
 .mlp-frontmatter-error {
-	padding: 0.58rem 0.8rem;
-	color: #a40e26;
-	background: #fff1f0;
-	border-left: 3px solid #cf222e;
-	border-radius: 0 4px 4px 0;
+	padding: 0.6rem 0.82rem;
+	color: #f1b5a8;
+	background: #38282d;
+	border-left: 3px solid #d47c6d;
+	border-radius: 0 5px 5px 0;
 }
 
 .mlp-frontmatter-error > * {
@@ -374,6 +376,7 @@ table.mlp-table td.mlp-table-cell-editing {
 	color: inherit;
 	background: transparent;
 	border: 0;
+	white-space: pre-wrap;
 }
 
 .mlp-mermaid-wrap {
@@ -381,54 +384,54 @@ table.mlp-table td.mlp-table-cell-editing {
 }
 
 .mlp-mermaid {
-	padding: 0.7rem;
-	background: #ffffff;
-	border: 1px solid var(--typora-border);
+	padding: 0.72rem;
+	background: var(--dark-panel);
+	border: 1px solid var(--dark-border);
 	border-radius: 6px;
 }
 
 .mlp-mermaid-error {
-	padding: 0.62rem 0.8rem;
-	color: #a40e26;
-	background: #fff1f0;
-	border: 1px solid #ffcecb;
-	border-radius: 4px;
+	padding: 0.6rem 0.82rem;
+	color: #f1b5a8;
+	background: #38282d;
+	border: 1px solid #71433e;
+	border-radius: 5px;
 }
 
 .mlp-code-mode-btn,
 .mlp-copy-code-btn {
-	color: var(--typora-muted);
-	background: #ffffff;
-	border: 1px solid var(--typora-border);
+	color: var(--dark-muted);
+	background: var(--dark-panel);
+	border: 1px solid var(--dark-border);
 	border-radius: 4px;
 }
 
 .mlp-code-mode-btn:hover,
 .mlp-copy-code-btn:hover {
-	color: var(--typora-blue);
-	background: var(--typora-soft);
-	border-color: #8c959f;
+	color: var(--dark-accent-strong);
+	background: #343b47;
+	border-color: #648f88;
 }
 
 .mlp-table-add-btn {
-	color: var(--typora-muted);
-	background: rgba(208, 215, 222, 0.42);
+	color: var(--dark-muted);
+	background: rgba(69, 76, 88, 0.65);
 	border: 0;
 }
 
 .mlp-table-add-btn:hover,
 .mlp-table-add-btn:focus-visible {
-	color: var(--typora-blue);
-	background: rgba(9, 105, 218, 0.12);
+	color: var(--dark-accent-strong);
+	background: rgba(131, 214, 195, 0.18);
 }
 
 @media (max-width: 700px) {
 	body {
-		padding: 1.2rem 0.85rem 35vh;
+		padding: 1.25rem 0.8rem 35vh;
 	}
 
 	.cm-editor .cm-content {
-		padding: 1.2rem 0.85rem 35vh;
+		padding: 1.25rem 0.8rem 35vh;
 	}
 
 	h1 {
@@ -436,10 +439,10 @@ table.mlp-table td.mlp-table-cell-editing {
 	}
 
 	h2 {
-		font-size: 1.34em;
+		font-size: 1.36em;
 	}
 
 	th, td {
-		padding: 0.36rem 0.52rem;
+		padding: 0.38rem 0.52rem;
 	}
 }

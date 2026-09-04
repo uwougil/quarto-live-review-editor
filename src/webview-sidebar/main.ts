@@ -125,9 +125,9 @@ function buildCard(style: StyleEntry, themeKind: ThemeKind): HTMLElement {
 	actions.className = 'mlp-actions';
 	actions.append(
 		iconButton('edit', '编辑 CSS', () => post({ type: 'openStyle', id: style.id })),
-		iconButton('duplicate', '複製', () => post({ type: 'duplicateStyle', id: style.id })),
+		iconButton('duplicate', '复制', () => post({ type: 'duplicateStyle', id: style.id })),
 		iconButton('rename', '重命名', () => post({ type: 'renameStyle', id: style.id })),
-		iconButton('delete', '削除', () => post({ type: 'deleteStyle', id: style.id })),
+		iconButton('delete', '删除', () => post({ type: 'deleteStyle', id: style.id })),
 	);
 	head.appendChild(actions);
 
@@ -176,7 +176,7 @@ function buildSettings(settings: SidebarSettings): HTMLElement {
 
 	const title = document.createElement('div');
 	title.className = 'mlp-section-title';
-	title.textContent = '設定';
+		title.textContent = '设置';
 	section.appendChild(title);
 
 	section.appendChild(

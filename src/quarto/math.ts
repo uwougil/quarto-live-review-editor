@@ -1,4 +1,4 @@
-import { StateField, type EditorState } from '@codemirror/state';
+import { StateField, type EditorState, type Transaction } from '@codemirror/state';
 import { getDocumentDialect, type DocumentDialect } from './dialect';
 import { findFenceSpans, scanSourceLines } from './fence';
 
@@ -122,6 +122,56 @@ export function findMathRanges(text: string, _dialect: DocumentDialect = 'markdo
 	return ranges.sort((a, b) => a.from - b.from);
 }
 
+/**
+ * Maps the cached ranges through a simple edit when the edit cannot change
+ * delimiter or protected-context semantics. Edits that touch `$`, backticks,
+ * or an existing math range deliberately fall back to the full scanner below;
+ * this keeps delimiter-crossing and fenced-code cases correct while making the
+ * common edit before/after a formula proportional to the number of formulas,
+ * not the whole document length.
+ */
+function mapRangesForDelimiterFreeEdit(
+	value: MathRange[],
+	transaction: Transaction,
+): MathRange[] | null {
+	if (!transaction.docChanged || transaction.changes.empty) return value;
+	let changeCount = 0;
+	let oldFrom = 0;
+	let oldTo = 0;
+	let newFrom = 0;
+	let newTo = 0;
+	transaction.changes.iterChanges((fromA, toA, fromB, toB) => {
+		changeCount++;
+		oldFrom = fromA;
+		oldTo = toA;
+		newFrom = fromB;
+		newTo = toB;
+	});
+	if (changeCount !== 1) return null;
+
+	// A change in the body of a display range can alter its TeX without putting a
+	// dollar on the edited line, so it must be rescanned too.
+	const overlapsRange = oldFrom < oldTo
+		? value.some((range) => range.from < oldTo && oldFrom < range.to)
+		: value.some((range) => oldFrom > range.from && oldFrom < range.to);
+	if (overlapsRange) return null;
+	const oldDoc = transaction.startState.doc;
+	const newDoc = transaction.state.doc;
+	const oldLineFrom = oldDoc.lineAt(Math.min(oldFrom, oldDoc.length)).from;
+	const oldLineTo = oldDoc.lineAt(Math.min(oldTo, oldDoc.length)).to;
+	const newLineFrom = newDoc.lineAt(Math.min(newFrom, newDoc.length)).from;
+	const newLineTo = newDoc.lineAt(Math.min(newTo, newDoc.length)).to;
+	const oldContext = oldDoc.sliceString(oldLineFrom, oldLineTo);
+	const newContext = newDoc.sliceString(newLineFrom, newLineTo);
+	if (/[$`]/.test(oldContext) || /[$`]/.test(newContext)) return null;
+
+	return value.map((range) => ({
+		...range,
+		from: transaction.changes.mapPos(range.from, -1),
+		to: transaction.changes.mapPos(range.to, 1),
+	}));
+}
+
 export function mathRangeTouchesSelection(state: EditorState, range: MathRange): boolean {
 	return state.selection.ranges.some((selection) =>
 		selection.empty
@@ -136,7 +186,9 @@ export const mathRangesField = StateField.define<MathRange[]>({
 		return findMathRanges(state.doc.toString(), getDocumentDialect(state));
 	},
 	update(value, transaction) {
-		return transaction.docChanged ? findMathRanges(transaction.state.doc.toString(), getDocumentDialect(transaction.state)) : value;
+		if (!transaction.docChanged) return value;
+		return mapRangesForDelimiterFreeEdit(value, transaction)
+			?? findMathRanges(transaction.state.doc.toString(), getDocumentDialect(transaction.state));
 	},
 });
 

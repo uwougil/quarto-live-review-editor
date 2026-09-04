@@ -7,32 +7,27 @@ const ENABLED_STYLES_KEY = 'enabledStyles';
 // Bumped whenever the bundled sample set changes; drives a one-time (re)seed so
 // existing installs pick up new templates without re-creating ones the user
 // later deleted.
-const SAMPLES_VERSION = 6;
+const SAMPLES_VERSION = 7;
 const SAMPLES_VERSION_KEY = 'mdLivePreview.samplesVersion';
 // Bundled samples that were shipped before but are no longer wanted, deleted
-// during migration: the old `.mlp-*`-selector themes that stopped working, plus
-// DADS-light (dropped by request), the old hand-written GitHub.css (superseded
-// by the github-markdown-css-derived `github.css`, itself later renamed to
-// `github-like.css` — see the rename migration below), and Zenn.css (dropped by
-// request, replaced by the VS Code-standard `vscode.css` sample). If one of
-// these was the active theme, the selection falls back to the default sample.
-const REMOVED_SAMPLE_NAMES = ['GitHub-like.css', 'Obsidian-like.css', 'DADS-light.css', 'GitHub.css', 'Zenn.css'];
-// The pre-rename bundled name for what is now `github-like.css` (GITHUB_LIKE_STYLE_NAME).
-const LEGACY_GITHUB_NAME = 'github.css';
-const GITHUB_LIKE_STYLE_NAME = 'github-like.css';
+// during migration: old `.mlp-*`-selector themes, DADS-light, and Zenn.css.
+// The old GitHub names are handled by SAMPLE_RENAMES below so customized files
+// are preserved instead of being deleted.
+const REMOVED_SAMPLE_NAMES = ['GitHub-like.css', 'Obsidian-like.css', 'DADS-light.css', 'Zenn.css'];
+const SAMPLE_RENAMES = [
+	{ from: 'github.css', to: 'github-dark.css' },
+	{ from: 'github-like.css', to: 'github-dark.css' },
+	{ from: 'typora-github.css', to: 'github-light.css' },
+] as const;
 // Theme selected on a fresh install, and the fallback whenever nothing valid
 // is currently enabled (e.g. the previously-enabled theme was just removed by
-// a migration below). Kept as its own constant, distinct from
-// `GITHUB_LIKE_STYLE_NAME`: that one is also the *rename target* for the old
-// `github.css` → `github-like.css` migration, and a user who had `github.css`
-// active should keep landing on its renamed successor, not be switched to
-// this default.
+// a migration below).
 const DEFAULT_STYLE_NAME = 'vscode.css';
 // Bundled sample themes, shipped as real .css files under media/sample-styles/
 // (not embedded as TS strings) so they're easy to review/maintain and can be
 // read directly with `vscode.workspace.fs`. Written into global storage once on
 // first seed so the user can edit/rename/delete them like any other style file.
-const SAMPLE_FILE_NAMES = ['github-like.css', 'vscode.css', 'typora-github.css', 'claude.css'];
+const SAMPLE_FILE_NAMES = ['vscode.css', 'dark.css', 'github-light.css', 'claude.css', 'github-dark.css'];
 
 interface StyleFile {
 	id: string;
@@ -88,26 +83,7 @@ export class StyleStore {
 			// already exists (or unwritable) — proceed; writes below will surface real errors
 		}
 
-		let existing = new Set((await this.listAllStyleFiles()).map((f) => f.name));
-
-		// One-time rename migration: the old bundled `github.css` becomes
-		// `github-like.css`, preserving the user's own edits to it (unlike the
-		// delete-and-reseed samples below, which are fully discontinued).
-		if (existing.has(LEGACY_GITHUB_NAME) && !existing.has(GITHUB_LIKE_STYLE_NAME)) {
-			try {
-				await vscode.workspace.fs.rename(
-					vscode.Uri.joinPath(dir, LEGACY_GITHUB_NAME),
-					vscode.Uri.joinPath(dir, GITHUB_LIKE_STYLE_NAME),
-					{ overwrite: false },
-				);
-				if (this.getEnabledIds().includes(LEGACY_GITHUB_NAME)) {
-					await this.setEnabledIds([GITHUB_LIKE_STYLE_NAME]);
-				}
-				existing = new Set((await this.listAllStyleFiles()).map((f) => f.name));
-			} catch {
-				// rename failed (e.g. target already exists) — leave the old file as-is
-			}
-		}
+		const existing = await this.migrateSampleNames(dir);
 
 		// Add any bundled sample that isn't present yet, reading its content from
 		// the real .css file shipped under media/sample-styles/.
@@ -136,6 +112,37 @@ export class StyleStore {
 		}
 
 		await this.context.globalState.update(SAMPLES_VERSION_KEY, SAMPLES_VERSION);
+	}
+
+	/**
+	 * Applies bundled-name migrations without overwriting a user's edited copy.
+	 * When a target already exists, the old file is deliberately left untouched;
+	 * this makes a collision recoverable and preserves the active old selection.
+	 */
+	private async migrateSampleNames(dir: vscode.Uri): Promise<Set<string>> {
+		let existing = new Set((await this.listAllStyleFiles()).map((f) => f.name));
+		const enabled = new Set(this.getEnabledIds());
+		let enabledChanged = false;
+		for (const { from, to } of SAMPLE_RENAMES) {
+			if (!existing.has(from) || existing.has(to)) continue;
+			try {
+				await vscode.workspace.fs.rename(
+					vscode.Uri.joinPath(dir, from),
+					vscode.Uri.joinPath(dir, to),
+					{ overwrite: false },
+				);
+				existing.delete(from);
+				existing.add(to);
+				if (enabled.delete(from)) {
+					enabled.add(to);
+					enabledChanged = true;
+				}
+			} catch {
+				// Keep the old file when the filesystem cannot complete the rename.
+			}
+		}
+		if (enabledChanged) await this.setEnabledIds([...enabled]);
+		return existing;
 	}
 
 	private setupWatchers(): void {

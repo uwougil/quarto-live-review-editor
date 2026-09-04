@@ -1,0 +1,445 @@
+/*
+ * GitHub Light — Typora 风格的明亮、紧凑科研笔记主题。
+ *
+ * 这里使用 VS Code Markdown 预览同样的 HTML 选择器；实时编辑器会通过
+ * cssAdapter.ts 将标题、段落、引用和代码块映射到对应的 .mlp-* 行样式。
+ * 不依赖外部字体、图片或网络资源。
+ */
+body {
+	--typora-page: #ffffff;
+	--typora-text: #1f2328;
+	--typora-muted: #59636e;
+	--typora-border: #d0d7de;
+	--typora-soft: #f6f8fa;
+	--typora-blue: #0969da;
+	--typora-purple: #8250df;
+}
+
+body {
+	margin: 0 auto;
+	max-width: 980px;
+	padding: 2.25rem clamp(1.05rem, 4vw, 3rem) 3rem;
+	box-sizing: border-box;
+	color: var(--typora-text);
+	background: var(--typora-page);
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
+		"Noto Sans CJK SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+	font-size: 15px;
+	font-weight: 400;
+	line-height: 1.62;
+	word-wrap: break-word;
+	-webkit-font-smoothing: antialiased;
+}
+
+/* The editor has its own reading column; these rules keep the visual width and
+   gutters identical to the static Markdown preview used by the style preview. */
+.cm-editor .cm-content {
+	width: 100%;
+	max-width: 980px;
+	margin: 0 auto;
+	box-sizing: border-box;
+	padding: 2.25rem clamp(1.05rem, 4vw, 3rem) 45vh;
+	color: var(--typora-text);
+	background: var(--typora-page);
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
+		"Noto Sans CJK SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+	line-height: 1.62;
+}
+
+h1, h2, h3, h4, h5, h6 {
+	color: var(--typora-text);
+	font-weight: 600;
+	line-height: 1.28;
+}
+
+h1 {
+	margin-top: 0;
+	margin-bottom: 0.72em;
+	padding-bottom: 0.28em;
+	font-size: 1.92em;
+	border-bottom: 1px solid var(--typora-border);
+}
+
+h2 {
+	margin-top: 1.55em;
+	margin-bottom: 0.62em;
+	padding-bottom: 0.22em;
+	font-size: 1.46em;
+	border-bottom: 1px solid color-mix(in srgb, var(--typora-border) 72%, transparent);
+}
+
+h3 {
+	margin-top: 1.35em;
+	margin-bottom: 0.48em;
+	font-size: 1.22em;
+}
+
+h4 {
+	margin-top: 1.15em;
+	margin-bottom: 0.4em;
+	font-size: 1.06em;
+}
+
+h5 {
+	margin-top: 1em;
+	margin-bottom: 0.35em;
+	font-size: 0.98em;
+}
+
+h6 {
+	margin-top: 1em;
+	margin-bottom: 0.3em;
+	font-size: 0.92em;
+	color: var(--typora-muted);
+}
+
+p {
+	margin-top: 0;
+	margin-bottom: 0.86em;
+}
+
+strong, b {
+	font-weight: 650;
+}
+
+em, dfn {
+	font-style: italic;
+}
+
+del, s {
+	color: var(--typora-muted);
+	text-decoration: line-through;
+}
+
+a {
+	color: var(--typora-blue);
+	text-decoration: none;
+	text-underline-offset: 0.16em;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+hr {
+	height: 0;
+	margin: 1.45rem 0;
+	border: 0;
+	border-top: 1px solid var(--typora-border);
+}
+
+ul, ol {
+	margin-top: 0;
+	margin-bottom: 0.82em;
+	padding-left: 1.8em;
+}
+
+li {
+	margin: 0.12em 0;
+}
+
+li + li {
+	margin-top: 0.18em;
+}
+
+li > p {
+	margin-bottom: 0.55em;
+}
+
+blockquote {
+	margin: 0 0 0.9em;
+	padding: 0 1em;
+	color: var(--typora-muted);
+	background: var(--typora-soft);
+	border-left: 0.28rem solid var(--typora-border);
+	border-radius: 0 4px 4px 0;
+}
+
+blockquote > :first-child {
+	margin-top: 0;
+}
+
+blockquote > :last-child {
+	margin-bottom: 0;
+}
+
+code, kbd, pre, samp {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+		"Liberation Mono", "DejaVu Sans Mono", monospace;
+}
+
+code {
+	padding: 0.12em 0.34em;
+	color: var(--typora-purple);
+	background: #eff1f3;
+	border: 1px solid #e5e7eb;
+	border-radius: 4px;
+	font-size: 0.9em;
+	white-space: break-spaces;
+}
+
+pre {
+	margin: 0 0 1em;
+	padding: 0.88rem 1rem;
+	color: var(--typora-text);
+	background: var(--typora-soft);
+	border: 1px solid var(--typora-border);
+	border-radius: 6px;
+	font-size: 0.9em;
+	line-height: 1.5;
+	overflow: auto;
+}
+
+pre code,
+pre > code {
+	padding: 0;
+	color: inherit;
+	background: transparent;
+	border: 0;
+	font-size: 100%;
+	white-space: pre;
+}
+
+table {
+	display: block;
+	width: max-content;
+	max-width: 100%;
+	margin: 0 0 1em;
+	border-spacing: 0;
+	border-collapse: collapse;
+	overflow: auto;
+	font-variant-numeric: tabular-nums;
+}
+
+th, td {
+	padding: 0.42rem 0.72rem;
+	border: 1px solid var(--typora-border);
+	text-align: left;
+	vertical-align: top;
+}
+
+th {
+	font-weight: 600;
+	background: var(--typora-soft);
+}
+
+tr:nth-child(even) {
+	background: #fbfcfd;
+}
+
+img {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	margin: 0.85em auto;
+	box-sizing: border-box;
+}
+
+mark {
+	padding: 0.05em 0.18em;
+	background: #fff8c5;
+	color: inherit;
+}
+
+sub, sup {
+	font-size: 0.75em;
+	line-height: 0;
+}
+
+/* ── Live-editor widgets ────────────────────────────────────────────────── */
+/* Widget roots are measured by CodeMirror. Padding keeps the deliberate gap
+   inside that measured box, while margin would make cursor positions drift. */
+.mlp-block {
+	padding: 0.62rem 0;
+}
+
+.mlp-inline-code {
+	padding: 0.12em 0.34em;
+	color: var(--typora-purple);
+	background: #eff1f3;
+	border: 1px solid #e5e7eb;
+	border-radius: 4px;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+		"Liberation Mono", "DejaVu Sans Mono", monospace;
+	font-size: 0.9em;
+}
+
+.mlp-math {
+	color: inherit;
+}
+
+.mlp-math-inline {
+	display: inline;
+}
+
+.mlp-math-display {
+	display: block;
+	max-width: 100%;
+	box-sizing: border-box;
+	padding: 0.7em 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+	text-align: center;
+}
+
+.mlp-math-display > .katex-display {
+	margin: 0;
+	min-width: max-content;
+}
+
+.mlp-hr {
+	border-top: 1px solid var(--typora-border);
+}
+
+.mlp-link {
+	color: var(--typora-blue);
+	text-decoration: none;
+}
+
+.mlp-link:hover {
+	text-decoration: underline;
+}
+
+.mlp-image {
+	max-width: 100%;
+	height: auto;
+	margin: 0.85em auto;
+	border-radius: 4px;
+}
+
+.mlp-checkbox {
+	width: 1.05em;
+	height: 1.05em;
+	box-sizing: border-box;
+	vertical-align: -0.18em;
+	background: #ffffff;
+	border: 1px solid #8c959f;
+	border-radius: 3px;
+}
+
+.mlp-checkbox-checked {
+	background: var(--typora-blue);
+	border-color: var(--typora-blue);
+}
+
+.mlp-checkbox-checked::after {
+	border-color: #ffffff;
+}
+
+table.mlp-table,
+table.mlp-frontmatter {
+	display: table;
+	width: 100%;
+	max-width: 100%;
+	margin: 0;
+	table-layout: auto;
+}
+
+table.mlp-table th,
+table.mlp-table td,
+table.mlp-frontmatter th,
+table.mlp-frontmatter td {
+	padding: 0.42rem 0.72rem;
+	border: 1px solid var(--typora-border);
+	line-height: 1.45;
+}
+
+table.mlp-table th,
+table.mlp-frontmatter th {
+	background: var(--typora-soft);
+}
+
+table.mlp-table tr:nth-child(even) {
+	background: #fbfcfd;
+}
+
+table.mlp-table th.mlp-table-cell-editing,
+table.mlp-table td.mlp-table-cell-editing {
+	outline: 2px solid var(--typora-blue);
+	outline-offset: -2px;
+	background: #ffffff;
+}
+
+.mlp-frontmatter-error {
+	padding: 0.58rem 0.8rem;
+	color: #a40e26;
+	background: #fff1f0;
+	border-left: 3px solid #cf222e;
+	border-radius: 0 4px 4px 0;
+}
+
+.mlp-frontmatter-error > * {
+	margin: 0.45rem 0 0;
+	padding: 0;
+	color: inherit;
+	background: transparent;
+	border: 0;
+}
+
+.mlp-mermaid-wrap {
+	margin: 0;
+}
+
+.mlp-mermaid {
+	padding: 0.7rem;
+	background: #ffffff;
+	border: 1px solid var(--typora-border);
+	border-radius: 6px;
+}
+
+.mlp-mermaid-error {
+	padding: 0.62rem 0.8rem;
+	color: #a40e26;
+	background: #fff1f0;
+	border: 1px solid #ffcecb;
+	border-radius: 4px;
+}
+
+.mlp-code-mode-btn,
+.mlp-copy-code-btn {
+	color: var(--typora-muted);
+	background: #ffffff;
+	border: 1px solid var(--typora-border);
+	border-radius: 4px;
+}
+
+.mlp-code-mode-btn:hover,
+.mlp-copy-code-btn:hover {
+	color: var(--typora-blue);
+	background: var(--typora-soft);
+	border-color: #8c959f;
+}
+
+.mlp-table-add-btn {
+	color: var(--typora-muted);
+	background: rgba(208, 215, 222, 0.42);
+	border: 0;
+}
+
+.mlp-table-add-btn:hover,
+.mlp-table-add-btn:focus-visible {
+	color: var(--typora-blue);
+	background: rgba(9, 105, 218, 0.12);
+}
+
+@media (max-width: 700px) {
+	body {
+		padding: 1.2rem 0.85rem 35vh;
+	}
+
+	.cm-editor .cm-content {
+		padding: 1.2rem 0.85rem 35vh;
+	}
+
+	h1 {
+		font-size: 1.72em;
+	}
+
+	h2 {
+		font-size: 1.34em;
+	}
+
+	th, td {
+		padding: 0.36rem 0.52rem;
+	}
+}

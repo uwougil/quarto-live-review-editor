@@ -5,7 +5,7 @@ import { syntaxTree, syntaxTreeAvailable } from '@codemirror/language';
 import type { ViewUpdate } from '@codemirror/view';
 import { decorationRebuildReason } from './livePreviewPlugin';
 import { buildLongDocument } from '../quarto/longDocumentFixture';
-import { findMathRanges } from '../quarto/math';
+import { findMathRanges, mathRangesField } from '../quarto/math';
 
 function fakeUpdate(
 	startState: EditorState,
@@ -67,5 +67,21 @@ describe('long document regression inputs', () => {
 			console.log(`math scan ${lineCount} lines: ${duration.toFixed(2)} ms (${ranges.length} ranges)`);
 			expect(ranges.length).toBeGreaterThan(500);
 		}
+	});
+
+	it('records cached delimiter-free edit cost alongside the full-scan baseline', () => {
+		const doc = buildLongDocument(20_000);
+		const initial = EditorState.create({ doc, extensions: [mathRangesField] });
+		const original = initial.field(mathRangesField);
+		const fullScanStart = performance.now();
+		const fullScan = findMathRanges(doc);
+		const fullScanMs = performance.now() - fullScanStart;
+		const editStart = performance.now();
+		const edited = initial.update({ changes: { from: 0, to: 0, insert: 'prefix ' } }).state;
+		const editMs = performance.now() - editStart;
+		const mapped = edited.field(mathRangesField);
+		console.log(`math edit 20k lines: ${editMs.toFixed(2)} ms (cached ${mapped.length} ranges; full scan ${fullScanMs.toFixed(2)} ms)`);
+		expect(mapped).toHaveLength(fullScan.length);
+		expect(mapped[0].from).toBe(original[0].from + 7);
 	});
 });

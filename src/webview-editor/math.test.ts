@@ -70,6 +70,83 @@ describe('findMathRanges', () => {
 		expect(edited.field(mathRangesField)[0].tex).toBe('y');
 	});
 
+	it('maps cached ranges for a delimiter-free edit before a formula', () => {
+		const initial = EditorState.create({ doc: 'intro\n\n$a$\n', extensions: [mathRangesField] });
+		const original = initial.field(mathRangesField)[0];
+		const edited = initial.update({ changes: { from: 0, to: 0, insert: 'prefix ' } }).state;
+		const next = edited.field(mathRangesField)[0];
+		expect(next).toEqual({ ...original, from: original.from + 7, to: original.to + 7 });
+	});
+
+	it('rescans edits that can change delimiters, protected contexts, or multiline TeX', () => {
+		const cases = [
+			{
+				name: 'inline body',
+				text: 'before $x$ after',
+				changes: { from: 8, to: 9, insert: 'y' },
+				expected: ['y'],
+			},
+			{
+				name: 'add delimiter',
+				text: 'before x after',
+				changes: { from: 7, to: 8, insert: '$x$' },
+				expected: ['x'],
+			},
+			{
+				name: 'remove delimiter',
+				text: 'before $x$ after',
+				changes: { from: 7, to: 8, insert: '' },
+				expected: [],
+			},
+			{
+				name: 'multiline display body',
+				text: '$$\nx = 1\n$$',
+				changes: { from: 7, to: 8, insert: '2' },
+				expected: ['x = 2'],
+			},
+			{
+				name: 'fenced code',
+				text: '```python\nprice = 1\n```',
+				changes: { from: 19, to: 20, insert: '$x$' },
+				expected: [],
+			},
+			{
+				name: 'frontmatter',
+				text: '---\ntitle: plain\n---\ntext',
+				changes: { from: 12, to: 17, insert: '"$x$"' },
+				expected: [],
+			},
+			{
+				name: 'escaped dollar',
+				text: '$x$ and text',
+				changes: { from: 0, to: 0, insert: '\\' },
+				expected: [],
+			},
+			{
+				name: 'code span',
+				text: '`code`',
+				changes: { from: 1, to: 5, insert: '$x$' },
+				expected: [],
+			},
+		];
+		for (const testCase of cases) {
+			const initial = EditorState.create({ doc: testCase.text, extensions: [mathRangesField] });
+			const edited = initial.update({ changes: testCase.changes }).state;
+			expect(edited.field(mathRangesField).map((range) => range.tex), testCase.name).toEqual(testCase.expected);
+		}
+	});
+
+	it('falls back to a full scan for multiple edits in one transaction', () => {
+		const initial = EditorState.create({ doc: 'a $x$ b $y$', extensions: [mathRangesField] });
+		const edited = initial.update({
+			changes: [
+				{ from: 0, to: 0, insert: 'prefix ' },
+				{ from: 6, to: 7, insert: 'z' },
+			],
+		}).state;
+		expect(edited.field(mathRangesField).map((range) => range.tex)).toEqual(['x', 'y']);
+	});
+
 	it('reveals source when a caret or selection intersects a range', () => {
 		const text = 'A $x$ B';
 		const range = findMathRanges(text)[0];
