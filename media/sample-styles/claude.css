@@ -1,456 +1,456 @@
-/*
- * Claude Manuscript — 温暖、克制的长文写作主题。
- *
- * 这是一个面向论文、研究日志和长篇笔记的静态 CSS 主题。选择器保持与
- * VS Code Markdown 预览兼容；实时编辑器的块级行和 Quarto 小部件由
- * cssAdapter.ts 与下方的 .mlp-* 补充规则共同覆盖。
- * 不依赖外部字体、图片、渐变或网络资源。
- */
-body {
-	--claude-page: #faf8f3;
-	--claude-paper: #fffdf9;
-	--claude-text: #302e2b;
-	--claude-muted: #6b665f;
-	--claude-border: #ded7cd;
-	--claude-soft: #f1ede6;
-	--claude-accent: #986247;
-	--claude-accent-soft: #e8d5c9;
-	--claude-code: #49433d;
-}
-
-body {
-	margin: 0 auto;
-	max-width: 880px;
-	padding: 3rem clamp(1.2rem, 5vw, 3.6rem) 3.5rem;
-	box-sizing: border-box;
-	color: var(--claude-text);
-	background: var(--claude-page);
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
-		"Noto Sans CJK SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
-	font-size: 15px;
-	font-weight: 400;
-	line-height: 1.78;
-	word-wrap: break-word;
-	-webkit-font-smoothing: antialiased;
-}
-
-/* Keep the live editor's reading column at the same manuscript width as the
-   static style preview, with enough side room for equations and tables. */
-.cm-editor .cm-content {
-	width: 100%;
-	max-width: 880px;
-	margin: 0 auto;
-	box-sizing: border-box;
-	padding: 3rem clamp(1.2rem, 5vw, 3.6rem) 48vh;
-	color: var(--claude-text);
-	background: var(--claude-page);
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
-		"Noto Sans CJK SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
-	line-height: 1.78;
-}
-
-h1, h2, h3, h4, h5, h6 {
-	color: var(--claude-text);
-	font-family: ui-serif, Georgia, Cambria, "Times New Roman", "Noto Serif CJK SC",
-		"Songti SC", SimSun, serif;
-	font-weight: 600;
-	line-height: 1.2;
-	letter-spacing: -0.012em;
-}
-
-h1 {
-	margin-top: 0;
-	margin-bottom: 0.9em;
-	padding-bottom: 0.42em;
-	font-size: 2.02em;
-	border-bottom: 1px solid var(--claude-border);
-}
-
-h2 {
-	margin-top: 1.85em;
-	margin-bottom: 0.72em;
-	padding-bottom: 0.25em;
-	font-size: 1.54em;
-	border-bottom: 1px solid color-mix(in srgb, var(--claude-border) 66%, transparent);
-}
-
-h3 {
-	margin-top: 1.65em;
-	margin-bottom: 0.58em;
-	font-size: 1.25em;
-}
-
-h4 {
-	margin-top: 1.4em;
-	margin-bottom: 0.48em;
-	font-size: 1.08em;
-}
-
-h5 {
-	margin-top: 1.25em;
-	margin-bottom: 0.4em;
-	font-size: 1em;
-}
-
-h6 {
-	margin-top: 1.15em;
-	margin-bottom: 0.35em;
-	font-size: 0.94em;
-	color: var(--claude-muted);
-}
-
-p {
-	margin-top: 0;
-	margin-bottom: 1.08em;
-}
-
-strong, b {
-	font-weight: 650;
-}
-
-em, dfn {
-	font-style: italic;
-}
-
-del, s {
-	color: var(--claude-muted);
-	text-decoration: line-through;
-}
-
-a {
-	color: var(--claude-accent);
-	text-decoration: underline;
-	text-decoration-color: var(--claude-accent-soft);
-	text-decoration-thickness: 1px;
-	text-underline-offset: 0.16em;
-}
-
-a:hover {
-	color: #754936;
-	text-decoration-color: currentColor;
-}
-
-hr {
-	height: 0;
-	margin: 2rem 0;
-	border: 0;
-	border-top: 1px solid var(--claude-border);
-}
-
-ul, ol {
-	margin-top: 0;
-	margin-bottom: 1.08em;
-	padding-left: 1.8em;
-}
-
-li {
-	margin: 0.2em 0;
-}
-
-li + li {
-	margin-top: 0.24em;
-}
-
-li > p {
-	margin-bottom: 0.66em;
-}
-
-blockquote {
-	margin: 0 0 1.15em;
-	padding: 0 1.15em;
-	color: var(--claude-muted);
-	background: rgba(241, 237, 230, 0.52);
-	border-left: 3px solid var(--claude-accent-soft);
-	border-radius: 0 7px 7px 0;
-}
-
-blockquote > :first-child {
-	margin-top: 0;
-}
-
-blockquote > :last-child {
-	margin-bottom: 0;
-}
-
-code, kbd, pre, samp {
-	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-		"Liberation Mono", "DejaVu Sans Mono", monospace;
-}
-
-code {
-	padding: 0.14em 0.36em;
-	color: #79513f;
-	background: var(--claude-soft);
-	border: 1px solid #e4ddd3;
-	border-radius: 5px;
-	font-size: 0.9em;
-	white-space: break-spaces;
-}
-
-pre {
-	margin: 0 0 1.18em;
-	padding: 1rem 1.05rem;
-	color: var(--claude-code);
-	background: #f0ece5;
-	border: 1px solid var(--claude-border);
-	border-radius: 8px;
-	font-size: 0.9em;
-	line-height: 1.58;
-	overflow: auto;
-}
-
-pre code,
-pre > code {
-	padding: 0;
-	color: inherit;
-	background: transparent;
-	border: 0;
-	font-size: 100%;
-	white-space: pre;
-}
-
-table {
-	display: block;
-	width: max-content;
-	max-width: 100%;
-	margin: 0 0 1.2em;
-	border-spacing: 0;
-	border-collapse: collapse;
-	overflow: auto;
-	font-variant-numeric: tabular-nums;
-}
-
-th, td {
-	padding: 0.52rem 0.78rem;
-	border: 1px solid var(--claude-border);
-	text-align: left;
-	vertical-align: top;
-}
-
-th {
-	font-weight: 600;
-	background: var(--claude-soft);
-}
-
-tr:nth-child(even) {
-	background: rgba(241, 237, 230, 0.34);
-}
-
-img {
-	display: block;
-	max-width: 100%;
-	height: auto;
-	margin: 1.1em auto;
-	box-sizing: border-box;
-	border-radius: 8px;
-}
-
-mark {
-	padding: 0.05em 0.18em;
-	background: #f2df9b;
-	color: inherit;
-}
-
-sub, sup {
-	font-size: 0.75em;
-	line-height: 0;
-}
-
-/* ── Live-editor widgets ────────────────────────────────────────────────── */
-.mlp-block {
-	padding: 0.85rem 0;
-}
-
-.mlp-inline-code {
-	padding: 0.14em 0.36em;
-	color: #79513f;
-	background: var(--claude-soft);
-	border: 1px solid #e4ddd3;
-	border-radius: 5px;
-	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-		"Liberation Mono", "DejaVu Sans Mono", monospace;
-	font-size: 0.9em;
-}
-
-.mlp-math {
-	color: inherit;
-}
-
-.mlp-math-inline {
-	display: inline;
-}
-
-.mlp-math-display {
-	display: block;
-	max-width: 100%;
-	box-sizing: border-box;
-	padding: 1em 0;
-	overflow-x: auto;
-	overflow-y: hidden;
-	text-align: center;
-}
-
-.mlp-math-display > .katex-display {
-	margin: 0;
-	min-width: max-content;
-}
-
-.mlp-hr {
-	border-top: 1px solid var(--claude-border);
-}
-
-.mlp-link {
-	color: var(--claude-accent);
-	text-decoration: underline;
-	text-decoration-color: var(--claude-accent-soft);
-	text-underline-offset: 0.16em;
-}
-
-.mlp-link:hover {
-	color: #754936;
-	text-decoration-color: currentColor;
-}
-
-.mlp-image {
-	max-width: 100%;
-	height: auto;
-	margin: 1.1em auto;
-	border-radius: 8px;
-}
-
-.mlp-checkbox {
-	width: 1.05em;
-	height: 1.05em;
-	box-sizing: border-box;
-	vertical-align: -0.18em;
-	background: var(--claude-paper);
-	border: 1px solid #a69a8d;
-	border-radius: 4px;
-}
-
-.mlp-checkbox-checked {
-	background: var(--claude-accent);
-	border-color: var(--claude-accent);
-}
-
-.mlp-checkbox-checked::after {
-	border-color: #fffdf9;
-}
-
-table.mlp-table,
-table.mlp-frontmatter {
-	display: table;
-	width: 100%;
-	max-width: 100%;
-	margin: 0;
-	table-layout: auto;
-}
-
-table.mlp-table th,
-table.mlp-table td,
-table.mlp-frontmatter th,
-table.mlp-frontmatter td {
-	padding: 0.52rem 0.78rem;
-	border: 1px solid var(--claude-border);
-	line-height: 1.5;
-}
-
-table.mlp-table th,
-table.mlp-frontmatter th {
-	background: var(--claude-soft);
-}
-
-table.mlp-table tr:nth-child(even) {
-	background: rgba(241, 237, 230, 0.34);
-}
-
-table.mlp-table th.mlp-table-cell-editing,
-table.mlp-table td.mlp-table-cell-editing {
-	outline: 2px solid var(--claude-accent);
-	outline-offset: -2px;
-	background: var(--claude-paper);
-}
-
-.mlp-frontmatter-error {
-	padding: 0.68rem 0.9rem;
-	color: #8a4338;
-	background: #f8e9e3;
-	border-left: 3px solid #b66d58;
-	border-radius: 0 7px 7px 0;
-}
-
-.mlp-frontmatter-error > * {
-	margin: 0.5rem 0 0;
-	padding: 0;
-	color: inherit;
-	background: transparent;
-	border: 0;
-}
-
-.mlp-mermaid-wrap {
-	margin: 0;
-}
-
-.mlp-mermaid {
-	padding: 0.85rem;
-	background: var(--claude-paper);
-	border: 1px solid var(--claude-border);
-	border-radius: 8px;
-}
-
-.mlp-mermaid-error {
-	padding: 0.68rem 0.9rem;
-	color: #8a4338;
-	background: #f8e9e3;
-	border: 1px solid #e4c6ba;
-	border-radius: 7px;
-}
-
-.mlp-code-mode-btn,
-.mlp-copy-code-btn {
-	color: var(--claude-muted);
-	background: var(--claude-paper);
-	border: 1px solid var(--claude-border);
-	border-radius: 5px;
-}
-
-.mlp-code-mode-btn:hover,
-.mlp-copy-code-btn:hover {
-	color: var(--claude-accent);
-	background: var(--claude-soft);
-	border-color: #c5b7aa;
-}
-
-.mlp-table-add-btn {
-	color: var(--claude-muted);
-	background: rgba(222, 215, 205, 0.56);
-	border: 0;
-}
-
-.mlp-table-add-btn:hover,
-.mlp-table-add-btn:focus-visible {
-	color: var(--claude-accent);
-	background: rgba(152, 98, 71, 0.13);
-}
-
-@media (max-width: 700px) {
-	body {
-		padding: 1.6rem 0.95rem 38vh;
-	}
-
-	.cm-editor .cm-content {
-		padding: 1.6rem 0.95rem 38vh;
-	}
-
-	h1 {
-		font-size: 1.78em;
-	}
-
-	h2 {
-		font-size: 1.4em;
-	}
-
-	th, td {
-		padding: 0.44rem 0.58rem;
-	}
-}
+/* 第1行：主题说明开始 */
+/* 第2行：Claude Manuscript — 温暖、克制的长文写作主题。 */
+/* 第3行：主题说明继续 */
+/* 第4行：这是一个面向论文、研究日志和长篇笔记的静态 CSS 主题。选择器保持与 */
+/* 第5行：VS Code Markdown 预览兼容；实时编辑器的块级行和 Quarto 小部件由 */
+/* 第6行：cssAdapter.ts 与下方的 .mlp-* 补充规则共同覆盖。 */
+/* 第7行：不依赖外部字体、图片、渐变或网络资源。 */
+/* 第8行：主题说明继续 */
+body { /* 第9行：选择器 body 开始 */
+	--claude-page: #faf8f3; /* 第10行：定义主题变量 --claude-page */
+	--claude-paper: #fffdf9; /* 第11行：定义主题变量 --claude-paper */
+	--claude-text: #302e2b; /* 第12行：定义主题变量 --claude-text */
+	--claude-muted: #6b665f; /* 第13行：定义主题变量 --claude-muted */
+	--claude-border: #ded7cd; /* 第14行：定义主题变量 --claude-border */
+	--claude-soft: #f1ede6; /* 第15行：定义主题变量 --claude-soft */
+	--claude-accent: #986247; /* 第16行：定义主题变量 --claude-accent */
+	--claude-accent-soft: #e8d5c9; /* 第17行：定义主题变量 --claude-accent-soft */
+	--claude-code: #49433d; /* 第18行：定义主题变量 --claude-code */
+} /* 第19行：结束当前 CSS 规则 */
+
+body { /* 第21行：选择器 body 开始 */
+	margin: 0 auto; /* 第22行：设置外边距 */
+	max-width: 880px; /* 第23行：限制最大宽度 */
+	padding: 3rem clamp(1.2rem, 5vw, 3.6rem) 3.5rem; /* 第24行：设置内边距 */
+	box-sizing: border-box; /* 第25行：设置盒模型 */
+	color: var(--claude-text); /* 第26行：设置文字颜色 */
+	background: var(--claude-page); /* 第27行：设置背景颜色 */
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", /* 第28行：继续上一行的选择器或字体值 */
+		"Noto Sans CJK SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif; /* 第29行：保留原主题结构 */
+	font-size: 15px; /* 第30行：设置字号 */
+	font-weight: 400; /* 第31行：设置字重 */
+	line-height: 1.78; /* 第32行：设置行高 */
+	word-wrap: break-word; /* 第33行：设置 CSS 属性 word-wrap */
+	-webkit-font-smoothing: antialiased; /* 第34行：设置 CSS 属性 -webkit-font-smoothing */
+} /* 第35行：结束当前 CSS 规则 */
+
+/* 第37行：Keep the live editor's reading column at the same manuscript width as the */
+/* 第38行：static style preview, with enough side room for equations and tables. */
+.cm-editor .cm-content { /* 第39行：选择器 .cm-editor .cm-content 开始 */
+	width: 100%; /* 第40行：设置宽度 */
+	max-width: 880px; /* 第41行：限制最大宽度 */
+	margin: 0 auto; /* 第42行：设置外边距 */
+	box-sizing: border-box; /* 第43行：设置盒模型 */
+	padding: 3rem clamp(1.2rem, 5vw, 3.6rem) 48vh; /* 第44行：设置内边距 */
+	color: var(--claude-text); /* 第45行：设置文字颜色 */
+	background: var(--claude-page); /* 第46行：设置背景颜色 */
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", /* 第47行：继续上一行的选择器或字体值 */
+		"Noto Sans CJK SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif; /* 第48行：保留原主题结构 */
+	line-height: 1.78; /* 第49行：设置行高 */
+} /* 第50行：结束当前 CSS 规则 */
+
+h1, h2, h3, h4, h5, h6 { /* 第52行：选择器 h1, h2, h3, h4, h5, h6 开始 */
+	color: var(--claude-text); /* 第53行：设置文字颜色 */
+	font-family: ui-serif, Georgia, Cambria, "Times New Roman", "Noto Serif CJK SC", /* 第54行：继续上一行的选择器或字体值 */
+		"Songti SC", SimSun, serif; /* 第55行：保留原主题结构 */
+	font-weight: 600; /* 第56行：设置字重 */
+	line-height: 1.2; /* 第57行：设置行高 */
+	letter-spacing: -0.012em; /* 第58行：设置 CSS 属性 letter-spacing */
+} /* 第59行：结束当前 CSS 规则 */
+
+h1 { /* 第61行：选择器 h1 开始 */
+	margin-top: 0; /* 第62行：设置 CSS 属性 margin-top */
+	margin-bottom: 0.9em; /* 第63行：设置 CSS 属性 margin-bottom */
+	padding-bottom: 0.42em; /* 第64行：设置 CSS 属性 padding-bottom */
+	font-size: 2.02em; /* 第65行：设置字号 */
+	border-bottom: 1px solid var(--claude-border); /* 第66行：设置 CSS 属性 border-bottom */
+} /* 第67行：结束当前 CSS 规则 */
+
+h2 { /* 第69行：选择器 h2 开始 */
+	margin-top: 1.85em; /* 第70行：设置 CSS 属性 margin-top */
+	margin-bottom: 0.72em; /* 第71行：设置 CSS 属性 margin-bottom */
+	padding-bottom: 0.25em; /* 第72行：设置 CSS 属性 padding-bottom */
+	font-size: 1.54em; /* 第73行：设置字号 */
+	border-bottom: 1px solid color-mix(in srgb, var(--claude-border) 66%, transparent); /* 第74行：设置 CSS 属性 border-bottom */
+} /* 第75行：结束当前 CSS 规则 */
+
+h3 { /* 第77行：选择器 h3 开始 */
+	margin-top: 1.65em; /* 第78行：设置 CSS 属性 margin-top */
+	margin-bottom: 0.58em; /* 第79行：设置 CSS 属性 margin-bottom */
+	font-size: 1.25em; /* 第80行：设置字号 */
+} /* 第81行：结束当前 CSS 规则 */
+
+h4 { /* 第83行：选择器 h4 开始 */
+	margin-top: 1.4em; /* 第84行：设置 CSS 属性 margin-top */
+	margin-bottom: 0.48em; /* 第85行：设置 CSS 属性 margin-bottom */
+	font-size: 1.08em; /* 第86行：设置字号 */
+} /* 第87行：结束当前 CSS 规则 */
+
+h5 { /* 第89行：选择器 h5 开始 */
+	margin-top: 1.25em; /* 第90行：设置 CSS 属性 margin-top */
+	margin-bottom: 0.4em; /* 第91行：设置 CSS 属性 margin-bottom */
+	font-size: 1em; /* 第92行：设置字号 */
+} /* 第93行：结束当前 CSS 规则 */
+
+h6 { /* 第95行：选择器 h6 开始 */
+	margin-top: 1.15em; /* 第96行：设置 CSS 属性 margin-top */
+	margin-bottom: 0.35em; /* 第97行：设置 CSS 属性 margin-bottom */
+	font-size: 0.94em; /* 第98行：设置字号 */
+	color: var(--claude-muted); /* 第99行：设置文字颜色 */
+} /* 第100行：结束当前 CSS 规则 */
+
+p { /* 第102行：选择器 p 开始 */
+	margin-top: 0; /* 第103行：设置 CSS 属性 margin-top */
+	margin-bottom: 1.08em; /* 第104行：设置 CSS 属性 margin-bottom */
+} /* 第105行：结束当前 CSS 规则 */
+
+strong, b { /* 第107行：选择器 strong, b 开始 */
+	font-weight: 650; /* 第108行：设置字重 */
+} /* 第109行：结束当前 CSS 规则 */
+
+em, dfn { /* 第111行：选择器 em, dfn 开始 */
+	font-style: italic; /* 第112行：设置文字样式 */
+} /* 第113行：结束当前 CSS 规则 */
+
+del, s { /* 第115行：选择器 del, s 开始 */
+	color: var(--claude-muted); /* 第116行：设置文字颜色 */
+	text-decoration: line-through; /* 第117行：设置文字装饰 */
+} /* 第118行：结束当前 CSS 规则 */
+
+a { /* 第120行：选择器 a 开始 */
+	color: var(--claude-accent); /* 第121行：设置文字颜色 */
+	text-decoration: underline; /* 第122行：设置文字装饰 */
+	text-decoration-color: var(--claude-accent-soft); /* 第123行：设置 CSS 属性 text-decoration-color */
+	text-decoration-thickness: 1px; /* 第124行：设置 CSS 属性 text-decoration-thickness */
+	text-underline-offset: 0.16em; /* 第125行：设置 CSS 属性 text-underline-offset */
+} /* 第126行：结束当前 CSS 规则 */
+
+a:hover { /* 第128行：选择器 a:hover 开始 */
+	color: #754936; /* 第129行：设置文字颜色 */
+	text-decoration-color: currentColor; /* 第130行：设置 CSS 属性 text-decoration-color */
+} /* 第131行：结束当前 CSS 规则 */
+
+hr { /* 第133行：选择器 hr 开始 */
+	height: 0; /* 第134行：设置高度 */
+	margin: 2rem 0; /* 第135行：设置外边距 */
+	border: 0; /* 第136行：设置边框 */
+	border-top: 1px solid var(--claude-border); /* 第137行：设置 CSS 属性 border-top */
+} /* 第138行：结束当前 CSS 规则 */
+
+ul, ol { /* 第140行：选择器 ul, ol 开始 */
+	margin-top: 0; /* 第141行：设置 CSS 属性 margin-top */
+	margin-bottom: 1.08em; /* 第142行：设置 CSS 属性 margin-bottom */
+	padding-left: 1.8em; /* 第143行：设置 CSS 属性 padding-left */
+} /* 第144行：结束当前 CSS 规则 */
+
+li { /* 第146行：选择器 li 开始 */
+	margin: 0.2em 0; /* 第147行：设置外边距 */
+} /* 第148行：结束当前 CSS 规则 */
+
+li + li { /* 第150行：选择器 li + li 开始 */
+	margin-top: 0.24em; /* 第151行：设置 CSS 属性 margin-top */
+} /* 第152行：结束当前 CSS 规则 */
+
+li > p { /* 第154行：选择器 li > p 开始 */
+	margin-bottom: 0.66em; /* 第155行：设置 CSS 属性 margin-bottom */
+} /* 第156行：结束当前 CSS 规则 */
+
+blockquote { /* 第158行：选择器 blockquote 开始 */
+	margin: 0 0 1.15em; /* 第159行：设置外边距 */
+	padding: 0 1.15em; /* 第160行：设置内边距 */
+	color: var(--claude-muted); /* 第161行：设置文字颜色 */
+	background: rgba(241, 237, 230, 0.52); /* 第162行：设置背景颜色 */
+	border-left: 3px solid var(--claude-accent-soft); /* 第163行：设置 CSS 属性 border-left */
+	border-radius: 0 7px 7px 0; /* 第164行：设置圆角 */
+} /* 第165行：结束当前 CSS 规则 */
+
+blockquote > :first-child { /* 第167行：选择器 blockquote > :first-child 开始 */
+	margin-top: 0; /* 第168行：设置 CSS 属性 margin-top */
+} /* 第169行：结束当前 CSS 规则 */
+
+blockquote > :last-child { /* 第171行：选择器 blockquote > :last-child 开始 */
+	margin-bottom: 0; /* 第172行：设置 CSS 属性 margin-bottom */
+} /* 第173行：结束当前 CSS 规则 */
+
+code, kbd, pre, samp { /* 第175行：选择器 code, kbd, pre, samp 开始 */
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, /* 第176行：继续上一行的选择器或字体值 */
+		"Liberation Mono", "DejaVu Sans Mono", monospace; /* 第177行：保留原主题结构 */
+} /* 第178行：结束当前 CSS 规则 */
+
+code { /* 第180行：选择器 code 开始 */
+	padding: 0.14em 0.36em; /* 第181行：设置内边距 */
+	color: #79513f; /* 第182行：设置文字颜色 */
+	background: var(--claude-soft); /* 第183行：设置背景颜色 */
+	border: 1px solid #e4ddd3; /* 第184行：设置边框 */
+	border-radius: 5px; /* 第185行：设置圆角 */
+	font-size: 0.9em; /* 第186行：设置字号 */
+	white-space: break-spaces; /* 第187行：设置空白和换行方式 */
+} /* 第188行：结束当前 CSS 规则 */
+
+pre { /* 第190行：选择器 pre 开始 */
+	margin: 0 0 1.18em; /* 第191行：设置外边距 */
+	padding: 1rem 1.05rem; /* 第192行：设置内边距 */
+	color: var(--claude-code); /* 第193行：设置文字颜色 */
+	background: #f0ece5; /* 第194行：设置背景颜色 */
+	border: 1px solid var(--claude-border); /* 第195行：设置边框 */
+	border-radius: 8px; /* 第196行：设置圆角 */
+	font-size: 0.9em; /* 第197行：设置字号 */
+	line-height: 1.58; /* 第198行：设置行高 */
+	overflow: auto; /* 第199行：设置溢出处理方式 */
+} /* 第200行：结束当前 CSS 规则 */
+
+pre code, /* 第202行：继续上一行的选择器或字体值 */
+pre > code { /* 第203行：选择器 pre > code 开始 */
+	padding: 0; /* 第204行：设置内边距 */
+	color: inherit; /* 第205行：设置文字颜色 */
+	background: transparent; /* 第206行：设置背景颜色 */
+	border: 0; /* 第207行：设置边框 */
+	font-size: 100%; /* 第208行：设置字号 */
+	white-space: pre; /* 第209行：设置空白和换行方式 */
+} /* 第210行：结束当前 CSS 规则 */
+
+table { /* 第212行：选择器 table 开始 */
+	display: block; /* 第213行：设置显示方式 */
+	width: max-content; /* 第214行：设置宽度 */
+	max-width: 100%; /* 第215行：限制最大宽度 */
+	margin: 0 0 1.2em; /* 第216行：设置外边距 */
+	border-spacing: 0; /* 第217行：设置表格间距 */
+	border-collapse: collapse; /* 第218行：设置表格边框合并方式 */
+	overflow: auto; /* 第219行：设置溢出处理方式 */
+	font-variant-numeric: tabular-nums; /* 第220行：设置数字字形 */
+} /* 第221行：结束当前 CSS 规则 */
+
+th, td { /* 第223行：选择器 th, td 开始 */
+	padding: 0.52rem 0.78rem; /* 第224行：设置内边距 */
+	border: 1px solid var(--claude-border); /* 第225行：设置边框 */
+	text-align: left; /* 第226行：设置文字对齐方式 */
+	vertical-align: top; /* 第227行：设置垂直对齐方式 */
+} /* 第228行：结束当前 CSS 规则 */
+
+th { /* 第230行：选择器 th 开始 */
+	font-weight: 600; /* 第231行：设置字重 */
+	background: var(--claude-soft); /* 第232行：设置背景颜色 */
+} /* 第233行：结束当前 CSS 规则 */
+
+tr:nth-child(even) { /* 第235行：选择器 tr:nth-child(even) 开始 */
+	background: rgba(241, 237, 230, 0.34); /* 第236行：设置背景颜色 */
+} /* 第237行：结束当前 CSS 规则 */
+
+img { /* 第239行：选择器 img 开始 */
+	display: block; /* 第240行：设置显示方式 */
+	max-width: 100%; /* 第241行：限制最大宽度 */
+	height: auto; /* 第242行：设置高度 */
+	margin: 1.1em auto; /* 第243行：设置外边距 */
+	box-sizing: border-box; /* 第244行：设置盒模型 */
+	border-radius: 8px; /* 第245行：设置圆角 */
+} /* 第246行：结束当前 CSS 规则 */
+
+mark { /* 第248行：选择器 mark 开始 */
+	padding: 0.05em 0.18em; /* 第249行：设置内边距 */
+	background: #f2df9b; /* 第250行：设置背景颜色 */
+	color: inherit; /* 第251行：设置文字颜色 */
+} /* 第252行：结束当前 CSS 规则 */
+
+sub, sup { /* 第254行：选择器 sub, sup 开始 */
+	font-size: 0.75em; /* 第255行：设置字号 */
+	line-height: 0; /* 第256行：设置行高 */
+} /* 第257行：结束当前 CSS 规则 */
+
+/* 第259行：── Live-editor widgets ────────────────────────────────────────────────── */
+.mlp-block { /* 第260行：选择器 .mlp-block 开始 */
+	padding: 0.85rem 0; /* 第261行：设置内边距 */
+} /* 第262行：结束当前 CSS 规则 */
+
+.mlp-inline-code { /* 第264行：选择器 .mlp-inline-code 开始 */
+	padding: 0.14em 0.36em; /* 第265行：设置内边距 */
+	color: #79513f; /* 第266行：设置文字颜色 */
+	background: var(--claude-soft); /* 第267行：设置背景颜色 */
+	border: 1px solid #e4ddd3; /* 第268行：设置边框 */
+	border-radius: 5px; /* 第269行：设置圆角 */
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, /* 第270行：继续上一行的选择器或字体值 */
+		"Liberation Mono", "DejaVu Sans Mono", monospace; /* 第271行：保留原主题结构 */
+	font-size: 0.9em; /* 第272行：设置字号 */
+} /* 第273行：结束当前 CSS 规则 */
+
+.mlp-math { /* 第275行：选择器 .mlp-math 开始 */
+	color: inherit; /* 第276行：设置文字颜色 */
+} /* 第277行：结束当前 CSS 规则 */
+
+.mlp-math-inline { /* 第279行：选择器 .mlp-math-inline 开始 */
+	display: inline; /* 第280行：设置显示方式 */
+} /* 第281行：结束当前 CSS 规则 */
+
+.mlp-math-display { /* 第283行：选择器 .mlp-math-display 开始 */
+	display: block; /* 第284行：设置显示方式 */
+	max-width: 100%; /* 第285行：限制最大宽度 */
+	box-sizing: border-box; /* 第286行：设置盒模型 */
+	padding: 1em 0; /* 第287行：设置内边距 */
+	overflow-x: auto; /* 第288行：设置 CSS 属性 overflow-x */
+	overflow-y: hidden; /* 第289行：设置 CSS 属性 overflow-y */
+	text-align: center; /* 第290行：设置文字对齐方式 */
+} /* 第291行：结束当前 CSS 规则 */
+
+.mlp-math-display > .katex-display { /* 第293行：选择器 .mlp-math-display > .katex-display 开始 */
+	margin: 0; /* 第294行：设置外边距 */
+	min-width: max-content; /* 第295行：设置 CSS 属性 min-width */
+} /* 第296行：结束当前 CSS 规则 */
+
+.mlp-hr { /* 第298行：选择器 .mlp-hr 开始 */
+	border-top: 1px solid var(--claude-border); /* 第299行：设置 CSS 属性 border-top */
+} /* 第300行：结束当前 CSS 规则 */
+
+.mlp-link { /* 第302行：选择器 .mlp-link 开始 */
+	color: var(--claude-accent); /* 第303行：设置文字颜色 */
+	text-decoration: underline; /* 第304行：设置文字装饰 */
+	text-decoration-color: var(--claude-accent-soft); /* 第305行：设置 CSS 属性 text-decoration-color */
+	text-underline-offset: 0.16em; /* 第306行：设置 CSS 属性 text-underline-offset */
+} /* 第307行：结束当前 CSS 规则 */
+
+.mlp-link:hover { /* 第309行：选择器 .mlp-link:hover 开始 */
+	color: #754936; /* 第310行：设置文字颜色 */
+	text-decoration-color: currentColor; /* 第311行：设置 CSS 属性 text-decoration-color */
+} /* 第312行：结束当前 CSS 规则 */
+
+.mlp-image { /* 第314行：选择器 .mlp-image 开始 */
+	max-width: 100%; /* 第315行：限制最大宽度 */
+	height: auto; /* 第316行：设置高度 */
+	margin: 1.1em auto; /* 第317行：设置外边距 */
+	border-radius: 8px; /* 第318行：设置圆角 */
+} /* 第319行：结束当前 CSS 规则 */
+
+.mlp-checkbox { /* 第321行：选择器 .mlp-checkbox 开始 */
+	width: 1.05em; /* 第322行：设置宽度 */
+	height: 1.05em; /* 第323行：设置高度 */
+	box-sizing: border-box; /* 第324行：设置盒模型 */
+	vertical-align: -0.18em; /* 第325行：设置垂直对齐方式 */
+	background: var(--claude-paper); /* 第326行：设置背景颜色 */
+	border: 1px solid #a69a8d; /* 第327行：设置边框 */
+	border-radius: 4px; /* 第328行：设置圆角 */
+} /* 第329行：结束当前 CSS 规则 */
+
+.mlp-checkbox-checked { /* 第331行：选择器 .mlp-checkbox-checked 开始 */
+	background: var(--claude-accent); /* 第332行：设置背景颜色 */
+	border-color: var(--claude-accent); /* 第333行：设置 CSS 属性 border-color */
+} /* 第334行：结束当前 CSS 规则 */
+
+.mlp-checkbox-checked::after { /* 第336行：选择器 .mlp-checkbox-checked::after 开始 */
+	border-color: #fffdf9; /* 第337行：设置 CSS 属性 border-color */
+} /* 第338行：结束当前 CSS 规则 */
+
+table.mlp-table, /* 第340行：继续上一行的选择器或字体值 */
+table.mlp-frontmatter { /* 第341行：选择器 table.mlp-frontmatter 开始 */
+	display: table; /* 第342行：设置显示方式 */
+	width: 100%; /* 第343行：设置宽度 */
+	max-width: 100%; /* 第344行：限制最大宽度 */
+	margin: 0; /* 第345行：设置外边距 */
+	table-layout: auto; /* 第346行：设置表格布局 */
+} /* 第347行：结束当前 CSS 规则 */
+
+table.mlp-table th, /* 第349行：继续上一行的选择器或字体值 */
+table.mlp-table td, /* 第350行：继续上一行的选择器或字体值 */
+table.mlp-frontmatter th, /* 第351行：继续上一行的选择器或字体值 */
+table.mlp-frontmatter td { /* 第352行：选择器 table.mlp-frontmatter td 开始 */
+	padding: 0.52rem 0.78rem; /* 第353行：设置内边距 */
+	border: 1px solid var(--claude-border); /* 第354行：设置边框 */
+	line-height: 1.5; /* 第355行：设置行高 */
+} /* 第356行：结束当前 CSS 规则 */
+
+table.mlp-table th, /* 第358行：继续上一行的选择器或字体值 */
+table.mlp-frontmatter th { /* 第359行：选择器 table.mlp-frontmatter th 开始 */
+	background: var(--claude-soft); /* 第360行：设置背景颜色 */
+} /* 第361行：结束当前 CSS 规则 */
+
+table.mlp-table tr:nth-child(even) { /* 第363行：选择器 table.mlp-table tr:nth-child(even) 开始 */
+	background: rgba(241, 237, 230, 0.34); /* 第364行：设置背景颜色 */
+} /* 第365行：结束当前 CSS 规则 */
+
+table.mlp-table th.mlp-table-cell-editing, /* 第367行：继续上一行的选择器或字体值 */
+table.mlp-table td.mlp-table-cell-editing { /* 第368行：选择器 table.mlp-table td.mlp-table-cell-editing 开始 */
+	outline: 2px solid var(--claude-accent); /* 第369行：设置外轮廓 */
+	outline-offset: -2px; /* 第370行：设置外轮廓偏移 */
+	background: var(--claude-paper); /* 第371行：设置背景颜色 */
+} /* 第372行：结束当前 CSS 规则 */
+
+.mlp-frontmatter-error { /* 第374行：选择器 .mlp-frontmatter-error 开始 */
+	padding: 0.68rem 0.9rem; /* 第375行：设置内边距 */
+	color: #8a4338; /* 第376行：设置文字颜色 */
+	background: #f8e9e3; /* 第377行：设置背景颜色 */
+	border-left: 3px solid #b66d58; /* 第378行：设置 CSS 属性 border-left */
+	border-radius: 0 7px 7px 0; /* 第379行：设置圆角 */
+} /* 第380行：结束当前 CSS 规则 */
+
+.mlp-frontmatter-error > * { /* 第382行：选择器 .mlp-frontmatter-error > * 开始 */
+	margin: 0.5rem 0 0; /* 第383行：设置外边距 */
+	padding: 0; /* 第384行：设置内边距 */
+	color: inherit; /* 第385行：设置文字颜色 */
+	background: transparent; /* 第386行：设置背景颜色 */
+	border: 0; /* 第387行：设置边框 */
+} /* 第388行：结束当前 CSS 规则 */
+
+.mlp-mermaid-wrap { /* 第390行：选择器 .mlp-mermaid-wrap 开始 */
+	margin: 0; /* 第391行：设置外边距 */
+} /* 第392行：结束当前 CSS 规则 */
+
+.mlp-mermaid { /* 第394行：选择器 .mlp-mermaid 开始 */
+	padding: 0.85rem; /* 第395行：设置内边距 */
+	background: var(--claude-paper); /* 第396行：设置背景颜色 */
+	border: 1px solid var(--claude-border); /* 第397行：设置边框 */
+	border-radius: 8px; /* 第398行：设置圆角 */
+} /* 第399行：结束当前 CSS 规则 */
+
+.mlp-mermaid-error { /* 第401行：选择器 .mlp-mermaid-error 开始 */
+	padding: 0.68rem 0.9rem; /* 第402行：设置内边距 */
+	color: #8a4338; /* 第403行：设置文字颜色 */
+	background: #f8e9e3; /* 第404行：设置背景颜色 */
+	border: 1px solid #e4c6ba; /* 第405行：设置边框 */
+	border-radius: 7px; /* 第406行：设置圆角 */
+} /* 第407行：结束当前 CSS 规则 */
+
+.mlp-code-mode-btn, /* 第409行：继续上一行的选择器或字体值 */
+.mlp-copy-code-btn { /* 第410行：选择器 .mlp-copy-code-btn 开始 */
+	color: var(--claude-muted); /* 第411行：设置文字颜色 */
+	background: var(--claude-paper); /* 第412行：设置背景颜色 */
+	border: 1px solid var(--claude-border); /* 第413行：设置边框 */
+	border-radius: 5px; /* 第414行：设置圆角 */
+} /* 第415行：结束当前 CSS 规则 */
+
+.mlp-code-mode-btn:hover, /* 第417行：继续上一行的选择器或字体值 */
+.mlp-copy-code-btn:hover { /* 第418行：选择器 .mlp-copy-code-btn:hover 开始 */
+	color: var(--claude-accent); /* 第419行：设置文字颜色 */
+	background: var(--claude-soft); /* 第420行：设置背景颜色 */
+	border-color: #c5b7aa; /* 第421行：设置 CSS 属性 border-color */
+} /* 第422行：结束当前 CSS 规则 */
+
+.mlp-table-add-btn { /* 第424行：选择器 .mlp-table-add-btn 开始 */
+	color: var(--claude-muted); /* 第425行：设置文字颜色 */
+	background: rgba(222, 215, 205, 0.56); /* 第426行：设置背景颜色 */
+	border: 0; /* 第427行：设置边框 */
+} /* 第428行：结束当前 CSS 规则 */
+
+.mlp-table-add-btn:hover, /* 第430行：继续上一行的选择器或字体值 */
+.mlp-table-add-btn:focus-visible { /* 第431行：选择器 .mlp-table-add-btn:focus-visible 开始 */
+	color: var(--claude-accent); /* 第432行：设置文字颜色 */
+	background: rgba(152, 98, 71, 0.13); /* 第433行：设置背景颜色 */
+} /* 第434行：结束当前 CSS 规则 */
+
+@media (max-width: 700px) { /* 第436行：开始小屏幕响应式规则 */
+	body { /* 第437行：选择器 body 开始 */
+		padding: 1.6rem 0.95rem 38vh; /* 第438行：设置内边距 */
+	} /* 第439行：结束当前 CSS 规则 */
+
+	.cm-editor .cm-content { /* 第441行：选择器 .cm-editor .cm-content 开始 */
+		padding: 1.6rem 0.95rem 38vh; /* 第442行：设置内边距 */
+	} /* 第443行：结束当前 CSS 规则 */
+
+	h1 { /* 第445行：选择器 h1 开始 */
+		font-size: 1.78em; /* 第446行：设置字号 */
+	} /* 第447行：结束当前 CSS 规则 */
+
+	h2 { /* 第449行：选择器 h2 开始 */
+		font-size: 1.4em; /* 第450行：设置字号 */
+	} /* 第451行：结束当前 CSS 规则 */
+
+	th, td { /* 第453行：选择器 th, td 开始 */
+		padding: 0.44rem 0.58rem; /* 第454行：设置内边距 */
+	} /* 第455行：结束当前 CSS 规则 */
+} /* 第456行：结束当前 CSS 规则 */

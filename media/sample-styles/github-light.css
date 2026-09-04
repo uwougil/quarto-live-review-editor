@@ -1,445 +1,445 @@
-/*
- * GitHub Light — Typora 风格的明亮、紧凑科研笔记主题。
- *
- * 这里使用 VS Code Markdown 预览同样的 HTML 选择器；实时编辑器会通过
- * cssAdapter.ts 将标题、段落、引用和代码块映射到对应的 .mlp-* 行样式。
- * 不依赖外部字体、图片或网络资源。
- */
-body {
-	--typora-page: #ffffff;
-	--typora-text: #1f2328;
-	--typora-muted: #59636e;
-	--typora-border: #d0d7de;
-	--typora-soft: #f6f8fa;
-	--typora-blue: #0969da;
-	--typora-purple: #8250df;
-}
-
-body {
-	margin: 0 auto;
-	max-width: 980px;
-	padding: 2.25rem clamp(1.05rem, 4vw, 3rem) 3rem;
-	box-sizing: border-box;
-	color: var(--typora-text);
-	background: var(--typora-page);
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
-		"Noto Sans CJK SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
-	font-size: 15px;
-	font-weight: 400;
-	line-height: 1.62;
-	word-wrap: break-word;
-	-webkit-font-smoothing: antialiased;
-}
-
-/* The editor has its own reading column; these rules keep the visual width and
-   gutters identical to the static Markdown preview used by the style preview. */
-.cm-editor .cm-content {
-	width: 100%;
-	max-width: 980px;
-	margin: 0 auto;
-	box-sizing: border-box;
-	padding: 2.25rem clamp(1.05rem, 4vw, 3rem) 45vh;
-	color: var(--typora-text);
-	background: var(--typora-page);
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
-		"Noto Sans CJK SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
-	line-height: 1.62;
-}
-
-h1, h2, h3, h4, h5, h6 {
-	color: var(--typora-text);
-	font-weight: 600;
-	line-height: 1.28;
-}
-
-h1 {
-	margin-top: 0;
-	margin-bottom: 0.72em;
-	padding-bottom: 0.28em;
-	font-size: 1.92em;
-	border-bottom: 1px solid var(--typora-border);
-}
-
-h2 {
-	margin-top: 1.55em;
-	margin-bottom: 0.62em;
-	padding-bottom: 0.22em;
-	font-size: 1.46em;
-	border-bottom: 1px solid color-mix(in srgb, var(--typora-border) 72%, transparent);
-}
-
-h3 {
-	margin-top: 1.35em;
-	margin-bottom: 0.48em;
-	font-size: 1.22em;
-}
-
-h4 {
-	margin-top: 1.15em;
-	margin-bottom: 0.4em;
-	font-size: 1.06em;
-}
-
-h5 {
-	margin-top: 1em;
-	margin-bottom: 0.35em;
-	font-size: 0.98em;
-}
-
-h6 {
-	margin-top: 1em;
-	margin-bottom: 0.3em;
-	font-size: 0.92em;
-	color: var(--typora-muted);
-}
-
-p {
-	margin-top: 0;
-	margin-bottom: 0.86em;
-}
-
-strong, b {
-	font-weight: 650;
-}
-
-em, dfn {
-	font-style: italic;
-}
-
-del, s {
-	color: var(--typora-muted);
-	text-decoration: line-through;
-}
-
-a {
-	color: var(--typora-blue);
-	text-decoration: none;
-	text-underline-offset: 0.16em;
-}
-
-a:hover {
-	text-decoration: underline;
-}
-
-hr {
-	height: 0;
-	margin: 1.45rem 0;
-	border: 0;
-	border-top: 1px solid var(--typora-border);
-}
-
-ul, ol {
-	margin-top: 0;
-	margin-bottom: 0.82em;
-	padding-left: 1.8em;
-}
-
-li {
-	margin: 0.12em 0;
-}
-
-li + li {
-	margin-top: 0.18em;
-}
-
-li > p {
-	margin-bottom: 0.55em;
-}
-
-blockquote {
-	margin: 0 0 0.9em;
-	padding: 0 1em;
-	color: var(--typora-muted);
-	background: var(--typora-soft);
-	border-left: 0.28rem solid var(--typora-border);
-	border-radius: 0 4px 4px 0;
-}
-
-blockquote > :first-child {
-	margin-top: 0;
-}
-
-blockquote > :last-child {
-	margin-bottom: 0;
-}
-
-code, kbd, pre, samp {
-	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-		"Liberation Mono", "DejaVu Sans Mono", monospace;
-}
-
-code {
-	padding: 0.12em 0.34em;
-	color: var(--typora-purple);
-	background: #eff1f3;
-	border: 1px solid #e5e7eb;
-	border-radius: 4px;
-	font-size: 0.9em;
-	white-space: break-spaces;
-}
-
-pre {
-	margin: 0 0 1em;
-	padding: 0.88rem 1rem;
-	color: var(--typora-text);
-	background: var(--typora-soft);
-	border: 1px solid var(--typora-border);
-	border-radius: 6px;
-	font-size: 0.9em;
-	line-height: 1.5;
-	overflow: auto;
-}
-
-pre code,
-pre > code {
-	padding: 0;
-	color: inherit;
-	background: transparent;
-	border: 0;
-	font-size: 100%;
-	white-space: pre;
-}
-
-table {
-	display: block;
-	width: max-content;
-	max-width: 100%;
-	margin: 0 0 1em;
-	border-spacing: 0;
-	border-collapse: collapse;
-	overflow: auto;
-	font-variant-numeric: tabular-nums;
-}
-
-th, td {
-	padding: 0.42rem 0.72rem;
-	border: 1px solid var(--typora-border);
-	text-align: left;
-	vertical-align: top;
-}
-
-th {
-	font-weight: 600;
-	background: var(--typora-soft);
-}
-
-tr:nth-child(even) {
-	background: #fbfcfd;
-}
-
-img {
-	display: block;
-	max-width: 100%;
-	height: auto;
-	margin: 0.85em auto;
-	box-sizing: border-box;
-}
-
-mark {
-	padding: 0.05em 0.18em;
-	background: #fff8c5;
-	color: inherit;
-}
-
-sub, sup {
-	font-size: 0.75em;
-	line-height: 0;
-}
-
-/* ── Live-editor widgets ────────────────────────────────────────────────── */
-/* Widget roots are measured by CodeMirror. Padding keeps the deliberate gap
-   inside that measured box, while margin would make cursor positions drift. */
-.mlp-block {
-	padding: 0.62rem 0;
-}
-
-.mlp-inline-code {
-	padding: 0.12em 0.34em;
-	color: var(--typora-purple);
-	background: #eff1f3;
-	border: 1px solid #e5e7eb;
-	border-radius: 4px;
-	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-		"Liberation Mono", "DejaVu Sans Mono", monospace;
-	font-size: 0.9em;
-}
-
-.mlp-math {
-	color: inherit;
-}
-
-.mlp-math-inline {
-	display: inline;
-}
-
-.mlp-math-display {
-	display: block;
-	max-width: 100%;
-	box-sizing: border-box;
-	padding: 0.7em 0;
-	overflow-x: auto;
-	overflow-y: hidden;
-	text-align: center;
-}
-
-.mlp-math-display > .katex-display {
-	margin: 0;
-	min-width: max-content;
-}
-
-.mlp-hr {
-	border-top: 1px solid var(--typora-border);
-}
-
-.mlp-link {
-	color: var(--typora-blue);
-	text-decoration: none;
-}
-
-.mlp-link:hover {
-	text-decoration: underline;
-}
-
-.mlp-image {
-	max-width: 100%;
-	height: auto;
-	margin: 0.85em auto;
-	border-radius: 4px;
-}
-
-.mlp-checkbox {
-	width: 1.05em;
-	height: 1.05em;
-	box-sizing: border-box;
-	vertical-align: -0.18em;
-	background: #ffffff;
-	border: 1px solid #8c959f;
-	border-radius: 3px;
-}
-
-.mlp-checkbox-checked {
-	background: var(--typora-blue);
-	border-color: var(--typora-blue);
-}
-
-.mlp-checkbox-checked::after {
-	border-color: #ffffff;
-}
-
-table.mlp-table,
-table.mlp-frontmatter {
-	display: table;
-	width: 100%;
-	max-width: 100%;
-	margin: 0;
-	table-layout: auto;
-}
-
-table.mlp-table th,
-table.mlp-table td,
-table.mlp-frontmatter th,
-table.mlp-frontmatter td {
-	padding: 0.42rem 0.72rem;
-	border: 1px solid var(--typora-border);
-	line-height: 1.45;
-}
-
-table.mlp-table th,
-table.mlp-frontmatter th {
-	background: var(--typora-soft);
-}
-
-table.mlp-table tr:nth-child(even) {
-	background: #fbfcfd;
-}
-
-table.mlp-table th.mlp-table-cell-editing,
-table.mlp-table td.mlp-table-cell-editing {
-	outline: 2px solid var(--typora-blue);
-	outline-offset: -2px;
-	background: #ffffff;
-}
-
-.mlp-frontmatter-error {
-	padding: 0.58rem 0.8rem;
-	color: #a40e26;
-	background: #fff1f0;
-	border-left: 3px solid #cf222e;
-	border-radius: 0 4px 4px 0;
-}
-
-.mlp-frontmatter-error > * {
-	margin: 0.45rem 0 0;
-	padding: 0;
-	color: inherit;
-	background: transparent;
-	border: 0;
-}
-
-.mlp-mermaid-wrap {
-	margin: 0;
-}
-
-.mlp-mermaid {
-	padding: 0.7rem;
-	background: #ffffff;
-	border: 1px solid var(--typora-border);
-	border-radius: 6px;
-}
-
-.mlp-mermaid-error {
-	padding: 0.62rem 0.8rem;
-	color: #a40e26;
-	background: #fff1f0;
-	border: 1px solid #ffcecb;
-	border-radius: 4px;
-}
-
-.mlp-code-mode-btn,
-.mlp-copy-code-btn {
-	color: var(--typora-muted);
-	background: #ffffff;
-	border: 1px solid var(--typora-border);
-	border-radius: 4px;
-}
-
-.mlp-code-mode-btn:hover,
-.mlp-copy-code-btn:hover {
-	color: var(--typora-blue);
-	background: var(--typora-soft);
-	border-color: #8c959f;
-}
-
-.mlp-table-add-btn {
-	color: var(--typora-muted);
-	background: rgba(208, 215, 222, 0.42);
-	border: 0;
-}
-
-.mlp-table-add-btn:hover,
-.mlp-table-add-btn:focus-visible {
-	color: var(--typora-blue);
-	background: rgba(9, 105, 218, 0.12);
-}
-
-@media (max-width: 700px) {
-	body {
-		padding: 1.2rem 0.85rem 35vh;
-	}
-
-	.cm-editor .cm-content {
-		padding: 1.2rem 0.85rem 35vh;
-	}
-
-	h1 {
-		font-size: 1.72em;
-	}
-
-	h2 {
-		font-size: 1.34em;
-	}
-
-	th, td {
-		padding: 0.36rem 0.52rem;
-	}
-}
+/* 第1行：主题说明开始 */
+/* 第2行：GitHub Light — Typora 风格的明亮、紧凑科研笔记主题。 */
+/* 第3行：主题说明继续 */
+/* 第4行：这里使用 VS Code Markdown 预览同样的 HTML 选择器；实时编辑器会通过 */
+/* 第5行：cssAdapter.ts 将标题、段落、引用和代码块映射到对应的 .mlp-* 行样式。 */
+/* 第6行：不依赖外部字体、图片或网络资源。 */
+/* 第7行：主题说明继续 */
+body { /* 第8行：选择器 body 开始 */
+	--typora-page: #ffffff; /* 第9行：定义主题变量 --typora-page */
+	--typora-text: #1f2328; /* 第10行：定义主题变量 --typora-text */
+	--typora-muted: #59636e; /* 第11行：定义主题变量 --typora-muted */
+	--typora-border: #d0d7de; /* 第12行：定义主题变量 --typora-border */
+	--typora-soft: #f6f8fa; /* 第13行：定义主题变量 --typora-soft */
+	--typora-blue: #0969da; /* 第14行：定义主题变量 --typora-blue */
+	--typora-purple: #8250df; /* 第15行：定义主题变量 --typora-purple */
+} /* 第16行：结束当前 CSS 规则 */
+
+body { /* 第18行：选择器 body 开始 */
+	margin: 0 auto; /* 第19行：设置外边距 */
+	max-width: 980px; /* 第20行：限制最大宽度 */
+	padding: 2.25rem clamp(1.05rem, 4vw, 3rem) 3rem; /* 第21行：设置内边距 */
+	box-sizing: border-box; /* 第22行：设置盒模型 */
+	color: var(--typora-text); /* 第23行：设置文字颜色 */
+	background: var(--typora-page); /* 第24行：设置背景颜色 */
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", /* 第25行：继续上一行的选择器或字体值 */
+		"Noto Sans CJK SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif; /* 第26行：保留原主题结构 */
+	font-size: 15px; /* 第27行：设置字号 */
+	font-weight: 400; /* 第28行：设置字重 */
+	line-height: 1.62; /* 第29行：设置行高 */
+	word-wrap: break-word; /* 第30行：设置 CSS 属性 word-wrap */
+	-webkit-font-smoothing: antialiased; /* 第31行：设置 CSS 属性 -webkit-font-smoothing */
+} /* 第32行：结束当前 CSS 规则 */
+
+/* 第34行：The editor has its own reading column; these rules keep the visual width and */
+/* 第35行：gutters identical to the static Markdown preview used by the style preview. */
+.cm-editor .cm-content { /* 第36行：选择器 .cm-editor .cm-content 开始 */
+	width: 100%; /* 第37行：设置宽度 */
+	max-width: 980px; /* 第38行：限制最大宽度 */
+	margin: 0 auto; /* 第39行：设置外边距 */
+	box-sizing: border-box; /* 第40行：设置盒模型 */
+	padding: 2.25rem clamp(1.05rem, 4vw, 3rem) 45vh; /* 第41行：设置内边距 */
+	color: var(--typora-text); /* 第42行：设置文字颜色 */
+	background: var(--typora-page); /* 第43行：设置背景颜色 */
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", /* 第44行：继续上一行的选择器或字体值 */
+		"Noto Sans CJK SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif; /* 第45行：保留原主题结构 */
+	line-height: 1.62; /* 第46行：设置行高 */
+} /* 第47行：结束当前 CSS 规则 */
+
+h1, h2, h3, h4, h5, h6 { /* 第49行：选择器 h1, h2, h3, h4, h5, h6 开始 */
+	color: var(--typora-text); /* 第50行：设置文字颜色 */
+	font-weight: 600; /* 第51行：设置字重 */
+	line-height: 1.28; /* 第52行：设置行高 */
+} /* 第53行：结束当前 CSS 规则 */
+
+h1 { /* 第55行：选择器 h1 开始 */
+	margin-top: 0; /* 第56行：设置 CSS 属性 margin-top */
+	margin-bottom: 0.72em; /* 第57行：设置 CSS 属性 margin-bottom */
+	padding-bottom: 0.28em; /* 第58行：设置 CSS 属性 padding-bottom */
+	font-size: 1.92em; /* 第59行：设置字号 */
+	border-bottom: 1px solid var(--typora-border); /* 第60行：设置 CSS 属性 border-bottom */
+} /* 第61行：结束当前 CSS 规则 */
+
+h2 { /* 第63行：选择器 h2 开始 */
+	margin-top: 1.55em; /* 第64行：设置 CSS 属性 margin-top */
+	margin-bottom: 0.62em; /* 第65行：设置 CSS 属性 margin-bottom */
+	padding-bottom: 0.22em; /* 第66行：设置 CSS 属性 padding-bottom */
+	font-size: 1.46em; /* 第67行：设置字号 */
+	border-bottom: 1px solid color-mix(in srgb, var(--typora-border) 72%, transparent); /* 第68行：设置 CSS 属性 border-bottom */
+} /* 第69行：结束当前 CSS 规则 */
+
+h3 { /* 第71行：选择器 h3 开始 */
+	margin-top: 1.35em; /* 第72行：设置 CSS 属性 margin-top */
+	margin-bottom: 0.48em; /* 第73行：设置 CSS 属性 margin-bottom */
+	font-size: 1.22em; /* 第74行：设置字号 */
+} /* 第75行：结束当前 CSS 规则 */
+
+h4 { /* 第77行：选择器 h4 开始 */
+	margin-top: 1.15em; /* 第78行：设置 CSS 属性 margin-top */
+	margin-bottom: 0.4em; /* 第79行：设置 CSS 属性 margin-bottom */
+	font-size: 1.06em; /* 第80行：设置字号 */
+} /* 第81行：结束当前 CSS 规则 */
+
+h5 { /* 第83行：选择器 h5 开始 */
+	margin-top: 1em; /* 第84行：设置 CSS 属性 margin-top */
+	margin-bottom: 0.35em; /* 第85行：设置 CSS 属性 margin-bottom */
+	font-size: 0.98em; /* 第86行：设置字号 */
+} /* 第87行：结束当前 CSS 规则 */
+
+h6 { /* 第89行：选择器 h6 开始 */
+	margin-top: 1em; /* 第90行：设置 CSS 属性 margin-top */
+	margin-bottom: 0.3em; /* 第91行：设置 CSS 属性 margin-bottom */
+	font-size: 0.92em; /* 第92行：设置字号 */
+	color: var(--typora-muted); /* 第93行：设置文字颜色 */
+} /* 第94行：结束当前 CSS 规则 */
+
+p { /* 第96行：选择器 p 开始 */
+	margin-top: 0; /* 第97行：设置 CSS 属性 margin-top */
+	margin-bottom: 0.86em; /* 第98行：设置 CSS 属性 margin-bottom */
+} /* 第99行：结束当前 CSS 规则 */
+
+strong, b { /* 第101行：选择器 strong, b 开始 */
+	font-weight: 650; /* 第102行：设置字重 */
+} /* 第103行：结束当前 CSS 规则 */
+
+em, dfn { /* 第105行：选择器 em, dfn 开始 */
+	font-style: italic; /* 第106行：设置文字样式 */
+} /* 第107行：结束当前 CSS 规则 */
+
+del, s { /* 第109行：选择器 del, s 开始 */
+	color: var(--typora-muted); /* 第110行：设置文字颜色 */
+	text-decoration: line-through; /* 第111行：设置文字装饰 */
+} /* 第112行：结束当前 CSS 规则 */
+
+a { /* 第114行：选择器 a 开始 */
+	color: var(--typora-blue); /* 第115行：设置文字颜色 */
+	text-decoration: none; /* 第116行：设置文字装饰 */
+	text-underline-offset: 0.16em; /* 第117行：设置 CSS 属性 text-underline-offset */
+} /* 第118行：结束当前 CSS 规则 */
+
+a:hover { /* 第120行：选择器 a:hover 开始 */
+	text-decoration: underline; /* 第121行：设置文字装饰 */
+} /* 第122行：结束当前 CSS 规则 */
+
+hr { /* 第124行：选择器 hr 开始 */
+	height: 0; /* 第125行：设置高度 */
+	margin: 1.45rem 0; /* 第126行：设置外边距 */
+	border: 0; /* 第127行：设置边框 */
+	border-top: 1px solid var(--typora-border); /* 第128行：设置 CSS 属性 border-top */
+} /* 第129行：结束当前 CSS 规则 */
+
+ul, ol { /* 第131行：选择器 ul, ol 开始 */
+	margin-top: 0; /* 第132行：设置 CSS 属性 margin-top */
+	margin-bottom: 0.82em; /* 第133行：设置 CSS 属性 margin-bottom */
+	padding-left: 1.8em; /* 第134行：设置 CSS 属性 padding-left */
+} /* 第135行：结束当前 CSS 规则 */
+
+li { /* 第137行：选择器 li 开始 */
+	margin: 0.12em 0; /* 第138行：设置外边距 */
+} /* 第139行：结束当前 CSS 规则 */
+
+li + li { /* 第141行：选择器 li + li 开始 */
+	margin-top: 0.18em; /* 第142行：设置 CSS 属性 margin-top */
+} /* 第143行：结束当前 CSS 规则 */
+
+li > p { /* 第145行：选择器 li > p 开始 */
+	margin-bottom: 0.55em; /* 第146行：设置 CSS 属性 margin-bottom */
+} /* 第147行：结束当前 CSS 规则 */
+
+blockquote { /* 第149行：选择器 blockquote 开始 */
+	margin: 0 0 0.9em; /* 第150行：设置外边距 */
+	padding: 0 1em; /* 第151行：设置内边距 */
+	color: var(--typora-muted); /* 第152行：设置文字颜色 */
+	background: var(--typora-soft); /* 第153行：设置背景颜色 */
+	border-left: 0.28rem solid var(--typora-border); /* 第154行：设置 CSS 属性 border-left */
+	border-radius: 0 4px 4px 0; /* 第155行：设置圆角 */
+} /* 第156行：结束当前 CSS 规则 */
+
+blockquote > :first-child { /* 第158行：选择器 blockquote > :first-child 开始 */
+	margin-top: 0; /* 第159行：设置 CSS 属性 margin-top */
+} /* 第160行：结束当前 CSS 规则 */
+
+blockquote > :last-child { /* 第162行：选择器 blockquote > :last-child 开始 */
+	margin-bottom: 0; /* 第163行：设置 CSS 属性 margin-bottom */
+} /* 第164行：结束当前 CSS 规则 */
+
+code, kbd, pre, samp { /* 第166行：选择器 code, kbd, pre, samp 开始 */
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, /* 第167行：继续上一行的选择器或字体值 */
+		"Liberation Mono", "DejaVu Sans Mono", monospace; /* 第168行：保留原主题结构 */
+} /* 第169行：结束当前 CSS 规则 */
+
+code { /* 第171行：选择器 code 开始 */
+	padding: 0.12em 0.34em; /* 第172行：设置内边距 */
+	color: var(--typora-purple); /* 第173行：设置文字颜色 */
+	background: #eff1f3; /* 第174行：设置背景颜色 */
+	border: 1px solid #e5e7eb; /* 第175行：设置边框 */
+	border-radius: 4px; /* 第176行：设置圆角 */
+	font-size: 0.9em; /* 第177行：设置字号 */
+	white-space: break-spaces; /* 第178行：设置空白和换行方式 */
+} /* 第179行：结束当前 CSS 规则 */
+
+pre { /* 第181行：选择器 pre 开始 */
+	margin: 0 0 1em; /* 第182行：设置外边距 */
+	padding: 0.88rem 1rem; /* 第183行：设置内边距 */
+	color: var(--typora-text); /* 第184行：设置文字颜色 */
+	background: var(--typora-soft); /* 第185行：设置背景颜色 */
+	border: 1px solid var(--typora-border); /* 第186行：设置边框 */
+	border-radius: 6px; /* 第187行：设置圆角 */
+	font-size: 0.9em; /* 第188行：设置字号 */
+	line-height: 1.5; /* 第189行：设置行高 */
+	overflow: auto; /* 第190行：设置溢出处理方式 */
+} /* 第191行：结束当前 CSS 规则 */
+
+pre code, /* 第193行：继续上一行的选择器或字体值 */
+pre > code { /* 第194行：选择器 pre > code 开始 */
+	padding: 0; /* 第195行：设置内边距 */
+	color: inherit; /* 第196行：设置文字颜色 */
+	background: transparent; /* 第197行：设置背景颜色 */
+	border: 0; /* 第198行：设置边框 */
+	font-size: 100%; /* 第199行：设置字号 */
+	white-space: pre; /* 第200行：设置空白和换行方式 */
+} /* 第201行：结束当前 CSS 规则 */
+
+table { /* 第203行：选择器 table 开始 */
+	display: block; /* 第204行：设置显示方式 */
+	width: max-content; /* 第205行：设置宽度 */
+	max-width: 100%; /* 第206行：限制最大宽度 */
+	margin: 0 0 1em; /* 第207行：设置外边距 */
+	border-spacing: 0; /* 第208行：设置表格间距 */
+	border-collapse: collapse; /* 第209行：设置表格边框合并方式 */
+	overflow: auto; /* 第210行：设置溢出处理方式 */
+	font-variant-numeric: tabular-nums; /* 第211行：设置数字字形 */
+} /* 第212行：结束当前 CSS 规则 */
+
+th, td { /* 第214行：选择器 th, td 开始 */
+	padding: 0.42rem 0.72rem; /* 第215行：设置内边距 */
+	border: 1px solid var(--typora-border); /* 第216行：设置边框 */
+	text-align: left; /* 第217行：设置文字对齐方式 */
+	vertical-align: top; /* 第218行：设置垂直对齐方式 */
+} /* 第219行：结束当前 CSS 规则 */
+
+th { /* 第221行：选择器 th 开始 */
+	font-weight: 600; /* 第222行：设置字重 */
+	background: var(--typora-soft); /* 第223行：设置背景颜色 */
+} /* 第224行：结束当前 CSS 规则 */
+
+tr:nth-child(even) { /* 第226行：选择器 tr:nth-child(even) 开始 */
+	background: #fbfcfd; /* 第227行：设置背景颜色 */
+} /* 第228行：结束当前 CSS 规则 */
+
+img { /* 第230行：选择器 img 开始 */
+	display: block; /* 第231行：设置显示方式 */
+	max-width: 100%; /* 第232行：限制最大宽度 */
+	height: auto; /* 第233行：设置高度 */
+	margin: 0.85em auto; /* 第234行：设置外边距 */
+	box-sizing: border-box; /* 第235行：设置盒模型 */
+} /* 第236行：结束当前 CSS 规则 */
+
+mark { /* 第238行：选择器 mark 开始 */
+	padding: 0.05em 0.18em; /* 第239行：设置内边距 */
+	background: #fff8c5; /* 第240行：设置背景颜色 */
+	color: inherit; /* 第241行：设置文字颜色 */
+} /* 第242行：结束当前 CSS 规则 */
+
+sub, sup { /* 第244行：选择器 sub, sup 开始 */
+	font-size: 0.75em; /* 第245行：设置字号 */
+	line-height: 0; /* 第246行：设置行高 */
+} /* 第247行：结束当前 CSS 规则 */
+
+/* 第249行：── Live-editor widgets ────────────────────────────────────────────────── */
+/* 第250行：Widget roots are measured by CodeMirror. Padding keeps the deliberate gap */
+/* 第251行：inside that measured box, while margin would make cursor positions drift. */
+.mlp-block { /* 第252行：选择器 .mlp-block 开始 */
+	padding: 0.62rem 0; /* 第253行：设置内边距 */
+} /* 第254行：结束当前 CSS 规则 */
+
+.mlp-inline-code { /* 第256行：选择器 .mlp-inline-code 开始 */
+	padding: 0.12em 0.34em; /* 第257行：设置内边距 */
+	color: var(--typora-purple); /* 第258行：设置文字颜色 */
+	background: #eff1f3; /* 第259行：设置背景颜色 */
+	border: 1px solid #e5e7eb; /* 第260行：设置边框 */
+	border-radius: 4px; /* 第261行：设置圆角 */
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, /* 第262行：继续上一行的选择器或字体值 */
+		"Liberation Mono", "DejaVu Sans Mono", monospace; /* 第263行：保留原主题结构 */
+	font-size: 0.9em; /* 第264行：设置字号 */
+} /* 第265行：结束当前 CSS 规则 */
+
+.mlp-math { /* 第267行：选择器 .mlp-math 开始 */
+	color: inherit; /* 第268行：设置文字颜色 */
+} /* 第269行：结束当前 CSS 规则 */
+
+.mlp-math-inline { /* 第271行：选择器 .mlp-math-inline 开始 */
+	display: inline; /* 第272行：设置显示方式 */
+} /* 第273行：结束当前 CSS 规则 */
+
+.mlp-math-display { /* 第275行：选择器 .mlp-math-display 开始 */
+	display: block; /* 第276行：设置显示方式 */
+	max-width: 100%; /* 第277行：限制最大宽度 */
+	box-sizing: border-box; /* 第278行：设置盒模型 */
+	padding: 0.7em 0; /* 第279行：设置内边距 */
+	overflow-x: auto; /* 第280行：设置 CSS 属性 overflow-x */
+	overflow-y: hidden; /* 第281行：设置 CSS 属性 overflow-y */
+	text-align: center; /* 第282行：设置文字对齐方式 */
+} /* 第283行：结束当前 CSS 规则 */
+
+.mlp-math-display > .katex-display { /* 第285行：选择器 .mlp-math-display > .katex-display 开始 */
+	margin: 0; /* 第286行：设置外边距 */
+	min-width: max-content; /* 第287行：设置 CSS 属性 min-width */
+} /* 第288行：结束当前 CSS 规则 */
+
+.mlp-hr { /* 第290行：选择器 .mlp-hr 开始 */
+	border-top: 1px solid var(--typora-border); /* 第291行：设置 CSS 属性 border-top */
+} /* 第292行：结束当前 CSS 规则 */
+
+.mlp-link { /* 第294行：选择器 .mlp-link 开始 */
+	color: var(--typora-blue); /* 第295行：设置文字颜色 */
+	text-decoration: none; /* 第296行：设置文字装饰 */
+} /* 第297行：结束当前 CSS 规则 */
+
+.mlp-link:hover { /* 第299行：选择器 .mlp-link:hover 开始 */
+	text-decoration: underline; /* 第300行：设置文字装饰 */
+} /* 第301行：结束当前 CSS 规则 */
+
+.mlp-image { /* 第303行：选择器 .mlp-image 开始 */
+	max-width: 100%; /* 第304行：限制最大宽度 */
+	height: auto; /* 第305行：设置高度 */
+	margin: 0.85em auto; /* 第306行：设置外边距 */
+	border-radius: 4px; /* 第307行：设置圆角 */
+} /* 第308行：结束当前 CSS 规则 */
+
+.mlp-checkbox { /* 第310行：选择器 .mlp-checkbox 开始 */
+	width: 1.05em; /* 第311行：设置宽度 */
+	height: 1.05em; /* 第312行：设置高度 */
+	box-sizing: border-box; /* 第313行：设置盒模型 */
+	vertical-align: -0.18em; /* 第314行：设置垂直对齐方式 */
+	background: #ffffff; /* 第315行：设置背景颜色 */
+	border: 1px solid #8c959f; /* 第316行：设置边框 */
+	border-radius: 3px; /* 第317行：设置圆角 */
+} /* 第318行：结束当前 CSS 规则 */
+
+.mlp-checkbox-checked { /* 第320行：选择器 .mlp-checkbox-checked 开始 */
+	background: var(--typora-blue); /* 第321行：设置背景颜色 */
+	border-color: var(--typora-blue); /* 第322行：设置 CSS 属性 border-color */
+} /* 第323行：结束当前 CSS 规则 */
+
+.mlp-checkbox-checked::after { /* 第325行：选择器 .mlp-checkbox-checked::after 开始 */
+	border-color: #ffffff; /* 第326行：设置 CSS 属性 border-color */
+} /* 第327行：结束当前 CSS 规则 */
+
+table.mlp-table, /* 第329行：继续上一行的选择器或字体值 */
+table.mlp-frontmatter { /* 第330行：选择器 table.mlp-frontmatter 开始 */
+	display: table; /* 第331行：设置显示方式 */
+	width: 100%; /* 第332行：设置宽度 */
+	max-width: 100%; /* 第333行：限制最大宽度 */
+	margin: 0; /* 第334行：设置外边距 */
+	table-layout: auto; /* 第335行：设置表格布局 */
+} /* 第336行：结束当前 CSS 规则 */
+
+table.mlp-table th, /* 第338行：继续上一行的选择器或字体值 */
+table.mlp-table td, /* 第339行：继续上一行的选择器或字体值 */
+table.mlp-frontmatter th, /* 第340行：继续上一行的选择器或字体值 */
+table.mlp-frontmatter td { /* 第341行：选择器 table.mlp-frontmatter td 开始 */
+	padding: 0.42rem 0.72rem; /* 第342行：设置内边距 */
+	border: 1px solid var(--typora-border); /* 第343行：设置边框 */
+	line-height: 1.45; /* 第344行：设置行高 */
+} /* 第345行：结束当前 CSS 规则 */
+
+table.mlp-table th, /* 第347行：继续上一行的选择器或字体值 */
+table.mlp-frontmatter th { /* 第348行：选择器 table.mlp-frontmatter th 开始 */
+	background: var(--typora-soft); /* 第349行：设置背景颜色 */
+} /* 第350行：结束当前 CSS 规则 */
+
+table.mlp-table tr:nth-child(even) { /* 第352行：选择器 table.mlp-table tr:nth-child(even) 开始 */
+	background: #fbfcfd; /* 第353行：设置背景颜色 */
+} /* 第354行：结束当前 CSS 规则 */
+
+table.mlp-table th.mlp-table-cell-editing, /* 第356行：继续上一行的选择器或字体值 */
+table.mlp-table td.mlp-table-cell-editing { /* 第357行：选择器 table.mlp-table td.mlp-table-cell-editing 开始 */
+	outline: 2px solid var(--typora-blue); /* 第358行：设置外轮廓 */
+	outline-offset: -2px; /* 第359行：设置外轮廓偏移 */
+	background: #ffffff; /* 第360行：设置背景颜色 */
+} /* 第361行：结束当前 CSS 规则 */
+
+.mlp-frontmatter-error { /* 第363行：选择器 .mlp-frontmatter-error 开始 */
+	padding: 0.58rem 0.8rem; /* 第364行：设置内边距 */
+	color: #a40e26; /* 第365行：设置文字颜色 */
+	background: #fff1f0; /* 第366行：设置背景颜色 */
+	border-left: 3px solid #cf222e; /* 第367行：设置 CSS 属性 border-left */
+	border-radius: 0 4px 4px 0; /* 第368行：设置圆角 */
+} /* 第369行：结束当前 CSS 规则 */
+
+.mlp-frontmatter-error > * { /* 第371行：选择器 .mlp-frontmatter-error > * 开始 */
+	margin: 0.45rem 0 0; /* 第372行：设置外边距 */
+	padding: 0; /* 第373行：设置内边距 */
+	color: inherit; /* 第374行：设置文字颜色 */
+	background: transparent; /* 第375行：设置背景颜色 */
+	border: 0; /* 第376行：设置边框 */
+} /* 第377行：结束当前 CSS 规则 */
+
+.mlp-mermaid-wrap { /* 第379行：选择器 .mlp-mermaid-wrap 开始 */
+	margin: 0; /* 第380行：设置外边距 */
+} /* 第381行：结束当前 CSS 规则 */
+
+.mlp-mermaid { /* 第383行：选择器 .mlp-mermaid 开始 */
+	padding: 0.7rem; /* 第384行：设置内边距 */
+	background: #ffffff; /* 第385行：设置背景颜色 */
+	border: 1px solid var(--typora-border); /* 第386行：设置边框 */
+	border-radius: 6px; /* 第387行：设置圆角 */
+} /* 第388行：结束当前 CSS 规则 */
+
+.mlp-mermaid-error { /* 第390行：选择器 .mlp-mermaid-error 开始 */
+	padding: 0.62rem 0.8rem; /* 第391行：设置内边距 */
+	color: #a40e26; /* 第392行：设置文字颜色 */
+	background: #fff1f0; /* 第393行：设置背景颜色 */
+	border: 1px solid #ffcecb; /* 第394行：设置边框 */
+	border-radius: 4px; /* 第395行：设置圆角 */
+} /* 第396行：结束当前 CSS 规则 */
+
+.mlp-code-mode-btn, /* 第398行：继续上一行的选择器或字体值 */
+.mlp-copy-code-btn { /* 第399行：选择器 .mlp-copy-code-btn 开始 */
+	color: var(--typora-muted); /* 第400行：设置文字颜色 */
+	background: #ffffff; /* 第401行：设置背景颜色 */
+	border: 1px solid var(--typora-border); /* 第402行：设置边框 */
+	border-radius: 4px; /* 第403行：设置圆角 */
+} /* 第404行：结束当前 CSS 规则 */
+
+.mlp-code-mode-btn:hover, /* 第406行：继续上一行的选择器或字体值 */
+.mlp-copy-code-btn:hover { /* 第407行：选择器 .mlp-copy-code-btn:hover 开始 */
+	color: var(--typora-blue); /* 第408行：设置文字颜色 */
+	background: var(--typora-soft); /* 第409行：设置背景颜色 */
+	border-color: #8c959f; /* 第410行：设置 CSS 属性 border-color */
+} /* 第411行：结束当前 CSS 规则 */
+
+.mlp-table-add-btn { /* 第413行：选择器 .mlp-table-add-btn 开始 */
+	color: var(--typora-muted); /* 第414行：设置文字颜色 */
+	background: rgba(208, 215, 222, 0.42); /* 第415行：设置背景颜色 */
+	border: 0; /* 第416行：设置边框 */
+} /* 第417行：结束当前 CSS 规则 */
+
+.mlp-table-add-btn:hover, /* 第419行：继续上一行的选择器或字体值 */
+.mlp-table-add-btn:focus-visible { /* 第420行：选择器 .mlp-table-add-btn:focus-visible 开始 */
+	color: var(--typora-blue); /* 第421行：设置文字颜色 */
+	background: rgba(9, 105, 218, 0.12); /* 第422行：设置背景颜色 */
+} /* 第423行：结束当前 CSS 规则 */
+
+@media (max-width: 700px) { /* 第425行：开始小屏幕响应式规则 */
+	body { /* 第426行：选择器 body 开始 */
+		padding: 1.2rem 0.85rem 35vh; /* 第427行：设置内边距 */
+	} /* 第428行：结束当前 CSS 规则 */
+
+	.cm-editor .cm-content { /* 第430行：选择器 .cm-editor .cm-content 开始 */
+		padding: 1.2rem 0.85rem 35vh; /* 第431行：设置内边距 */
+	} /* 第432行：结束当前 CSS 规则 */
+
+	h1 { /* 第434行：选择器 h1 开始 */
+		font-size: 1.72em; /* 第435行：设置字号 */
+	} /* 第436行：结束当前 CSS 规则 */
+
+	h2 { /* 第438行：选择器 h2 开始 */
+		font-size: 1.34em; /* 第439行：设置字号 */
+	} /* 第440行：结束当前 CSS 规则 */
+
+	th, td { /* 第442行：选择器 th, td 开始 */
+		padding: 0.36rem 0.52rem; /* 第443行：设置内边距 */
+	} /* 第444行：结束当前 CSS 规则 */
+} /* 第445行：结束当前 CSS 规则 */
