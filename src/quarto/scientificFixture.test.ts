@@ -20,6 +20,7 @@ describe('scientific Quarto regression fixture', () => {
 	it('finds only the editable math and leaves dollars in protected contexts alone', () => {
 		const ranges = findMathRanges(fixture);
 		expect(ranges.map((range) => range.tex)).toEqual([
+			'Ω_n(\\mathbf{k})',
 			'\\Omega_n(\\mathbf{k}) = \\nabla_{\\mathbf{k}} \\times \\mathbf{A}_n(\\mathbf{k})',
 			'\\sigma_{xy} = -\\frac{e^2}{\\hbar}\\sum_n \\int_{\\mathrm{BZ}}\n\\frac{d^3k}{(2\\pi)^3} f_n(\\mathbf{k})\\Omega_{n,z}(\\mathbf{k})',
 			'k_x',

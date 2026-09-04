@@ -7,7 +7,7 @@ const ENABLED_STYLES_KEY = 'enabledStyles';
 // Bumped whenever the bundled sample set changes; drives a one-time (re)seed so
 // existing installs pick up new templates without re-creating ones the user
 // later deleted.
-const SAMPLES_VERSION = 5;
+const SAMPLES_VERSION = 6;
 const SAMPLES_VERSION_KEY = 'mdLivePreview.samplesVersion';
 // Bundled samples that were shipped before but are no longer wanted, deleted
 // during migration: the old `.mlp-*`-selector themes that stopped working, plus
@@ -32,7 +32,7 @@ const DEFAULT_STYLE_NAME = 'vscode.css';
 // (not embedded as TS strings) so they're easy to review/maintain and can be
 // read directly with `vscode.workspace.fs`. Written into global storage once on
 // first seed so the user can edit/rename/delete them like any other style file.
-const SAMPLE_FILE_NAMES = ['github-like.css', 'vscode.css'];
+const SAMPLE_FILE_NAMES = ['github-like.css', 'vscode.css', 'typora-github.css', 'claude.css'];
 
 interface StyleFile {
 	id: string;

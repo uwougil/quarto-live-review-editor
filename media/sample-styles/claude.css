@@ -1,0 +1,456 @@
+/*
+ * Claude Manuscript — 温暖、克制的长文写作主题。
+ *
+ * 这是一个面向论文、研究日志和长篇笔记的静态 CSS 主题。选择器保持与
+ * VS Code Markdown 预览兼容；实时编辑器的块级行和 Quarto 小部件由
+ * cssAdapter.ts 与下方的 .mlp-* 补充规则共同覆盖。
+ * 不依赖外部字体、图片、渐变或网络资源。
+ */
+:root {
+	--claude-page: #faf8f3;
+	--claude-paper: #fffdf9;
+	--claude-text: #302e2b;
+	--claude-muted: #6b665f;
+	--claude-border: #ded7cd;
+	--claude-soft: #f1ede6;
+	--claude-accent: #986247;
+	--claude-accent-soft: #e8d5c9;
+	--claude-code: #49433d;
+}
+
+body {
+	margin: 0 auto;
+	max-width: 880px;
+	padding: 3rem clamp(1.2rem, 5vw, 3.6rem) 3.5rem;
+	box-sizing: border-box;
+	color: var(--claude-text);
+	background: var(--claude-page);
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
+		"Noto Sans CJK SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+	font-size: 15px;
+	font-weight: 400;
+	line-height: 1.78;
+	word-wrap: break-word;
+	-webkit-font-smoothing: antialiased;
+}
+
+/* Keep the live editor's reading column at the same manuscript width as the
+   static style preview, with enough side room for equations and tables. */
+.cm-editor .cm-content {
+	width: 100%;
+	max-width: 880px;
+	margin: 0 auto;
+	box-sizing: border-box;
+	padding: 3rem clamp(1.2rem, 5vw, 3.6rem) 48vh;
+	color: var(--claude-text);
+	background: var(--claude-page);
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
+		"Noto Sans CJK SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+	line-height: 1.78;
+}
+
+h1, h2, h3, h4, h5, h6 {
+	color: var(--claude-text);
+	font-family: ui-serif, Georgia, Cambria, "Times New Roman", "Noto Serif CJK SC",
+		"Songti SC", SimSun, serif;
+	font-weight: 600;
+	line-height: 1.2;
+	letter-spacing: -0.012em;
+}
+
+h1 {
+	margin-top: 0;
+	margin-bottom: 0.9em;
+	padding-bottom: 0.42em;
+	font-size: 2.02em;
+	border-bottom: 1px solid var(--claude-border);
+}
+
+h2 {
+	margin-top: 1.85em;
+	margin-bottom: 0.72em;
+	padding-bottom: 0.25em;
+	font-size: 1.54em;
+	border-bottom: 1px solid color-mix(in srgb, var(--claude-border) 66%, transparent);
+}
+
+h3 {
+	margin-top: 1.65em;
+	margin-bottom: 0.58em;
+	font-size: 1.25em;
+}
+
+h4 {
+	margin-top: 1.4em;
+	margin-bottom: 0.48em;
+	font-size: 1.08em;
+}
+
+h5 {
+	margin-top: 1.25em;
+	margin-bottom: 0.4em;
+	font-size: 1em;
+}
+
+h6 {
+	margin-top: 1.15em;
+	margin-bottom: 0.35em;
+	font-size: 0.94em;
+	color: var(--claude-muted);
+}
+
+p {
+	margin-top: 0;
+	margin-bottom: 1.08em;
+}
+
+strong, b {
+	font-weight: 650;
+}
+
+em, dfn {
+	font-style: italic;
+}
+
+del, s {
+	color: var(--claude-muted);
+	text-decoration: line-through;
+}
+
+a {
+	color: var(--claude-accent);
+	text-decoration: underline;
+	text-decoration-color: var(--claude-accent-soft);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.16em;
+}
+
+a:hover {
+	color: #754936;
+	text-decoration-color: currentColor;
+}
+
+hr {
+	height: 0;
+	margin: 2rem 0;
+	border: 0;
+	border-top: 1px solid var(--claude-border);
+}
+
+ul, ol {
+	margin-top: 0;
+	margin-bottom: 1.08em;
+	padding-left: 1.8em;
+}
+
+li {
+	margin: 0.2em 0;
+}
+
+li + li {
+	margin-top: 0.24em;
+}
+
+li > p {
+	margin-bottom: 0.66em;
+}
+
+blockquote {
+	margin: 0 0 1.15em;
+	padding: 0 1.15em;
+	color: var(--claude-muted);
+	background: rgba(241, 237, 230, 0.52);
+	border-left: 3px solid var(--claude-accent-soft);
+	border-radius: 0 7px 7px 0;
+}
+
+blockquote > :first-child {
+	margin-top: 0;
+}
+
+blockquote > :last-child {
+	margin-bottom: 0;
+}
+
+code, kbd, pre, samp {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+		"Liberation Mono", "DejaVu Sans Mono", monospace;
+}
+
+code {
+	padding: 0.14em 0.36em;
+	color: #79513f;
+	background: var(--claude-soft);
+	border: 1px solid #e4ddd3;
+	border-radius: 5px;
+	font-size: 0.9em;
+	white-space: break-spaces;
+}
+
+pre {
+	margin: 0 0 1.18em;
+	padding: 1rem 1.05rem;
+	color: var(--claude-code);
+	background: #f0ece5;
+	border: 1px solid var(--claude-border);
+	border-radius: 8px;
+	font-size: 0.9em;
+	line-height: 1.58;
+	overflow: auto;
+}
+
+pre code,
+pre > code {
+	padding: 0;
+	color: inherit;
+	background: transparent;
+	border: 0;
+	font-size: 100%;
+	white-space: pre;
+}
+
+table {
+	display: block;
+	width: max-content;
+	max-width: 100%;
+	margin: 0 0 1.2em;
+	border-spacing: 0;
+	border-collapse: collapse;
+	overflow: auto;
+	font-variant-numeric: tabular-nums;
+}
+
+th, td {
+	padding: 0.52rem 0.78rem;
+	border: 1px solid var(--claude-border);
+	text-align: left;
+	vertical-align: top;
+}
+
+th {
+	font-weight: 600;
+	background: var(--claude-soft);
+}
+
+tr:nth-child(even) {
+	background: rgba(241, 237, 230, 0.34);
+}
+
+img {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	margin: 1.1em auto;
+	box-sizing: border-box;
+	border-radius: 8px;
+}
+
+mark {
+	padding: 0.05em 0.18em;
+	background: #f2df9b;
+	color: inherit;
+}
+
+sub, sup {
+	font-size: 0.75em;
+	line-height: 0;
+}
+
+/* ── Live-editor widgets ────────────────────────────────────────────────── */
+.mlp-block {
+	padding: 0.85rem 0;
+}
+
+.mlp-inline-code {
+	padding: 0.14em 0.36em;
+	color: #79513f;
+	background: var(--claude-soft);
+	border: 1px solid #e4ddd3;
+	border-radius: 5px;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+		"Liberation Mono", "DejaVu Sans Mono", monospace;
+	font-size: 0.9em;
+}
+
+.mlp-math {
+	color: inherit;
+}
+
+.mlp-math-inline {
+	display: inline;
+}
+
+.mlp-math-display {
+	display: block;
+	max-width: 100%;
+	box-sizing: border-box;
+	padding: 1em 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+	text-align: center;
+}
+
+.mlp-math-display > .katex-display {
+	margin: 0;
+	min-width: max-content;
+}
+
+.mlp-hr {
+	border-top: 1px solid var(--claude-border);
+}
+
+.mlp-link {
+	color: var(--claude-accent);
+	text-decoration: underline;
+	text-decoration-color: var(--claude-accent-soft);
+	text-underline-offset: 0.16em;
+}
+
+.mlp-link:hover {
+	color: #754936;
+	text-decoration-color: currentColor;
+}
+
+.mlp-image {
+	max-width: 100%;
+	height: auto;
+	margin: 1.1em auto;
+	border-radius: 8px;
+}
+
+.mlp-checkbox {
+	width: 1.05em;
+	height: 1.05em;
+	box-sizing: border-box;
+	vertical-align: -0.18em;
+	background: var(--claude-paper);
+	border: 1px solid #a69a8d;
+	border-radius: 4px;
+}
+
+.mlp-checkbox-checked {
+	background: var(--claude-accent);
+	border-color: var(--claude-accent);
+}
+
+.mlp-checkbox-checked::after {
+	border-color: #fffdf9;
+}
+
+table.mlp-table,
+table.mlp-frontmatter {
+	display: table;
+	width: 100%;
+	max-width: 100%;
+	margin: 0;
+	table-layout: auto;
+}
+
+table.mlp-table th,
+table.mlp-table td,
+table.mlp-frontmatter th,
+table.mlp-frontmatter td {
+	padding: 0.52rem 0.78rem;
+	border: 1px solid var(--claude-border);
+	line-height: 1.5;
+}
+
+table.mlp-table th,
+table.mlp-frontmatter th {
+	background: var(--claude-soft);
+}
+
+table.mlp-table tr:nth-child(even) {
+	background: rgba(241, 237, 230, 0.34);
+}
+
+table.mlp-table th.mlp-table-cell-editing,
+table.mlp-table td.mlp-table-cell-editing {
+	outline: 2px solid var(--claude-accent);
+	outline-offset: -2px;
+	background: var(--claude-paper);
+}
+
+.mlp-frontmatter-error {
+	padding: 0.68rem 0.9rem;
+	color: #8a4338;
+	background: #f8e9e3;
+	border-left: 3px solid #b66d58;
+	border-radius: 0 7px 7px 0;
+}
+
+.mlp-frontmatter-error > * {
+	margin: 0.5rem 0 0;
+	padding: 0;
+	color: inherit;
+	background: transparent;
+	border: 0;
+}
+
+.mlp-mermaid-wrap {
+	margin: 0;
+}
+
+.mlp-mermaid {
+	padding: 0.85rem;
+	background: var(--claude-paper);
+	border: 1px solid var(--claude-border);
+	border-radius: 8px;
+}
+
+.mlp-mermaid-error {
+	padding: 0.68rem 0.9rem;
+	color: #8a4338;
+	background: #f8e9e3;
+	border: 1px solid #e4c6ba;
+	border-radius: 7px;
+}
+
+.mlp-code-mode-btn,
+.mlp-copy-code-btn {
+	color: var(--claude-muted);
+	background: var(--claude-paper);
+	border: 1px solid var(--claude-border);
+	border-radius: 5px;
+}
+
+.mlp-code-mode-btn:hover,
+.mlp-copy-code-btn:hover {
+	color: var(--claude-accent);
+	background: var(--claude-soft);
+	border-color: #c5b7aa;
+}
+
+.mlp-table-add-btn {
+	color: var(--claude-muted);
+	background: rgba(222, 215, 205, 0.56);
+	border: 0;
+}
+
+.mlp-table-add-btn:hover,
+.mlp-table-add-btn:focus-visible {
+	color: var(--claude-accent);
+	background: rgba(152, 98, 71, 0.13);
+}
+
+@media (max-width: 700px) {
+	body {
+		padding: 1.6rem 0.95rem 38vh;
+	}
+
+	.cm-editor .cm-content {
+		padding: 1.6rem 0.95rem 38vh;
+	}
+
+	h1 {
+		font-size: 1.78em;
+	}
+
+	h2 {
+		font-size: 1.4em;
+	}
+
+	th, td {
+		padding: 0.44rem 0.58rem;
+	}
+}
