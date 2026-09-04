@@ -54,6 +54,12 @@ println("hello")
 print("future-compatible attribute syntax")
 ```
 
+```mermaid
+flowchart LR
+    A[输入数据] --> B[计算 Berry 曲率]
+    B --> C[绘制能带]
+```
+
 ::: {.callout-note}
 这是 Quarto callout 的源码安全回退示例。
 :::

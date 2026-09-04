@@ -13,7 +13,8 @@ describe('scientific Quarto regression fixture', () => {
 		expect(fixture).toContain('::: {.callout-note}');
 		expect(fixture).toContain('<span class="scientific-note">');
 		expect(fixture).toContain('```{=latex}');
-		expect(findFenceBlocks(fixture).map((block) => block.info.language)).toEqual(['python', 'python', 'r', 'julia', 'python', undefined]);
+		expect(fixture).toContain('```mermaid');
+		expect(findFenceBlocks(fixture).map((block) => block.info.language)).toEqual(['python', 'python', 'r', 'julia', 'python', 'mermaid', undefined]);
 	});
 
 	it('finds only the editable math and leaves dollars in protected contexts alone', () => {
