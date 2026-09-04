@@ -53,10 +53,10 @@ window.addEventListener('message', (event: MessageEvent<HostToOutlineMessage>) =
 			renderHeadings(message.headings);
 			break;
 		case 'noDocument':
-			renderEmpty('打开 Markdown Live Preview 后，标题列表会显示在这里。');
+			renderEmpty('打开 Quarto Live Review 后，标题列表会显示在这里。');
 			break;
 	}
 });
 
-renderEmpty('打开 Markdown Live Preview 后，标题列表会显示在这里。');
+renderEmpty('打开 Quarto Live Review 后，标题列表会显示在这里。');
 post({ type: 'ready' });

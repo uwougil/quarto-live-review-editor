@@ -1,0 +1,69 @@
+---
+title: "科研 Quarto 回归示例"
+author: "Quarto Live Review Editor"
+format: html
+jupyter: python3
+---
+
+# 科研文档回归示例 {#sec-intro}
+
+这是一段普通 Markdown，包含 **粗体**、*斜体*、脚注[^note] 和引用 [@blochl1994]。
+
+行内代码 `$not math$` 被代码 span 保护；真正的行内公式是
+$\Omega_n(\mathbf{k}) = \nabla_{\mathbf{k}} \times \mathbf{A}_n(\mathbf{k})$。
+
+货币文本 `$100` 不应被识别为公式，转义美元符号 \$ 也不应被识别。
+
+$$
+\sigma_{xy} = -\frac{e^2}{\hbar}\sum_n \int_{\mathrm{BZ}}
+\frac{d^3k}{(2\pi)^3} f_n(\mathbf{k})\Omega_{n,z}(\mathbf{k})
+$$
+
+## 数据表
+
+| 变量 | 数值 |
+|:---|---:|
+| $k_x$ | 1.0 |
+| $k_y$ | 2.0 |
+
+![示意图](assets/sine.svg){#fig-band width=70%}
+
+```python
+price = "$100 in ordinary code"
+```
+
+```{python}
+#| label: fig-band
+#| echo: false
+import numpy as np
+k = np.linspace(-1, 1, 101)
+```
+
+```{r}
+#| label: fig-r
+plot(cars)
+```
+
+```{julia}
+#| label: fig-julia
+println("hello")
+```
+
+```{.python}
+#| label: fig-attribute
+print("future-compatible attribute syntax")
+```
+
+::: {.callout-note}
+这是 Quarto callout 的源码安全回退示例。
+:::
+
+如图 @fig-band 所示，交叉引用和 shortcode `{{< meta title >}}` 当前保持源码。
+
+```{=latex}
+\\newcommand{\\R}{\\mathbb{R}}
+```
+
+<span class="scientific-note">这是 raw HTML。</span>
+
+[^note]: 这是一个脚注，验证 source fidelity。

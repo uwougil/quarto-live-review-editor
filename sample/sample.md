@@ -1,12 +1,12 @@
 ---
-title: Markdown Live Preview Editor 使用示例
+title: Quarto Live Review 使用示例
 tags:
   - markdown
   - live-preview
   - quarto
 ---
 
-# Markdown Live Preview Editor
+# Quarto Live Review Editor
 
 这是一个可以保持渲染外观并直接编辑的 Markdown/Quarto 实时预览扩展。
 

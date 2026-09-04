@@ -1,4 +1,5 @@
 import type { HeadingItem } from './headings';
+import type { DocumentDialect } from '../quarto/dialect';
 
 export interface TextChange {
 	from: number;
@@ -22,7 +23,7 @@ export type HostToEditorMessage =
 	// `baseUri` is the webview-loadable URI (with a trailing slash) of the
 	// folder containing the document, used to resolve relative image paths
 	// (e.g. `assets/foo.png`) to something the webview is actually allowed to load.
-	| { type: 'init'; text: string; version: number; css: string; codeTheme: string; baseUri: string }
+	| { type: 'init'; text: string; version: number; css: string; codeTheme: string; baseUri: string; dialect: DocumentDialect }
 	| { type: 'externalUpdate'; changes: TextChange[]; version: number }
 	| { type: 'ackEdit'; version: number }
 	| { type: 'codeTokens'; blocks: CodeBlockTokens[] }

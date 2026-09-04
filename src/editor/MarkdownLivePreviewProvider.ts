@@ -116,7 +116,7 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src ${webview.cspSource};" />
 	<link rel="stylesheet" href="${styleUri}" />
 	<link rel="stylesheet" href="${katexStyleUri}" />
-	<title>Markdown Live Preview</title>
+	<title>Quarto Live Review</title>
 </head>
 <body>
 	<div id="mlp-root"></div>

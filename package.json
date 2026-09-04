@@ -1,7 +1,7 @@
 {
   "name": "markdown-live-preview-editor",
-  "displayName": "Markdown Live Preview Editor",
-  "description": "Obsidian-style editable live Markdown preview with custom CSS themes, Mermaid and draw.io diagrams, and syntax-highlighted code blocks.",
+  "displayName": "Quarto Live Review Editor",
+  "description": "Markdown/Quarto 单栏实时预览编辑器，支持数学公式、代码单元、表格、Mermaid、draw.io 和自定义 CSS 主题。",
   "version": "0.0.12",
   "publisher": "t-shoot",
   "license": "MIT",
@@ -31,12 +31,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/t-shoot/md-live-preview-editor.git"
+    "url": "https://github.com/uwougil/quarto-live-review-editor.git"
   },
   "bugs": {
-    "url": "https://github.com/t-shoot/md-live-preview-editor/issues"
+    "url": "https://github.com/uwougil/quarto-live-review-editor/issues"
   },
-  "homepage": "https://github.com/t-shoot/md-live-preview-editor#readme",
+  "homepage": "https://github.com/uwougil/quarto-live-review-editor#readme",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -51,7 +51,7 @@
     "customEditors": [
       {
         "viewType": "mdLivePreview.editor",
-        "displayName": "Markdown Live Preview",
+        "displayName": "Quarto Live Review",
         "selector": [
             {
               "filenamePattern": "*.md"
@@ -70,7 +70,7 @@
       "activitybar": [
         {
           "id": "mdLivePreview",
-          "title": "Markdown Live Preview Editor",
+          "title": "Quarto Live Review Editor",
           "icon": "media/icon.svg"
         }
       ]
@@ -93,19 +93,19 @@
       {
         "command": "mdLivePreview.openWithLivePreview",
         "title": "使用实时预览打开",
-        "category": "Markdown Live Preview",
+        "category": "Quarto Live Review",
         "icon": "$(open-preview)"
       },
       {
         "command": "mdLivePreview.openWithSource",
         "title": "打开源码",
-        "category": "Markdown Live Preview",
+        "category": "Quarto Live Review",
         "icon": "$(go-to-file)"
       },
       {
         "command": "mdLivePreview.newStyle",
         "title": "新建 CSS 样式",
-        "category": "Markdown Live Preview",
+        "category": "Quarto Live Review",
         "icon": "$(add)"
       }
     ],
@@ -131,7 +131,7 @@
       ]
     },
     "configuration": {
-      "title": "Markdown Live Preview",
+      "title": "Quarto Live Review",
       "properties": {
         "mdLivePreview.codeTheme": {
           "type": "string",
@@ -170,11 +170,11 @@
           ],
           "enumDescriptions": [
             "默认使用普通文本编辑器，通过工具栏按钮手动打开实时预览。",
-            "始终使用 Markdown Live Preview 打开 .md/.qmd 文件。",
+            "始终使用 Quarto Live Review 打开 .md/.qmd 文件。",
             "始终使用 VS Code 普通文本编辑器打开 .md/.qmd 文件。"
           ],
           "default": "prompt",
-          "description": "控制 .md/.qmd 文件是否默认使用 Markdown Live Preview。"
+          "description": "控制 .md/.qmd 文件是否默认使用 Quarto Live Review。"
         }
       }
     }

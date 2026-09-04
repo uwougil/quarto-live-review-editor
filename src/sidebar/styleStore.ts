@@ -41,7 +41,7 @@ interface StyleFile {
 }
 
 const NEW_STYLE_TEMPLATE = `/*
- * 新建 Markdown Live Preview 样式。
+ * 新建 Quarto Live Review 样式。
  * 可使用与 VS Code Markdown 预览相同的 CSS 格式（HTML 元素选择器）。
  * 例: body, h1〜h6, p, strong, em, a, ul, ol, li, code, pre, blockquote,
  *     table, th, td, hr, img, input[type=checkbox]

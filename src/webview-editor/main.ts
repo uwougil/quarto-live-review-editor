@@ -16,6 +16,8 @@ import { postToHost, onHostMessage } from './vscodeApi';
 import { setDrawioFilePoster, handleDrawioFileMessage, clearDrawioFileCache } from './drawioFileClient';
 import { adaptMarkdownCss } from '../shared/cssAdapter';
 import type { TextChange } from '../shared/messages';
+import { documentDialect, type DocumentDialect } from '../quarto/dialect';
+import { mathRangesField } from '../quarto/math';
 
 const remoteChange = Annotation.define<boolean>();
 const FLUSH_DEBOUNCE_MS = 250;
@@ -62,9 +64,11 @@ function applyUserCss(css: string) {
 	styleEl.textContent = adaptMarkdownCss(css);
 }
 
-function createExtensions(): Extension[] {
+function createExtensions(dialect: DocumentDialect): Extension[] {
 	const markdownSupport = markdown({ extensions: GFM });
 	return [
+		documentDialect.of(dialect),
+		mathRangesField,
 		markdownSupport,
 		// Extend closeBrackets' default pair set (`( [ { ' "`) with the emphasis
 		// marks so `*bold/italic*` and `_italic_` also auto-pair and wrap a
@@ -121,25 +125,25 @@ function createExtensions(): Extension[] {
 // `fm.to` is the *end of the closing "---" line itself* (correct for the
 // decoration range), so it's still on that line — the anchor must go one
 // further, past its line break, to actually land outside the block.
-function initialStateFor(text: string): EditorState {
-	const state = EditorState.create({ doc: text, extensions: createExtensions() });
+function initialStateFor(text: string, dialect: DocumentDialect): EditorState {
+	const state = EditorState.create({ doc: text, extensions: createExtensions(dialect) });
 	const fm = detectFrontmatter(state);
 	if (!fm) return state;
 	const anchor = Math.min(fm.to + 1, state.doc.length);
 	return state.update({ selection: { anchor } }).state;
 }
 
-function createView(text: string) {
+function createView(text: string, dialect: DocumentDialect) {
 	const root = document.getElementById('mlp-root')!;
 	view = new EditorView({
-		state: initialStateFor(text),
+		state: initialStateFor(text, dialect),
 		parent: root,
 	});
 }
 
-function resetView(text: string) {
+function resetView(text: string, dialect: DocumentDialect) {
 	if (!view) {
-		createView(text);
+		createView(text, dialect);
 		return;
 	}
 	pending = null;
@@ -147,7 +151,7 @@ function resetView(text: string) {
 		clearTimeout(flushTimer);
 		flushTimer = undefined;
 	}
-	view.setState(initialStateFor(text));
+	view.setState(initialStateFor(text, dialect));
 }
 
 // The drawio file client cannot reach the host on its own (it is imported by
@@ -167,7 +171,7 @@ onHostMessage((message) => {
 			// A re-init means a different document (or the same one reloaded), so
 			// files read for the previous one must not be served from cache.
 			clearDrawioFileCache();
-			resetView(message.text);
+			resetView(message.text, message.dialect);
 			break;
 		case 'ackEdit':
 			baseVersion = message.version;

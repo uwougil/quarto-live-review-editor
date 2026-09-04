@@ -4,6 +4,7 @@ import { pickCodeTheme, tokenizeDocument } from './shikiHost';
 import { extensionForMimeType, generateImageFileName } from '../shared/imageAssets';
 import { resolveLinkTarget } from '../shared/linkTarget';
 import { isPathInside } from '../shared/pathContainment';
+import { documentDialectForPath } from '../quarto/dialect';
 
 /**
  * Largest `.drawio` file that will be read and parsed.
@@ -251,6 +252,7 @@ export class DocumentSyncSession {
 			version: this.document.version,
 			css: this.getCss(),
 			codeTheme: pickCodeTheme(),
+			dialect: documentDialectForPath(this.document.uri.path),
 			baseUri: `${this.webviewPanel.webview.asWebviewUri(docDir).toString()}/`,
 		});
 		this.lastAppliedVersion = this.document.version;

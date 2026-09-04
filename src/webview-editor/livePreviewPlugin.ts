@@ -12,7 +12,8 @@ import { renderInlineInto, type CellInlineHooks } from './tableCellInline';
 import { createCodeModeButton, createCopyCodeButton } from './codeModeButton';
 import { insertRow, insertColumn, renderTableMarkdown, type TableEditModel } from './tableEdit';
 import katex from 'katex';
-import { findMathRanges, mathRangeTouchesSelection, type MathRange } from './math';
+import { mathRangesForState, mathRangeTouchesSelection, type MathRange } from './math';
+import { parseFenceInfo } from '../quarto/fence';
 
 const HEADING_LINE_CLASS: Record<string, string> = {
 	ATXHeading1: 'mlp-line-h1',
@@ -1373,7 +1374,8 @@ function buildDecorations(view: EditorView): DecorationSet {
 						return;
 					case 'FencedCode': {
 						const infoNode = node.node.getChild('CodeInfo');
-						const lang = infoNode ? state.sliceDoc(infoNode.from, infoNode.to).trim().toLowerCase() : '';
+						const info = parseFenceInfo(infoNode ? state.sliceDoc(infoNode.from, infoNode.to) : '');
+						const lang = info.language ?? '';
 						// Must use the same test blockDecorationsField uses to decide
 						// whether the diagram renders — if the two disagree, either the
 						// widget is dropped or the fence is styled as code underneath it.
@@ -1481,7 +1483,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 	// Math is intentionally parsed independently of the Markdown syntax tree:
 	// the stock CodeMirror Markdown grammar does not own Pandoc's $ delimiters.
 	// These are presentation-only replacements; the document remains untouched.
-	for (const range of findMathRanges(state.doc.toString())) {
+	for (const range of mathRangesForState(state)) {
 		if (!view.visibleRanges.some((visible) => range.to >= visible.from && range.from <= visible.to)) continue;
 		if (!mathRangeTouchesSelection(state, range)) {
 			decorations.push(Decoration.replace({ widget: new MathWidget(range) }).range(range.from, range.to));

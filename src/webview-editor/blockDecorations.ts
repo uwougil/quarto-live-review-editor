@@ -8,6 +8,7 @@ import { isDiagramLang } from './diagramLang';
 import { buildTableWidget, isLineAligned, alignedBlockRange } from './livePreviewPlugin';
 import { blockCursorTouchesRange, noteRevealed, onPointerRelease } from './cmUtils';
 import { detectFrontmatter, FrontmatterWidget, FrontmatterEmptyWidget, FrontmatterErrorWidget } from './frontmatterWidget';
+import { parseFenceInfo } from '../quarto/fence';
 
 /**
  * CodeMirror 6 forbids block decorations (block widgets / block-replacing
@@ -54,7 +55,8 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
 			if (fm && node.from >= fm.from && node.to <= fm.to) return false;
 			if (node.name === 'FencedCode') {
 				const infoNode = node.node.getChild('CodeInfo');
-				const lang = infoNode ? state.sliceDoc(infoNode.from, infoNode.to).trim().toLowerCase() : '';
+				const info = parseFenceInfo(infoNode ? state.sliceDoc(infoNode.from, infoNode.to) : '');
+				const lang = info.language ?? '';
 				const diagram = isDiagramLang(lang);
 				if (!diagram) return;
 				const diagramRevealed = blockCursorTouchesRange(state, node.from, node.to);
