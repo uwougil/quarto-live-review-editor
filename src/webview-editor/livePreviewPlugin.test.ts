@@ -9,7 +9,7 @@ import { GFM } from '@lezer/markdown';
 import { GFM as AppGFM } from './gfmTableFix';
 import { ensureSyntaxTree } from '@codemirror/language';
 import type { SyntaxNode } from '@lezer/common';
-import { readCells, resolveImageSrc, blankLineAfter, blockReplacedLines } from './livePreviewPlugin';
+import { readCells, resolveImageSrc, blankLineAfter, blockReplacedLines, isFootnoteLikeReference } from './livePreviewPlugin';
 import { blockDecorationsField } from './blockDecorations';
 
 /** Builds a 2-row GFM table (header + one data row) from a list of cell values. */
@@ -109,6 +109,20 @@ describe('resolveImageSrc', () => {
 				expect(resolved.startsWith(baseUri)).toBe(true);
 			}),
 		);
+	});
+});
+
+describe('isFootnoteLikeReference', () => {
+	it('recognizes one or more adjacent footnote-looking references', () => {
+		expect(isFootnoteLikeReference('[^15]')).toBe(true);
+		expect(isFootnoteLikeReference('[^15][^16]')).toBe(true);
+		expect(isFootnoteLikeReference('foo[^15][^16]')).toBe(false);
+	});
+
+	it('does not classify ordinary links or multiline text as footnote references', () => {
+		expect(isFootnoteLikeReference('[link](https://example.org)')).toBe(false);
+		expect(isFootnoteLikeReference('[^15]\n[^16]')).toBe(false);
+		expect(isFootnoteLikeReference('[^]')).toBe(false);
 	});
 });
 

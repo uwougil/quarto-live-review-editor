@@ -51,8 +51,8 @@
     "customEditors": [
       {
         "viewType": "mdLivePreview.editor",
-        "displayName": "Quarto Live Review",
-        "selector": [
+          "displayName": "Quarto Live Review",
+          "selector": [
             {
               "filenamePattern": "*.md"
             },
@@ -183,7 +183,7 @@
     "compile": "node esbuild.js && tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:browser": "python scripts/run-long-document-browser-test.py",
+    "test:browser": "node scripts/run-long-document-browser-test.mjs",
     "test:watch": "vitest",
     "generate:long-fixtures": "node scripts/generate-long-fixtures.mjs",
     "watch:esbuild": "node esbuild.js --watch",
@@ -196,6 +196,7 @@
     "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.24.0",
     "fast-check": "^4.9.0",
+    "playwright": "^1.62.1",
     "typescript": "^5.5.0",
     "vitest": "^4.1.10"
   },

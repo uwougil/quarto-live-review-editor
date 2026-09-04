@@ -82,7 +82,22 @@
 		return { text: lines.join('\n'), markerLines: {} };
 	}
 
+	function buildInlineFixture() {
+		return [
+			'Plain prose without inline syntax, included as the compact line-box control.',
+			'',
+			'Ordinary prose before $M_s$ after formula and more words repeated enough to wrap across the editor width.',
+			'',
+			'Citation-like prose foo[^15][^16] bar and more words repeated enough to wrap across the editor width.',
+			'',
+			'Link prose before [a rendered link](https://example.org) after the link and more words for wrapping.',
+			'',
+			'Emphasis prose before **strong text** and *emphasis text* after the markers with more words for wrapping.',
+		].join('\n');
+	}
+
 	async function loadSource() {
+		if (testParams.get('inline') === '1') return { text: buildInlineFixture(), kind: 'inline-geometry' };
 		const benchmarkLines = Number(testParams.get('lines'));
 		if (Number.isInteger(benchmarkLines) && benchmarkLines >= 10) return { ...buildBenchmarkFixture(benchmarkLines), kind: `benchmark-${benchmarkLines}` };
 		const sourcePath = testParams.get('source');
@@ -90,6 +105,69 @@
 		const response = await fetch('/' + sourcePath.replace(/^\/+/, ''));
 		if (!response.ok) throw new Error(`source fetch failed: ${response.status}`);
 		return { text: await response.text(), kind: 'repository-source' };
+	}
+
+	async function setCursorForTest(pos) {
+		window.dispatchEvent(new MessageEvent('message', { data: { type: 'setCursor', pos } }));
+		await sleep(120);
+	}
+
+	function inlineLineSnapshot(anchor) {
+		const line = [...document.querySelectorAll('.cm-line')].find((candidate) => candidate.textContent?.includes(anchor));
+		if (!line) return null;
+		const rect = line.getBoundingClientRect();
+		const internalImages = [...line.querySelectorAll('img')].map((image) => {
+			const style = getComputedStyle(image);
+			const imageRect = image.getBoundingClientRect();
+			return {
+				className: image.className,
+				display: style.display,
+				marginTop: style.marginTop,
+				marginBottom: style.marginBottom,
+				width: style.width,
+				height: style.height,
+				rectHeight: imageRect.height,
+			};
+		});
+		return { text: line.textContent, top: rect.top, height: rect.height, html: line.innerHTML.slice(0, 800), internalImages };
+	}
+
+	async function runInlineGeometry() {
+		const text = buildInlineFixture();
+		const anchors = [
+			{ name: 'math', anchor: 'Ordinary prose before', pos: text.indexOf('$M_s$') + 2 },
+			{ name: 'consecutive-notes', anchor: 'Citation-like prose foo', pos: text.indexOf('[^15]') + 2 },
+			{ name: 'link', anchor: 'Link prose before', pos: text.indexOf('[a rendered link]') + 2 },
+			{ name: 'emphasis', anchor: 'Emphasis prose before', pos: text.indexOf('**strong text**') + 3 },
+		];
+		dispatchInit(text, await loadThemeCss());
+		await waitFor(() => snapshot()?.docLength === text.length, 2500);
+		const rendered = [];
+		const source = [];
+		for (const item of anchors) {
+			await setCursorForTest(0);
+			rendered.push({ name: item.name, geometry: inlineLineSnapshot(item.anchor) });
+			await setCursorForTest(item.pos);
+			source.push({ name: item.name, geometry: inlineLineSnapshot(item.anchor) });
+		}
+		await setCursorForTest(0);
+		const allWidgetBuffers = [...document.querySelectorAll('.cm-widgetBuffer')].map((image) => {
+			const style = getComputedStyle(image);
+			const rect = image.getBoundingClientRect();
+			return { display: style.display, marginTop: style.marginTop, marginBottom: style.marginBottom, width: style.width, height: style.height, rectHeight: rect.height, parentText: image.parentElement?.textContent };
+		});
+		// A theme's generic `img` rule must not make CodeMirror's zero-width
+		// widget buffers add a blank-line-sized vertical margin. Compare the same
+		// line with widgets rendered and with its source syntax revealed; a small
+		// natural difference is fine, but an extra line-height is a regression.
+		const geometryFailures = rendered.map((item, index) => {
+			const renderedHeight = item.geometry?.height ?? null;
+			const sourceHeight = source[index]?.geometry?.height ?? null;
+			const extraHeight = renderedHeight !== null && sourceHeight !== null ? renderedHeight - sourceHeight : null;
+			return { name: item.name, renderedHeight, sourceHeight, extraHeight };
+		}).filter((item) => item.renderedHeight === null || item.sourceHeight === null || item.extraHeight > 8);
+		const widgetBufferFailures = allWidgetBuffers.filter((buffer) => buffer.marginTop !== '0px' || buffer.marginBottom !== '0px');
+		return { ok: geometryFailures.length === 0 && widgetBufferFailures.length === 0, sourceKind: 'inline-geometry', sourceLength: text.length, sourceLines: text.split('\n').length, rendered, source, allWidgetBuffers, geometryFailures, widgetBufferFailures };
 	}
 
 	async function loadThemeCss() {
@@ -175,7 +253,7 @@
 	}
 
 	(async () => {
-		try { window.__mlpLongDocumentResult = await (testParams.get('probe') === '1' ? runBugProbe() : run()); }
+		try { window.__mlpLongDocumentResult = await (testParams.get('probe') === '1' ? runBugProbe() : testParams.get('inline') === '1' ? runInlineGeometry() : run()); }
 		catch (error) { window.__mlpLongDocumentResult = { ok: false, error: String(error?.stack || error) }; }
 	})();
 </script>

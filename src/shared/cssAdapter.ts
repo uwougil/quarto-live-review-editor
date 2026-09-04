@@ -31,13 +31,19 @@ const ELEMENT_MAP: Record<string, string> = {
 	hr: '.mlp-hr',
 	// Inline code (the `pre code` sequence is handled before this) → our span.
 	code: '.mlp-inline-code',
+	// CodeMirror uses an internal zero-width <img class="cm-widgetBuffer"> around
+	// every uneditable inline widget. Scope authored Markdown image rules to the
+	// two image classes created by this extension so `img { margin: ... }` cannot
+	// turn that implementation buffer into a vertical gap.
+	img: ':is(.mlp-image, .mlp-table-image)',
 	// The reading column stands in for `body`. Match the base theme's specificity
 	// (`.cm-editor .cm-content`) so a later-injected user rule can override it.
 	body: '.cm-editor .cm-content',
 };
 
 // Tags we render for real and therefore leave alone: a, strong, em, del,
-// img, table, thead, tbody, tr, th, td, span, div.
+// table, thead, tbody, tr, th, td, span, div. Images are scoped above because
+// CodeMirror's internal widget buffer is itself an <img>.
 
 function transformCompound(token: string): string {
 	const match = /^([a-zA-Z][a-zA-Z0-9]*)/.exec(token);

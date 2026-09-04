@@ -82,6 +82,18 @@ export function resolveImageSrc(src: string, baseUri: string): string {
 	}
 }
 
+/**
+ * The stock Markdown parser represents a footnote-looking reference such as
+ * `[^15][^16]` as one Link node: the first reference supplies the two
+ * LinkMark children and the second one becomes a LinkLabel child. That shape
+ * is not a normal Markdown link, and treating it as one would hide the second
+ * reference when the cursor leaves the range. Keep the source visible until a
+ * dedicated footnote renderer exists, so no Quarto/Pandoc syntax is lost.
+ */
+export function isFootnoteLikeReference(source: string): boolean {
+	return /^(?:\[\^[^\]\r\n]+\])+$/.test(source);
+}
+
 // Cells render their own images, so they need the same base-URI rewriting the
 // document's ImageWidget applies. Read through a getter rather than captured:
 // `setImageBaseUri` runs on the `init` message, potentially after this module
@@ -1408,6 +1420,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 						return; // descend to hide the ``` fence marks
 					}
 					case 'Link': {
+						if (isFootnoteLikeReference(state.sliceDoc(node.from, node.to))) return;
 						const marks = node.node.getChildren('LinkMark');
 						if (marks.length < 2) return;
 						const labelFrom = marks[0].to;

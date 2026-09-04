@@ -4,7 +4,7 @@ import { adaptMarkdownCss } from './cssAdapter';
 
 // Tags the adapter deliberately leaves untouched (rendered with their real tag
 // in the live preview, so no selector mapping applies to them).
-const UNTOUCHED_TAGS = ['a', 'strong', 'em', 'del', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'span', 'div'];
+const UNTOUCHED_TAGS = ['a', 'strong', 'em', 'del', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'span', 'div'];
 
 // Block-level tags mapped to a fixed replacement class, paired with the class
 // each one is expected to contain in the output (PBT-07: domain-specific
@@ -42,6 +42,13 @@ describe('adaptMarkdownCss', () => {
 	it('maps a checkbox input selector to the checkbox span', () => {
 		const out = adaptMarkdownCss('input[type="checkbox"] { accent-color: blue; }');
 		expect(out).toContain('.mlp-checkbox');
+	});
+
+	it('scopes generic image selectors away from CodeMirror widget buffers', () => {
+		const out = adaptMarkdownCss('img { display: block; margin: 1em auto; } table img[align=right] { max-width: 100%; }');
+		expect(out).toContain(':is(.mlp-image, .mlp-table-image)');
+		expect(out).not.toMatch(/(?:^|\s)img\s*\{/);
+		expect(out).not.toContain('table img[align=right]');
 	});
 
 	it('maps every known block-level tag to its class regardless of declaration content (PBT-03 invariant)', () => {
