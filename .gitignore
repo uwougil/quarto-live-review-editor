@@ -9,3 +9,5 @@ CLAUDE.md
 .DS_Store
 Thumbs.db
 sample/assets/
+examples/generated/
+examples/generated/

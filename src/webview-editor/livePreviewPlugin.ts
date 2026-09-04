@@ -1160,6 +1160,22 @@ function listItemIsTask(state: EditorState, listMark: SyntaxNodeRef): boolean {
 	return /^\s*\[[ xX]\]/.test(after);
 }
 
+export type DecorationRebuildReason = 'docChanged' | 'viewportChanged' | 'selectionSet' | 'syntaxTreeChanged';
+
+/**
+ * Keeps the live inline decoration pass in step with Lezer's asynchronous
+ * background parser. The language package advances its StateField by dispatching
+ * a transaction with no document, selection, or viewport change; comparing the
+ * trees is the signal that the visible syntax nodes may now be available.
+ */
+export function decorationRebuildReason(update: ViewUpdate): DecorationRebuildReason | null {
+	if (update.docChanged) return 'docChanged';
+	if (update.viewportChanged) return 'viewportChanged';
+	if (update.selectionSet) return 'selectionSet';
+	if (syntaxTree(update.startState) !== syntaxTree(update.state)) return 'syntaxTreeChanged';
+	return null;
+}
+
 function buildDecorations(view: EditorView): DecorationSet {
 	const { state } = view;
 	const { doc } = state;
@@ -1506,7 +1522,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
 		}
 
 		update(update: ViewUpdate) {
-			if (update.docChanged || update.viewportChanged || update.selectionSet) {
+			if (decorationRebuildReason(update)) {
 				this.decorations = buildDecorations(update.view);
 			}
 		}

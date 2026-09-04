@@ -184,6 +184,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "generate:long-fixtures": "node scripts/generate-long-fixtures.mjs",
+    "generate:long-fixtures": "node scripts/generate-long-fixtures.mjs",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit -p tsconfig.json --watch",
     "vscode:prepublish": "node esbuild.js --production"
