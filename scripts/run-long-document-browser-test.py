@@ -31,6 +31,8 @@ def main() -> int:
     parser.add_argument("--synthetic", action="store_true", help="force the deterministic realistic fixture")
     parser.add_argument("--full", action="store_true", help="print every visible range and rebuild event")
     parser.add_argument("--benchmark", action="store_true", help="record real-browser open/scroll timings for 1k/5k/10k/20k lines")
+    parser.add_argument("--bundle", help="load a bundle path relative to the served workspace (for regression comparison)")
+    parser.add_argument("--probe", action="store_true", help="run the minimal multiline-display-math EditorView probe")
     args = parser.parse_args()
     source_path = None if args.synthetic or args.benchmark or not REAL_INDEX.is_file() else REAL_INDEX.relative_to(WORKSPACE).as_posix()
 
@@ -47,14 +49,20 @@ def main() -> int:
             for benchmark_lines in runs:
                 page = browser.new_page(viewport={"width": 1280, "height": 800})
                 page_errors = []
+                if args.probe:
+                    page.on("console", lambda message: print(f"[browser:{message.type}] {message.text}"))
                 page.on("pageerror", lambda error: page_errors.append(str(error)))
                 current_query = query
                 if benchmark_lines is not None:
                     current_query += "&lines=" + str(benchmark_lines)
                 elif source_path:
                     current_query += "&source=" + quote(source_path, safe="/")
+                if args.bundle:
+                    current_query += "&bundle=" + quote(args.bundle, safe="/")
                 if args.baseline:
                     current_query += "&baseline=1"
+                if args.probe:
+                    current_query += "&probe=1"
                 url = f"{base_url}?{current_query.lstrip('&')}"
                 started = time.perf_counter()
                 page.goto(url, wait_until="load")

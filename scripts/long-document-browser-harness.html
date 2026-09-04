@@ -27,7 +27,10 @@
 		setState() {},
 	});
 </script>
-<script src="../dist/webview-editor.js"></script>
+<script>
+	const bundlePath = testParams.get('bundle') || '../dist/webview-editor.js';
+	document.write(`<script src="${bundlePath}"><\/script>`);
+</script>
 <script>
 	function buildRealisticFixture() {
 		const lines = ['---', 'title: "Long scientific document fixture"', 'format: html', 'jupyter: python3', '---', ''];
@@ -129,8 +132,17 @@
 		return { ok: Boolean(ok), baseline: window.__MLP_DISABLE_VIEWPORT_PARSE_FOR_TEST__ === true, sourceKind: source.kind, sourceLength: source.text.length, sourceLines: source.text.split('\n').length, initial, samples, eof, markers, final, markerFailures };
 	}
 
+	async function runBugProbe() {
+		// This is intentionally the smallest real EditorView reproduction of the
+		// old implementation's failure: a display formula consumes line breaks.
+		const text = '---\ntitle: probe\n---\n\n$$\n\\sigma_{xy} = -\\frac{e^2}{\\hbar}\n$$\n\n# After the formula\n\nThe tail must remain editable.';
+		dispatchInit(text);
+		await sleep(300);
+		return { ok: true, sourceKind: 'multiline-display-math-probe', sourceLength: text.length, sourceLines: text.split('\n').length, editorPresent: Boolean(document.querySelector('.cm-editor')) };
+	}
+
 	(async () => {
-		try { window.__mlpLongDocumentResult = await run(); }
+		try { window.__mlpLongDocumentResult = await (testParams.get('probe') === '1' ? runBugProbe() : run()); }
 		catch (error) { window.__mlpLongDocumentResult = { ok: false, error: String(error?.stack || error) }; }
 	})();
 </script>
