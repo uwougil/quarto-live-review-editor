@@ -39,7 +39,7 @@ export function handleDrawioFileMessage(message: HostToEditorMessage): boolean {
 	if (!entry) return true; // a reply for a widget that has since been torn down
 	pending.delete(message.requestId);
 	if (typeof message.text === 'string') entry.resolve(message.text);
-	else entry.reject(new Error(message.error ?? 'ファイルを読み込めませんでした。'));
+	else entry.reject(new Error(message.error ?? '无法读取文件。'));
 	return true;
 }
 
@@ -50,7 +50,7 @@ export function readDrawioFile(src: string): Promise<string> {
 
 	const promise = new Promise<string>((resolve, reject) => {
 		if (!post) {
-			reject(new Error('ホストへの接続がまだ確立していません。'));
+		reject(new Error('与主机的连接尚未建立。'));
 			return;
 		}
 		const requestId = nextRequestId++;

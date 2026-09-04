@@ -514,7 +514,7 @@ export function buildDiagram(root: XmlElement): DrawioDiagram {
 		if (!source.el) {
 			if (isCompressedDiagramBody(source.body)) {
 				throw new DrawioUnsupportedError(
-					'圧縮された draw.io ファイルには対応していません。draw.io で「XML を圧縮」を無効にして保存し直してください。',
+					'不支持压缩的 draw.io 文件。请在 draw.io 中关闭“压缩 XML”后重新保存。',
 				);
 			}
 			continue;
@@ -524,6 +524,6 @@ export function buildDiagram(root: XmlElement): DrawioDiagram {
 		pages.push({ name: source.name, shapes, bounds: computeBounds(shapes) });
 	}
 
-	if (pages.length === 0) throw new DrawioUnsupportedError('draw.io の図が見つかりませんでした。');
+	if (pages.length === 0) throw new DrawioUnsupportedError('未找到 draw.io 图形。');
 	return { pages };
 }

@@ -92,16 +92,16 @@ export class StyleManagerViewProvider implements vscode.WebviewViewProvider {
 	private async renameStyle(id: string): Promise<void> {
 		const current = id.replace(/\.css$/i, '');
 		const input = await vscode.window.showInputBox({
-			title: 'スタイルの名前を変更',
+			title: '重命名样式',
 			value: current,
-			prompt: '新しい名前（.css は自動で付きます）',
-			validateInput: (v) => (v.trim().length === 0 ? '名前を入力してください' : undefined),
+			prompt: '新名称（自动添加 .css）',
+			validateInput: (v) => (v.trim().length === 0 ? '请输入名称' : undefined),
 		});
 		if (input === undefined) return; // cancelled
 		try {
 			await this.styleStore.renameStyle(id, input);
 		} catch {
-			await vscode.window.showErrorMessage(`「${input}」に名前を変更できませんでした（同名のスタイルが既に存在します）。`);
+			await vscode.window.showErrorMessage(`无法将样式重命名为“${input}”（同名样式已存在）。`);
 		}
 	}
 

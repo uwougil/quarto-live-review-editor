@@ -851,11 +851,11 @@ class TableWidget extends WidgetType {
 		// Row and column are added at the end, which is what a `+` on the table's
 		// bottom and right edges reads as. Inserting elsewhere is a different
 		// gesture (a handle on the row or column itself) and is not offered here.
-		const addRowBtn = makeAddButton('+', '行を追加', () =>
+		const addRowBtn = makeAddButton('+', '添加行', () =>
 			applyStructuralEdit((m) => insertRow(m, m.rows.length)),
 		);
 		addRowBtn.classList.add('mlp-table-add-row');
-		const addColBtn = makeAddButton('+', '列を追加', () =>
+		const addColBtn = makeAddButton('+', '添加列', () =>
 			applyStructuralEdit((m) => insertColumn(m, m.align.length || m.rows[0]?.length || 0)),
 		);
 		addColBtn.classList.add('mlp-table-add-col');

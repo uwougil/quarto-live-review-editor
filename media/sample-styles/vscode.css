@@ -1,14 +1,9 @@
 /*
- * VS Code 標準 Markdown プレビュー テーマ
- * VS Code 本体の Markdown プレビュー機能（markdown-language-features）が実際に
- * 使っている CSS（extensions/markdown-language-features/media/markdown.css、
- * MIT License, Copyright (c) Microsoft Corporation）を元に、このアプリの
- * HTML 要素セレクタ形式に移植したもの。差分表示・コード行同期ハイライトなど、
- * このアプリに存在しない機能向けのスタイルは含めていない。
+ * VS Code 标准 Markdown 预览主题。
+ * 基于 VS Code 内置 Markdown 预览功能使用的 CSS 移植为本应用的 HTML 元素选择器格式。
+ * 不包含差异显示、代码行同步高亮等本应用没有的功能。
  *
- * `--vscode-*` は VS Code がすべての webview に自動で渡す、現在のカラーテーマの
- * 実際の色を表す CSS 変数。固定のライト/ダーク2色ではなく、ユーザーが実際に
- * 使っているカラーテーマにそのまま追従する。
+ * `--vscode-*` 是 VS Code 自动传递给所有 webview 的当前主题颜色变量，会跟随用户实际使用的主题。
  */
 body {
 	font-family: var(--vscode-editor-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, "Ubuntu", "Droid Sans", sans-serif);
@@ -159,7 +154,7 @@ pre code {
 	border: 0;
 }
 
-/* VS Code がダークテーマのときはダーク配色にする */
+/* VS Code 使用深色主题时采用深色配色 */
 body.vscode-dark h1,
 body.vscode-dark h2,
 body.vscode-dark hr,
@@ -171,7 +166,7 @@ body.vscode-dark th {
 	border-color: rgba(255, 255, 255, 0.69);
 }
 
-/* コントラスト強調テーマ用の上書き（VS Code本体の markdown.css に準拠） */
+/* 高对比度主题覆盖（遵循 VS Code 的 markdown.css） */
 body.vscode-high-contrast h1 {
 	border-color: rgb(0, 0, 0);
 }

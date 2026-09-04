@@ -15,52 +15,52 @@ function post(message: PreviewToHostMessage): void {
 // is authored for VS Code's Markdown preview, i.e. against real <body>/<h1>/… —
 // so it applies here directly, no adaptation needed.
 const SAMPLE_HTML = `
-<h1>見出し 1 (Heading 1)</h1>
-<p>これは本文の段落です。<strong>太字</strong>、<em>斜体</em>、<del>取り消し線</del>、
-<code>inline code</code>、そして <a href="#">リンク</a> を含みます。</p>
+<h1>标题 1 (Heading 1)</h1>
+<p>这是正文段落，包含<strong>粗体</strong>、<em>斜体</em>、<del>删除线</del>、
+<code>inline code</code> 和 <a href="#">链接</a>。</p>
 
-<h2>見出し 2 (Heading 2)</h2>
-<p>もう一つの段落。日本語と English が混ざった文章でも、行間や字間の見え方を確認できます。</p>
+<h2>标题 2 (Heading 2)</h2>
+<p>另一个段落。可以用来检查中文和 English 混排时的行距与字距。</p>
 
 <blockquote>
-	<p>引用ブロックの例。出典やメモを引用するときの見た目です。</p>
+	<p>引用块示例，用于查看引用来源或备注时的显示效果。</p>
 </blockquote>
 
-<h3>見出し 3 (Heading 3)</h3>
+<h3>标题 3 (Heading 3)</h3>
 <ul>
-	<li>箇条書きの項目 1</li>
-	<li>箇条書きの項目 2
-		<ul><li>ネストした項目</li></ul>
+	<li>无序列表项 1</li>
+	<li>无序列表项 2
+		<ul><li>嵌套列表项</li></ul>
 	</li>
 </ul>
 <ol>
-	<li>番号付きリスト 1</li>
-	<li>番号付きリスト 2</li>
+	<li>有序列表项 1</li>
+	<li>有序列表项 2</li>
 </ol>
 
 <ul class="contains-task-list">
-	<li><input type="checkbox" checked disabled> 完了したタスク</li>
-	<li><input type="checkbox" disabled> 未完了のタスク</li>
+	<li><input type="checkbox" checked disabled> 已完成任务</li>
+	<li><input type="checkbox" disabled> 未完成任务</li>
 </ul>
 
-<h3>テーブル (Table)</h3>
+<h3>表格 (Table)</h3>
 <table>
 	<thead><tr><th>列 A</th><th>列 B</th><th>列 C</th></tr></thead>
 	<tbody>
-		<tr><td>1</td><td>あいうえお</td><td>x</td></tr>
-		<tr><td>2</td><td>かきくけこ</td><td>y</td></tr>
+		<tr><td>1</td><td>甲乙丙丁戊</td><td>x</td></tr>
+		<tr><td>2</td><td>己庚辛壬癸</td><td>y</td></tr>
 	</tbody>
 </table>
 
-<h3>コードブロック (Code block)</h3>
+<h3>代码块 (Code block)</h3>
 <pre><code>function greet(name) {
-  // コメント
+  // 注释
   return \`Hello, \${name}!\`;
 }
 </code></pre>
 
 <hr />
-<p>水平線の下の段落。</p>
+<p>分隔线下方的段落。</p>
 `;
 
 const themeStyle = document.getElementById('mlp-theme-style') as HTMLStyleElement;

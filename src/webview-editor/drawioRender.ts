@@ -52,10 +52,10 @@ export function parseDrawioXml(xml: string): DrawioDiagram {
 	const doc = new DOMParser().parseFromString(xml, 'text/xml');
 	const failure = doc.querySelector('parsererror');
 	if (failure) {
-		throw new DrawioParseError('XML を解析できませんでした。draw.io ファイルの内容を確認してください。');
+		throw new DrawioParseError('无法解析 XML，请检查 draw.io 文件内容。');
 	}
 	const root = doc.documentElement;
-	if (!root) throw new DrawioParseError('XML が空です。');
+	if (!root) throw new DrawioParseError('XML 内容为空。');
 	return buildDiagram(wrapElement(root));
 }
 

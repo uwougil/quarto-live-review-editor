@@ -16,11 +16,11 @@ const root = document.getElementById('mlp-sidebar-root')!;
 // root, so a theme's element selectors (h1, p, code, blockquote, …) apply to it
 // exactly as they would in VS Code's Markdown preview.
 const PREVIEW_SAMPLE = `
-<h1>見出し 1</h1>
-<h2>見出し 2</h2>
-<p>本文と <strong>強調</strong>、<em>斜体</em>、<code>inline code</code>、<a href="#">リンク</a>。</p>
-<ul><li>箇条書き 1</li><li>箇条書き 2</li></ul>
-<blockquote>引用ブロックの例。</blockquote>
+<h1>标题 1</h1>
+<h2>标题 2</h2>
+<p>正文、<strong>粗体</strong>、<em>斜体</em>、<code>inline code</code> 和 <a href="#">链接</a>。</p>
+<ul><li>无序列表 1</li><li>无序列表 2</li></ul>
+<blockquote>引用块示例。</blockquote>
 <pre><code>function hello() {
   return 42;
 }</code></pre>
@@ -124,9 +124,9 @@ function buildCard(style: StyleEntry, themeKind: ThemeKind): HTMLElement {
 	const actions = document.createElement('div');
 	actions.className = 'mlp-actions';
 	actions.append(
-		iconButton('edit', 'CSSを編集', () => post({ type: 'openStyle', id: style.id })),
+		iconButton('edit', '编辑 CSS', () => post({ type: 'openStyle', id: style.id })),
 		iconButton('duplicate', '複製', () => post({ type: 'duplicateStyle', id: style.id })),
-		iconButton('rename', '名前を変更', () => post({ type: 'renameStyle', id: style.id })),
+		iconButton('rename', '重命名', () => post({ type: 'renameStyle', id: style.id })),
 		iconButton('delete', '削除', () => post({ type: 'deleteStyle', id: style.id })),
 	);
 	head.appendChild(actions);
@@ -181,22 +181,22 @@ function buildSettings(settings: SidebarSettings): HTMLElement {
 
 	section.appendChild(
 		buildSelect(
-			'既定エディタ',
+			'默认编辑器',
 			settings.defaultEditor,
 			[
-				['prompt', '通常エディタ（手動でプレビュー）'],
-				['livePreview', '常にライブプレビュー'],
-				['default', '常に通常エディタ'],
+				['prompt', '普通编辑器（手动预览）'],
+				['livePreview', '始终使用实时预览'],
+				['default', '始终使用普通编辑器'],
 			],
 			(v) => post({ type: 'setSetting', key: 'defaultEditor', value: v }),
 		),
 	);
 	section.appendChild(
 		buildSelect(
-			'コード配色',
+			'代码配色',
 			settings.codeTheme,
 			[
-				['auto', '自動（VS Codeに追従）'],
+				['auto', '自动（跟随 VS Code）'],
 				['dark-plus', 'VS Code Dark+'],
 				['light-plus', 'VS Code Light+'],
 				['github-dark', 'GitHub Dark'],
@@ -217,18 +217,18 @@ function render(styles: StyleEntry[], settings: SidebarSettings, themeKind: Them
 
 	const title = document.createElement('div');
 	title.className = 'mlp-section-title';
-	title.textContent = 'CSSテーマ';
+	title.textContent = 'CSS 主题';
 	themesSection.appendChild(title);
 
 	if (styles.length === 0) {
 		const empty = document.createElement('p');
 		empty.className = 'mlp-empty';
-		empty.textContent = 'スタイルがまだありません。';
+		empty.textContent = '还没有样式。';
 		themesSection.appendChild(empty);
 	} else {
 		const hint = document.createElement('p');
 		hint.className = 'mlp-hint';
-		hint.textContent = 'カードをクリックして適用（1つだけ選べます）。';
+		hint.textContent = '点击卡片应用（只能选择一个）。';
 		themesSection.appendChild(hint);
 
 		const list = document.createElement('div');
@@ -241,7 +241,7 @@ function render(styles: StyleEntry[], settings: SidebarSettings, themeKind: Them
 
 	const newButton = document.createElement('button');
 	newButton.className = 'mlp-new-style';
-	newButton.textContent = '+ 新しいスタイル';
+	newButton.textContent = '+ 新建样式';
 	newButton.addEventListener('click', () => post({ type: 'newStyle' }));
 	themesSection.appendChild(newButton);
 

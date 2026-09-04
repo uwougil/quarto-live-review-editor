@@ -41,11 +41,11 @@ interface StyleFile {
 }
 
 const NEW_STYLE_TEMPLATE = `/*
- * 新しい Markdown Live Preview スタイル。
- * VS Code の Markdown プレビューと同じ CSS 形式（HTML 要素セレクタ）で書けます。
+ * 新建 Markdown Live Preview 样式。
+ * 可使用与 VS Code Markdown 预览相同的 CSS 格式（HTML 元素选择器）。
  * 例: body, h1〜h6, p, strong, em, a, ul, ol, li, code, pre, blockquote,
  *     table, th, td, hr, img, input[type=checkbox]
- * ダークテーマ用に上書きしたいときは body.vscode-dark を接頭辞に付けます。
+ * 如果要覆盖深色主题，请使用 body.vscode-dark 作为前缀。
  */
 h1 {
 	color: #4493f8;
@@ -199,27 +199,27 @@ export class StyleStore {
 			await vscode.workspace.fs.createDirectory(dir);
 		}
 		const existingNames = new Set((await this.listAllStyleFiles()).map((f) => f.name));
-		let name = '新しいスタイル.css';
+	let name = '新建样式.css';
 		let i = 1;
 		while (existingNames.has(name)) {
-			name = `新しいスタイル ${++i}.css`;
+			name = `新建样式 ${++i}.css`;
 		}
 		const uri = vscode.Uri.joinPath(dir, name);
 		await vscode.workspace.fs.writeFile(uri, Buffer.from(NEW_STYLE_TEMPLATE, 'utf8'));
 		return uri;
 	}
 
-	/** Copy a style to "<name> のコピー.css" (uniquified). The copy is not auto-enabled. */
+	/** 将样式复制为“<name> 的副本.css”（自动避免重名），副本不会自动启用。 */
 	async duplicateStyle(id: string): Promise<vscode.Uri | undefined> {
 		const files = await this.listAllStyleFiles();
 		const file = files.find((f) => f.id === id);
 		if (!file) return undefined;
 		const base = file.name.replace(/\.css$/i, '');
 		const existing = new Set(files.map((f) => f.name));
-		let name = `${base} のコピー.css`;
+	let name = `${base} 的副本.css`;
 		let i = 1;
 		while (existing.has(name)) {
-			name = `${base} のコピー ${++i}.css`;
+			name = `${base} 的副本 ${++i}.css`;
 		}
 		const target = vscode.Uri.joinPath(this.stylesUri, name);
 		const bytes = await vscode.workspace.fs.readFile(file.uri);

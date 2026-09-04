@@ -124,7 +124,7 @@ export class MermaidWidget extends WidgetType {
 			return btn;
 		};
 
-		const zoomInBtn = makeButton('+', '拡大 (Ctrl+ホイールでも可)', () => zoomCenter(1.2));
+		const zoomInBtn = makeButton('+', '放大（也可使用 Ctrl+滚轮）', () => zoomCenter(1.2));
 		const zoomOutBtn = makeButton('−', '縮小', () => zoomCenter(1 / 1.2));
 		// Resets all the way out to "fit", not just to scale 1. `resetPanZoom`
 		// alone leaves the diagram in native mode, where scale 1 means *full size*
@@ -132,7 +132,7 @@ export class MermaidWidget extends WidgetType {
 		// diagram shrank a little and stopped, still larger than the view it
 		// started from. What "back to the original size" means to someone looking
 		// at the diagram is the fitted view they began with.
-		const zoomResetBtn = makeButton('↺', '元の表示に戻す（縮小表示）', () => setMode('fit'));
+		const zoomResetBtn = makeButton('↺', '恢复原始显示（适合窗口）', () => setMode('fit'));
 		const modeToggleBtn = makeButton('', '', () => setMode(mode === 'fit' ? 'native' : 'fit'));
 		// Same control every rendered block carries, so the way back to the source
 		// is in the same place whatever the block is. Clicking the diagram itself
@@ -150,8 +150,8 @@ export class MermaidWidget extends WidgetType {
 			modeToggleBtn.textContent = mode === 'fit' ? '⤢' : '⤡';
 			modeToggleBtn.title =
 				mode === 'fit'
-					? '原寸大表示に切り替え（ドラッグでパン、Ctrl+ホイールでズームできます）'
-					: '自動縮小表示に戻す（表示幅に合わせて縮小し、スクロールなしで全体を表示します）';
+			? '切换到原始尺寸（可拖动平移，使用 Ctrl+滚轮缩放）'
+			: '恢复自动缩放（适应显示宽度，无需滚动即可查看全图）';
 			if (mode === 'native') resetPanZoom();
 			else applyTransform();
 			// The two modes have different heights ('native' adds a horizontal

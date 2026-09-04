@@ -118,7 +118,7 @@ describe('blankLineAfter', () => {
 	const endOfLine = (doc: string, line: number) => stateFor(doc).doc.line(line).to;
 
 	it('claims the blank line a paragraph is followed by', () => {
-		const doc = 'テスト\n';
+		const doc = '测试文\n';
 		expect(blankLineAfter(stateFor(doc), 3)).toBe(endOfLine(doc, 2));
 	});
 
@@ -128,7 +128,7 @@ describe('blankLineAfter', () => {
 	});
 
 	it('returns null at the end of the document (no line to claim)', () => {
-		expect(blankLineAfter(stateFor('テスト'), 3)).toBeNull();
+		expect(blankLineAfter(stateFor('测试文'), 3)).toBeNull();
 	});
 
 	it('returns null when the next line has content', () => {
@@ -230,7 +230,7 @@ describe('blockReplacedLines', () => {
 	it('agrees with the block decorations actually produced for the same document', () => {
 		// The real guarantee: what `blockDecorationsField` replaces is exactly what
 		// the line-decoration pass skips. Drift either way is the bug.
-		const doc = '- 重みづけ:\n  | 行動 | 経験値 |\n  |---|---|\n  | 配達1個 | 1pt |\n';
+		const doc = '- 权重:\n  | 行为 | 经验值 |\n  |---|---|\n  | 配送1件 | 1pt |\n';
 		const state = EditorState.create({
 			doc,
 			extensions: [markdown({ extensions: AppGFM }), blockDecorationsField],

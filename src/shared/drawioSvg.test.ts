@@ -114,9 +114,9 @@ describe('wrapLabel', () => {
 	// Japanese has no spaces to break on, so a per-character break is the only
 	// way to keep the label inside its box.
 	it('breaks CJK text without spaces', () => {
-		const lines = wrapLabel('これは日本語のとても長いラベルです', 60, 12);
+		const lines = wrapLabel('这是一段很长的中文标签文本', 60, 12);
 		expect(lines.length).toBeGreaterThan(1);
-		expect(lines.join('')).toBe('これは日本語のとても長いラベルです');
+		expect(lines.join('')).toBe('这是一段很长的中文标签文本');
 	});
 
 	// A single token wider than the box still has to be cut, or it runs past the
@@ -579,7 +579,7 @@ describe('label fitting', () => {
 	// The defect this prevents: a label longer than its box was drawn past the
 	// border, over whatever was next to it — damaging other shapes' readability.
 	it('shrinks the font until the block fits the height', () => {
-		const tall = fitLabel('とても長いラベルが狭い箱に入っている場合どうなるか', 90, 50, 12);
+		const tall = fitLabel('这是一个放入狭窄方框中的很长标签文本'.repeat(2), 90, 50, 12);
 		expect(tall.fontSize).toBeLessThan(12);
 		expect(tall.lines.length * tall.fontSize * 1.25).toBeLessThanOrEqual(50);
 	});
@@ -587,9 +587,9 @@ describe('label fitting', () => {
 	// Better a tiny label than a clipped one, and better either than dropping the
 	// text and hiding what the diagram says.
 	it('stops shrinking at the floor and keeps the text', () => {
-		const r = fitLabel('とても長い文字列'.repeat(20), 40, 12, 12);
+		const r = fitLabel('这是一段很长的字符串'.repeat(20), 40, 12, 12);
 		expect(r.fontSize).toBeGreaterThanOrEqual(6);
-		expect(r.lines.join('')).toContain('とても長い');
+		expect(r.lines.join('')).toContain('这是一段很长');
 	});
 
 	it('imposes no limit when no height is given', () => {
@@ -597,7 +597,7 @@ describe('label fitting', () => {
 	});
 
 	it('renders a long label inside its shape', () => {
-		const svg = render(box('style="whiteSpace=wrap" value="とても長いラベルが狭い箱に入っている場合"'));
+		const svg = render(box('style="whiteSpace=wrap" value="这是一个放入狭窄方框中的很长标签文本这是一个放入狭窄方框中的很长标签文本"'));
 		const size = Number(/<text[^>]*font-size="([\d.]+)"/.exec(svg)![1]);
 		expect(size).toBeLessThan(12);
 		// Every baseline must stay within the shape (y = 0..50).

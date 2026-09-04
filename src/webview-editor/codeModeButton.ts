@@ -38,8 +38,8 @@ export function createCodeModeButton(view: EditorView, options: CodeModeButtonOp
 	// so it reads as code, and what it does is spelled out for pointer users in
 	// `title` and for assistive tech in `aria-label`.
 	button.textContent = '</>';
-	button.title = 'コードモード：Markdown ソースを表示して直接編集します';
-	button.setAttribute('aria-label', 'コードモードに切り替え');
+	button.title = '源码模式：显示并直接编辑 Markdown 源码';
+	button.setAttribute('aria-label', '切换到源码模式');
 
 	// The press must not reach the block underneath. Without this, the block's own
 	// click-to-source handler (or, for a table, the cell under the button) would
@@ -106,8 +106,8 @@ export function createCopyCodeButton(getCode: () => string): HTMLButtonElement {
 	// of block chrome: a short glyph in the editor's monospace face, not a word.
 	button.className = 'mlp-copy-code-btn';
 	button.textContent = COPY_GLYPH;
-	button.title = 'このコードブロックをコピーします';
-	button.setAttribute('aria-label', 'コードブロックをコピー');
+	button.title = '复制此代码块';
+	button.setAttribute('aria-label', '复制代码块');
 
 	// The press must not reach the editor underneath, or CodeMirror moves the
 	// caret into the block — which un-hides the fences and reflows the lines the

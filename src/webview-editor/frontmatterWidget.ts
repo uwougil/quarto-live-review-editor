@@ -126,7 +126,7 @@ export class FrontmatterErrorWidget extends WidgetType {
 		container.className = 'mlp-frontmatter-error';
 		container.setAttribute('role', 'alert');
 		const strong = document.createElement('strong');
-		strong.textContent = 'フロントマターの解析に失敗しました';
+		strong.textContent = 'Front matter 解析失败';
 		const pre = document.createElement('pre');
 		pre.textContent = this.message;
 		container.append(strong, pre);

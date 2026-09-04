@@ -69,7 +69,7 @@ export class StylePreviewController {
 	}
 
 	private ensurePanel(): void {
-		const title = `プレビュー: ${this.currentName}`;
+		const title = `预览：${this.currentName}`;
 		if (this.panel) {
 			this.panel.title = title;
 			this.panel.reveal(vscode.ViewColumn.Beside, true);

@@ -1,8 +1,7 @@
 /*
- * GitHub Dark (Colorblind) テーマ
- * github-markdown-css の dark_colorblind 配色を、VS Code の Markdown プレビュー形式
- * （HTML 要素セレクタ）に変換したもの。GitHub 固有のクラス（.octicon, .pl-*, g-emoji,
- * .alert, footnote 関連など）はこのアプリで生成されないため除外している。
+ * GitHub Dark (Colorblind) 主题。
+ * 将 github-markdown-css 的 dark_colorblind 配色转换为 VS Code Markdown 预览格式
+ *（HTML 元素选择器）。应用不会生成 GitHub 专有的类（.octicon、.pl-*、g-emoji、.alert、脚注等），因此已排除。
  */
 body {
 	color-scheme: dark;

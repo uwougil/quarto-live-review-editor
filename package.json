@@ -79,7 +79,7 @@
       "mdLivePreview": [
         {
           "id": "mdLivePreview.outline",
-          "name": "アウトライン",
+          "name": "大纲",
           "type": "webview"
         },
         {
@@ -92,19 +92,19 @@
     "commands": [
       {
         "command": "mdLivePreview.openWithLivePreview",
-        "title": "ライブプレビューで開く",
+        "title": "使用实时预览打开",
         "category": "Markdown Live Preview",
         "icon": "$(open-preview)"
       },
       {
         "command": "mdLivePreview.openWithSource",
-        "title": "ソースを開く",
+        "title": "打开源码",
         "category": "Markdown Live Preview",
         "icon": "$(go-to-file)"
       },
       {
         "command": "mdLivePreview.newStyle",
-        "title": "新しいCSSスタイル",
+        "title": "新建 CSS 样式",
         "category": "Markdown Live Preview",
         "icon": "$(add)"
       }
@@ -143,14 +143,14 @@
             "github-light"
           ],
           "enumDescriptions": [
-            "VS Code のカラーテーマ（ライト/ダーク）に追従し、VS Code 標準の Dark+/Light+ 配色を使います。",
-            "VS Code 標準のダークテーマ（Dark+）の配色。",
-            "VS Code 標準のライトテーマ（Light+）の配色。",
-            "GitHub ダークの配色。",
-            "GitHub ライトの配色。"
+            "跟随 VS Code 颜色主题（浅色/深色），使用 VS Code 标准 Dark+/Light+ 配色。",
+            "VS Code 标准深色主题（Dark+）配色。",
+            "VS Code 标准浅色主题（Light+）配色。",
+            "GitHub 深色配色。",
+            "GitHub 浅色配色。"
           ],
           "default": "auto",
-          "description": "コードブロックのシンタックスハイライトに使うテーマ。\"auto\" は VS Code のカラーテーマ（ライト/ダーク）に追従し、VS Code と同じ Dark+/Light+ 配色になります。"
+          "description": "代码块语法高亮主题。\"auto\" 会跟随 VS Code 颜色主题。"
         },
         "mdLivePreview.enabledStyles": {
           "type": "array",
@@ -159,7 +159,7 @@
           },
           "default": [],
           "scope": "application",
-          "description": "ライブプレビューに適用する CSS テーマ。サイドバーの「CSSテーマ」から排他的に1つ選択します（グローバル設定）。"
+          "description": "应用于实时预览的 CSS 主题，可从侧边栏 CSS 主题视图中选择一个。"
         },
         "mdLivePreview.defaultEditor": {
           "type": "string",
@@ -169,12 +169,12 @@
             "default"
           ],
           "enumDescriptions": [
-            "通常のテキストエディタを既定にし、ライブプレビューはツールバーのボタンから手動で開きます。",
-            ".md ファイルを常に Markdown Live Preview で開きます。",
-            ".md ファイルを常に VS Code の通常のテキストエディタで開きます。"
+            "默认使用普通文本编辑器，通过工具栏按钮手动打开实时预览。",
+            "始终使用 Markdown Live Preview 打开 .md/.qmd 文件。",
+            "始终使用 VS Code 普通文本编辑器打开 .md/.qmd 文件。"
           ],
           "default": "prompt",
-          "description": ".md ファイルの既定エディタを Markdown Live Preview にするかどうかを制御します。"
+          "description": "控制 .md/.qmd 文件是否默认使用 Markdown Live Preview。"
         }
       }
     }

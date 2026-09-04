@@ -77,7 +77,7 @@ export class OutlineViewProvider implements vscode.WebviewViewProvider {
 	<meta charset="UTF-8" />
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
 	<link rel="stylesheet" href="${styleUri}" />
-	<title>アウトライン</title>
+		<title>大纲</title>
 </head>
 <body>
 	<div id="mlp-outline-root"></div>
