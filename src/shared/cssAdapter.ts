@@ -233,7 +233,13 @@ function parseDeclarations(body: string): Decl[] {
 		if (body[i] === '/' && body[i + 1] === '*') {
 			const end = body.indexOf('*/', i + 2);
 			const stop = end === -1 ? n : end + 2;
-			buf += body.slice(i, stop);
+			// A comment immediately after a semicolon must not become part of
+			// the next declaration's property name. Keep standalone comments as
+			// raw items so generated CSS retains the user's annotations; comments
+			// inside a declaration remain attached to that declaration's value.
+			const comment = body.slice(i, stop);
+			if (buf.trim()) buf += comment;
+			else items.push({ raw: comment });
 			i = stop;
 			continue;
 		}

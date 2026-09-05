@@ -26,7 +26,7 @@ interface DebugWindow extends Window {
 	__mlpDebugSnapshot?: () => LivePreviewDebugSnapshot | null;
 	__mlpDebugScrollTo?: (top: number) => void;
 	__mlpDebugScrollToPosition?: (pos: number) => void;
-	__mlpDebugSelection?: () => { anchor: number; head: number; from: number; to: number; x: number | null; y: number | null; blockFrom: number; blockLength: number; blockTop: number; blockHeight: number } | null;
+	__mlpDebugSelection?: () => { anchor: number; head: number; from: number; to: number; x: number | null; y: number | null; blockFrom: number; blockLength: number; blockTop: number; blockHeight: number; defaultLineHeight: number; contentHeight: number } | null;
 	__mlpDebugLineBlock?: (pos: number) => { from: number; length: number; top: number; height: number } | null;
 }
 
@@ -90,7 +90,7 @@ export function installDebugView(view: EditorView): void {
 		const range = debugView.state.selection.main;
 		const coords = debugView.coordsAtPos(range.head);
 		const block = debugView.lineBlockAt(range.head);
-		return { anchor: range.anchor, head: range.head, from: range.from, to: range.to, x: coords?.left ?? null, y: coords?.top ?? null, blockFrom: block.from, blockLength: block.length, blockTop: block.top, blockHeight: block.height };
+		return { anchor: range.anchor, head: range.head, from: range.from, to: range.to, x: coords?.left ?? null, y: coords?.top ?? null, blockFrom: block.from, blockLength: block.length, blockTop: block.top, blockHeight: block.height, defaultLineHeight: debugView.defaultLineHeight, contentHeight: debugView.contentHeight };
 	};
 	debugWindow.__mlpDebugLineBlock = (pos) => {
 		if (!debugView) return null;

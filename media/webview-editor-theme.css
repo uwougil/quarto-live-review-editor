@@ -350,10 +350,6 @@ html, body {
 	color: var(--vscode-textLink-foreground, #3794ff);
 	font-weight: 600;
 }
-.mlp-layout-refresh-marker {
-	display: none !important;
-}
-
 .mlp-image {
 	max-width: 100%;
 	border-radius: 4px;

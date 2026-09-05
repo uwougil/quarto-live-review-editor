@@ -4,7 +4,7 @@ import { defaultKeymap, indentWithTab } from '@codemirror/commands';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from './gfmTableFix';
-import { livePreviewPlugin, createLinkClickHandler, setImageBaseUri } from './livePreviewPlugin';
+import { livePreviewPlugin, lineDecorationsField, createLinkClickHandler, setImageBaseUri } from './livePreviewPlugin';
 import { codeHighlightExtension, setCodeTokens } from './codeHighlightPlugin';
 import { blockDecorationsField, dragReleaseRefresh } from './blockDecorations';
 import { detectFrontmatter } from './frontmatterWidget';
@@ -22,7 +22,6 @@ import { installDebugView } from './debug';
 import { viewportSyntaxPlugin } from './viewportSyntax';
 import { mathDecorationsField } from './mathDecorations';
 import { footnoteIndexField, footnoteNavigationField } from './footnotes';
-import { layoutRefreshField, refreshEditorLayout } from './layoutRefresh';
 
 const remoteChange = Annotation.define<boolean>();
 const FLUSH_DEBOUNCE_MS = 250;
@@ -36,10 +35,11 @@ function requestMeasureAfterLayout(): void {
 	const target = view;
 	if (!target) return;
 	// A stylesheet mutation and a new EditorView can both happen before the
-	// browser has performed layout. The state-backed refresh re-enters
-	// CodeMirror's ordinary redraw/measurement path after the computed font
-	// metrics, wrapping width, and decoration boxes are observable.
-	refreshEditorLayout(target);
+	// browser has performed layout. Ask CodeMirror to run its supported measure
+	// pass after the browser has committed the new style and DOM boxes.
+	requestAnimationFrame(() => {
+		if (target.dom.isConnected) target.requestMeasure();
+	});
 }
 
 function flush() {
@@ -92,9 +92,9 @@ function createExtensions(dialect: DocumentDialect): Extension[] {
 		mathDecorationsField,
 		footnoteIndexField,
 		footnoteNavigationField,
-		layoutRefreshField,
 		markdownSupport,
 		viewportSyntaxPlugin,
+		lineDecorationsField,
 		// Extend closeBrackets' default pair set (`( [ { ' "`) with the emphasis
 		// marks so `*bold/italic*` and `_italic_` also auto-pair and wrap a
 		// selection when typed — the same mechanism VS Code and most editors use

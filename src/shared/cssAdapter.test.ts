@@ -81,6 +81,16 @@ describe('adaptMarkdownCss', () => {
 		expect(out).not.toContain('margin-bottom');
 	});
 
+	it('parses commented declarations before distributing measured block spacing', () => {
+		const out = adaptMarkdownCss(`p {
+			/* keep this annotation */
+			margin-top: 0; /* top edge */
+			margin-bottom: 12px; /* bottom edge */
+		}`);
+		expect(out).not.toMatch(/\.cm-line\.mlp-line-paragraph[^{}]*\{[^}]*margin-bottom/);
+		expect(out).toMatch(/\.mlp-line-paragraph-last[^{}]*\{[\s\S]*padding-bottom: 12px/);
+	});
+
 	it('maps every known block-level tag to its class regardless of declaration content (PBT-03 invariant)', () => {
 		fc.assert(
 			fc.property(fc.constantFrom(...MAPPED_BLOCK_TAGS), declaration, ([tag, expectedClass], decl) => {

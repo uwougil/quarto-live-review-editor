@@ -1,6 +1,6 @@
 import { EditorView, ViewPlugin, ViewUpdate, Decoration, DecorationSet, WidgetType } from '@codemirror/view';
 import { syntaxTree } from '@codemirror/language';
-import type { Range, EditorState } from '@codemirror/state';
+import { RangeSet, StateField, type Range, type EditorState } from '@codemirror/state';
 import type { SyntaxNode, SyntaxNodeRef } from '@lezer/common';
 import { cursorTouchesRange, blockCursorTouchesRange, noteRevealed } from './cmUtils';
 import { isDiagramLang } from './diagramLang';
@@ -14,7 +14,6 @@ import { insertRow, insertColumn, renderTableMarkdown, type TableEditModel } fro
 import { parseFenceInfo } from '../quarto/fence';
 import { recordDecorationRebuild } from './debug';
 import { FootnoteBackWidget, FootnoteReferenceWidget, footnoteIndexField } from './footnotes';
-import { refreshEditorLayout } from './layoutRefresh';
 
 const HEADING_LINE_CLASS: Record<string, string> = {
 	ATXHeading1: 'mlp-line-h1',
@@ -1140,12 +1139,12 @@ function listItemIsTask(state: EditorState, listMark: SyntaxNodeRef): boolean {
 export type DecorationRebuildReason = 'docChanged' | 'viewportChanged' | 'selectionSet' | 'syntaxTreeChanged';
 
 function requestMeasureAfterDecorationUpdate(view: EditorView): void {
-	const target = view;
-	// ViewPlugin.update runs before CodeMirror has committed the new decoration
-	// DOM. The delayed state-backed refresh lets the ordinary CodeMirror redraw
-	// observe the widgets/hidden markers after they enter the DOM, without
-	// intercepting keyboard or mouse movement.
-	refreshEditorLayout(target);
+	// ViewPlugin.update runs while CodeMirror is applying the transaction. Queue
+	// the supported measurement pass so it observes the decoration DOM after the
+	// update has been drawn.
+	requestAnimationFrame(() => {
+		if (view.dom.isConnected) view.requestMeasure();
+	});
 }
 
 /**
@@ -1162,12 +1161,134 @@ export function decorationRebuildReason(update: ViewUpdate): DecorationRebuildRe
 	return null;
 }
 
+/**
+ * Build the line decorations that participate in CodeMirror's height map.
+ *
+ * These must be direct decorations. A ViewPlugin's decoration set is applied
+ * after the height map has been measured, so a theme's padding, line-height,
+ * or font-size on one of these classes can leave wrapped lines visually lower
+ * than the coordinates CodeMirror uses for mouse and arrow-key navigation.
+ */
+function buildLineDecorations(state: EditorState): DecorationSet {
+	const { doc } = state;
+	const seenLine = new Map<number, string>();
+	const tree = syntaxTree(state);
+	const fm = detectFrontmatter(state);
+
+	const addLineClass = (lineFrom: number, cls: string) => {
+		const existing = seenLine.get(lineFrom);
+		seenLine.set(lineFrom, existing ? `${existing} ${cls}` : cls);
+	};
+	const addLineRange = (from: number, to: number, cls: (lineNumber: number, first: boolean, last: boolean) => string) => {
+		const firstLine = doc.lineAt(from).number;
+		const lastLine = doc.lineAt(to).number;
+		for (let n = firstLine; n <= lastLine; n++) {
+			const value = cls(n, n === firstLine, n === lastLine);
+			if (value) addLineClass(doc.line(n).from, value);
+		}
+	};
+
+	tree.iterate({
+		from: 0,
+		to: doc.length,
+		enter: (node) => {
+			if (fm && node.from >= fm.from && node.to <= fm.to) return false;
+			const name = node.name;
+			if (name in HEADING_LINE_CLASS) {
+				addLineClass(doc.lineAt(node.from).from, HEADING_LINE_CLASS[name]);
+				return false;
+			}
+			switch (name) {
+				case 'Paragraph': {
+					const parentName = node.node.parent?.name;
+					if (parentName === 'ListItem' || parentName === 'Blockquote') return;
+					const paragraphTo = blankLineAfter(state, node.to) ?? node.to;
+					addLineRange(node.from, paragraphTo, (_n, first, last) => {
+						let cls = 'mlp-line-paragraph';
+						if (first) cls += ' mlp-line-paragraph-first';
+						if (last) cls += ' mlp-line-paragraph-last';
+						return cls;
+					});
+					return;
+				}
+				case 'ListItem': {
+					const parent = node.node.parent;
+					const isFirstItem = !parent || parent.firstChild?.from === node.from;
+					const isLastItem = !parent || parent.lastChild?.to === node.to;
+					const replaced = blockReplacedLines(state, node.node);
+					addLineRange(node.from, node.to, (n, first, last) => {
+						if (replaced.has(n)) return '';
+						let cls = 'mlp-line-list';
+						if (first && isFirstItem) cls += ' mlp-line-list-first';
+						if (last && isLastItem) cls += ' mlp-line-list-last';
+						return cls;
+					});
+					return;
+				}
+				case 'Blockquote':
+					addLineRange(node.from, node.to, (_n, first, last) => {
+						let cls = 'mlp-line-quote';
+						if (first) cls += ' mlp-line-quote-first';
+						if (last) cls += ' mlp-line-quote-last';
+						return cls;
+					});
+					return;
+				case 'FencedCode': {
+					const infoNode = node.node.getChild('CodeInfo');
+					const info = parseFenceInfo(infoNode ? state.sliceDoc(infoNode.from, infoNode.to) : '');
+					const lang = info.language ?? '';
+					if (
+						isDiagramLang(lang) !== null &&
+						!blockCursorTouchesRange(state, node.from, node.to) &&
+						isLineAligned(state, node.from, node.to)
+					) return false;
+					const firstLineNum = doc.lineAt(node.from).number;
+					const lastLineNum = doc.lineAt(node.to).number;
+					const hasContentLines = lastLineNum > firstLineNum + 1;
+					const firstFenceHidden =
+						hasContentLines && !cursorTouchesRange(state, doc.line(firstLineNum).from, doc.line(firstLineNum).to);
+					const lastFenceHidden =
+						hasContentLines && !cursorTouchesRange(state, doc.line(lastLineNum).from, doc.line(lastLineNum).to);
+					const firstContentLine = firstFenceHidden ? firstLineNum + 1 : firstLineNum;
+					const lastContentLine = lastFenceHidden ? lastLineNum - 1 : lastLineNum;
+					addLineRange(node.from, node.to, (n) => {
+						if (n === firstLineNum && firstFenceHidden) return '';
+						if (n === lastLineNum && lastFenceHidden) return '';
+						let cls = 'mlp-line-code';
+						if (n === firstContentLine) cls += ' mlp-line-code-first';
+						if (n === lastContentLine) cls += ' mlp-line-code-last';
+						return cls;
+					});
+					return false;
+				}
+			}
+		},
+	});
+
+	return Decoration.set(
+		[...seenLine].map(([lineFrom, cls]) => Decoration.line({ class: cls }).range(lineFrom)),
+		true,
+	);
+}
+
+export const lineDecorationsField = StateField.define<DecorationSet>({
+	create: buildLineDecorations,
+	update(value, transaction) {
+		if (
+			transaction.docChanged ||
+			(transaction.selection && !transaction.startState.selection.eq(transaction.selection)) ||
+			syntaxTree(transaction.startState) !== syntaxTree(transaction.state)
+		) return buildLineDecorations(transaction.state);
+		return value;
+	},
+	provide: (field) => EditorView.decorations.from(field),
+});
+
 function buildDecorations(view: EditorView): DecorationSet {
 	const { state } = view;
 	const { doc } = state;
 	const decorations: Range<Decoration>[] = [];
 	const seenReplace = new Set<string>();
-	const seenLine = new Map<number, string>();
 	const tree = syntaxTree(state);
 	// blockDecorationsField renders the whole frontmatter block as its own
 	// widget; skip it here too so this pass doesn't waste time computing
@@ -1186,24 +1307,6 @@ function buildDecorations(view: EditorView): DecorationSet {
 		decorations.push(deco.range(from, to));
 	};
 
-	// A line can only carry one line decoration, so merge class names per line and
-	// emit them all at the end (each exactly once, at the line start).
-	const addLineClass = (lineFrom: number, cls: string) => {
-		const existing = seenLine.get(lineFrom);
-		seenLine.set(lineFrom, existing ? `${existing} ${cls}` : cls);
-	};
-	// A callback returning '' marks a line as deliberately skipped — used where a
-	// block widget will replace that line and a line decoration on it would make
-	// CodeMirror drop the widget.
-	const addLineRange = (from: number, to: number, cls: (lineNumber: number, first: boolean, last: boolean) => string) => {
-		const firstLine = doc.lineAt(from).number;
-		const lastLine = doc.lineAt(to).number;
-		for (let n = firstLine; n <= lastLine; n++) {
-			const value = cls(n, n === firstLine, n === lastLine);
-			if (value) addLineClass(doc.line(n).from, value);
-		}
-	};
-
 	for (const { from: rangeFrom, to: rangeTo } of view.visibleRanges) {
 		tree.iterate({
 			from: rangeFrom,
@@ -1213,7 +1316,6 @@ function buildDecorations(view: EditorView): DecorationSet {
 				const name = node.name;
 
 				if (name in HEADING_LINE_CLASS) {
-					addLineClass(doc.lineAt(node.from).from, HEADING_LINE_CLASS[name]);
 					// Unconditionally plant a zero-size widget at the *end* of the heading
 					// line, even while the cursor sits on it and the "#" marker is fully
 					// visible. Otherwise, at the moment a heading line first mounts with
@@ -1272,76 +1374,11 @@ function buildDecorations(view: EditorView): DecorationSet {
 					case 'InlineCode':
 						decorations.push(Decoration.mark({ tagName: 'code', class: 'mlp-inline-code' }).range(node.from, node.to));
 						return;
-					case 'Paragraph': {
-						// A list item's or blockquote's text is *also* wrapped in a
-						// Paragraph node in the syntax tree (CommonMark always has one
-						// there, "tight" list rendering just means the HTML omits the
-						// `<p>` tag). Skip the standalone-paragraph classes when that's
-						// the case: `ListItem`/`Blockquote` already add their own line
-						// classes for this same line above, and merging both sets of
-						// classes stacked a *second*, unrelated block's top/bottom
-						// padding onto the line — e.g. the paragraph rule's
-						// margin-bottom opening a gap under a blockquote whose own rule
-						// specifies no bottom padding at all.
-						const parentName = node.node.parent?.name;
-						if (parentName === 'ListItem' || parentName === 'Blockquote') return;
-						// Hand the paragraph's trailing gap (a theme's `p { margin-bottom }`,
-						// which cssAdapter maps onto `-last` as padding-bottom) to the blank
-						// line that separates this paragraph from what follows, rather than
-						// leaving it on the paragraph's own last line.
-						//
-						// Both put the gap in the same place on screen — the separator line
-						// and the gap simply swap order, so every block below keeps its exact
-						// position. What changes is where the caret lands: pressing Enter at
-						// the end of a paragraph leaves the cursor on a line the parser does
-						// not consider part of the paragraph yet, so with the gap still above
-						// it the caret sat a whole gap below the text it follows, then snapped
-						// up the moment the first character was typed and the parser extended
-						// the paragraph onto that line. Claiming the line up front makes the
-						// layout the user lands on already the one typing produces — nothing
-						// left to snap, and no dependence on where the cursor happens to be.
-						const paragraphTo = blankLineAfter(state, node.to) ?? node.to;
-						addLineRange(node.from, paragraphTo, (_n, first, last) => {
-							let cls = 'mlp-line-paragraph';
-							if (first) cls += ' mlp-line-paragraph-first';
-							if (last) cls += ' mlp-line-paragraph-last';
-							return cls;
-						});
+					case 'Paragraph':
 						return;
-					}
-					case 'ListItem': {
-						// `-first`/`-last` must reflect this item's position within the
-						// *enclosing list* (BulletList/OrderedList), not just within its
-						// own (usually single-line) range — `addLineRange`'s own
-						// first/last only sees the lines *this* ListItem spans, so every
-						// item in the list would otherwise come out as both first and
-						// last. That mattered once themes convert a `ul, ol { margin-bottom: … }`
-						// rule (meant to apply once, after the whole list) onto
-						// `-last`: with every item marked "last", every item picked up
-						// that trailing margin, spacing a tight list out like a loose one.
-						const parent = node.node.parent;
-						const isFirstItem = !parent || parent.firstChild?.from === node.from;
-						const isLastItem = !parent || parent.lastChild?.to === node.to;
-						// Lines a nested table widget will replace get no line decoration,
-						// or CodeMirror discards the widget and shows raw pipes instead.
-						const replaced = blockReplacedLines(state, node.node);
-						addLineRange(node.from, node.to, (n, first, last) => {
-							if (replaced.has(n)) return '';
-							let cls = 'mlp-line-list';
-							if (first && isFirstItem) cls += ' mlp-line-list-first';
-							if (last && isLastItem) cls += ' mlp-line-list-last';
-							return cls;
-						});
-						return;
-					}
+					case 'ListItem':
 					case 'Blockquote':
-						addLineRange(node.from, node.to, (_n, first, last) => {
-							let cls = 'mlp-line-quote';
-							if (first) cls += ' mlp-line-quote-first';
-							if (last) cls += ' mlp-line-quote-last';
-							return cls;
-						});
-						return; // descend to hide the ">" marks
+						return;
 					case 'ListMark': {
 						if (listItemIsTask(state, node)) {
 							// Task items render a checkbox from the TaskMarker; drop the bullet.
@@ -1402,20 +1439,6 @@ function buildDecorations(view: EditorView): DecorationSet {
 						// tag. Skip this for an empty fence (no content lines at all) so there's
 						// still a box to show.
 						const hasContentLines = lastLineNum > firstLineNum + 1;
-						const firstFenceHidden =
-							hasContentLines && !cursorTouchesRange(state, doc.line(firstLineNum).from, doc.line(firstLineNum).to);
-						const lastFenceHidden =
-							hasContentLines && !cursorTouchesRange(state, doc.line(lastLineNum).from, doc.line(lastLineNum).to);
-						const firstContentLine = firstFenceHidden ? firstLineNum + 1 : firstLineNum;
-						const lastContentLine = lastFenceHidden ? lastLineNum - 1 : lastLineNum;
-						addLineRange(node.from, node.to, (n) => {
-							if (n === firstLineNum && firstFenceHidden) return '';
-							if (n === lastLineNum && lastFenceHidden) return '';
-							let cls = 'mlp-line-code';
-							if (n === firstContentLine) cls += ' mlp-line-code-first';
-							if (n === lastContentLine) cls += ' mlp-line-code-last';
-							return cls;
-						});
 						// Copy button, over the block's top-right corner. Selecting a code
 						// block by hand sweeps up the hidden ``` fence lines and any
 						// indentation the block is nested under, so a hand-made selection
@@ -1502,10 +1525,6 @@ function buildDecorations(view: EditorView): DecorationSet {
 		decorations.push(Decoration.widget({ widget: new FootnoteBackWidget(definition.id), side: 1 }).range(definition.markerTo));
 	}
 
-	for (const [lineFrom, cls] of seenLine) {
-		decorations.push(Decoration.line({ class: cls }).range(lineFrom));
-	}
-
 	return Decoration.set(decorations, true);
 }
 
@@ -1523,7 +1542,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
 			const reason = decorationRebuildReason(update);
 			if (reason) {
 				const start = performance.now();
-				this.decorations = buildDecorations(update.view);
+				const nextDecorations = buildDecorations(update.view);
+				const geometryChanged = !RangeSet.eq([this.decorations], [nextDecorations]);
+				this.decorations = nextDecorations;
 				recordDecorationRebuild(reason, update.view, performance.now() - start);
 				// A syntax-tree advance can replace source markers with inline widgets
 				// (or reveal them again when the selection moves). Those decorations can
@@ -1531,7 +1552,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
 				// them, so explicitly enqueue CodeMirror's supported measurement pass.
 				// This is event-driven: ordinary cursor movement only measures when the
 				// decoration set actually changes, never on every animation frame.
-				requestMeasureAfterDecorationUpdate(update.view);
+				if (geometryChanged) requestMeasureAfterDecorationUpdate(update.view);
 			}
 		}
 	},

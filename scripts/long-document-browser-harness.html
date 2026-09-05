@@ -100,33 +100,49 @@
 	}
 
 	function buildInteractionFixture() {
-		const sentence = 'The target paragraph deliberately combines **emphasis**, [a rendered link](https://example.org), inline math $M_s$, adjacent footnote-like references [^15][^16], and enough ordinary prose to force CodeMirror to wrap one logical source line into many visual rows. ';
-		const target = 'TARGET-PARAGRAPH-START ' + sentence.repeat(7) + 'TARGET-PARAGRAPH-END.';
-		return [
-			'# Geometry interaction fixture',
+		const plainSentence = 'The target paragraph uses plain text and enough ordinary words to force one logical source line across many visual rows without any inline syntax changing its width. ';
+		const revealSentence = 'The source-reveal target contains **emphasis**, [a link](https://example.org), inline math $M_s$, and footnote [^1], plus enough ordinary words to force many visual rows. ';
+		const targetLine = (marker, sentence = plainSentence) => `${marker} ${sentence.repeat(10)}${marker.replace('-START', '-END')}.`;
+		const filler = (name, count) => Array.from({ length: count }, (_, index) => `${name} filler paragraph ${index + 1} keeps the target at a controlled document depth with ordinary wrapped text.`);
+		const lines = [
+			'# Geometry depth interaction fixture',
 			'',
-			'Before paragraph: this short paragraph establishes the source block immediately before the target.',
+			'Short paragraph before the first target.',
 			'',
-			target,
+			targetLine('TARGET-TOP-START'),
 			'',
-			'> A blockquote appears elsewhere so the fixture exercises another line decoration.',
+			'FOLLOWING-TOP-START short paragraph after the top target.',
 			'',
-			'- a list item with ordinary content',
-			'- another list item with ordinary content',
+			...filler('DEPTH-25', 8),
 			'',
-			'Following paragraph: FOLLOWING-PARAGRAPH-START this text must never receive a click or arrow placement intended for the target.',
+			targetLine('TARGET-25-START'),
 			'',
-			'```python',
+			'FOLLOWING-25-START short paragraph after the 25 percent target.',
+			'',
+			...filler('DEPTH-50', 8),
+			'',
+			targetLine('TARGET-50-START', revealSentence),
+			'',
+			'FOLLOWING-50-START short paragraph after the source-reveal target.',
+			'',
+			...filler('DEPTH-75', 8),
+			'',
+			targetLine('TARGET-75-START'),
+			'',
+			'FOLLOWING-75-START short paragraph after the 75 percent target.',
+			'',
+			'Other content appears before the final target.',
+			'~~~~python',
 			'value = 42',
-			'```',
+			'~~~~',
 			'',
 			'| kind | value |',
 			'|:--|--:|',
 			'| block widget fixture | 1 |',
 			'',
-			'[^15]: First footnote definition.',
-			'[^16]: Second footnote definition.',
+			targetLine('TARGET-EOF-START'),
 		].join('\n');
+		return lines;
 	}
 
 	async function loadSource() {
