@@ -13,6 +13,8 @@ import { createCodeModeButton, createCopyCodeButton } from './codeModeButton';
 import { insertRow, insertColumn, renderTableMarkdown, type TableEditModel } from './tableEdit';
 import { parseFenceInfo } from '../quarto/fence';
 import { recordDecorationRebuild } from './debug';
+import { FootnoteBackWidget, FootnoteReferenceWidget, footnoteIndexField } from './footnotes';
+import { refreshEditorLayout } from './layoutRefresh';
 
 const HEADING_LINE_CLASS: Record<string, string> = {
 	ATXHeading1: 'mlp-line-h1',
@@ -1137,6 +1139,15 @@ function listItemIsTask(state: EditorState, listMark: SyntaxNodeRef): boolean {
 
 export type DecorationRebuildReason = 'docChanged' | 'viewportChanged' | 'selectionSet' | 'syntaxTreeChanged';
 
+function requestMeasureAfterDecorationUpdate(view: EditorView): void {
+	const target = view;
+	// ViewPlugin.update runs before CodeMirror has committed the new decoration
+	// DOM. The delayed state-backed refresh lets the ordinary CodeMirror redraw
+	// observe the widgets/hidden markers after they enter the DOM, without
+	// intercepting keyboard or mouse movement.
+	refreshEditorLayout(target);
+}
+
 /**
  * Keeps the live inline decoration pass in step with Lezer's asynchronous
  * background parser. The language package advances its StateField by dispatching
@@ -1472,6 +1483,25 @@ function buildDecorations(view: EditorView): DecorationSet {
 		});
 	}
 
+	// Footnote definitions are indexed for the whole document, but widgets are
+	// emitted only for visible ranges so long documents keep the same viewport
+	// virtualization characteristics as the other inline decorations.
+	const footnotes = state.field(footnoteIndexField);
+	const visible = (from: number, to: number) => view.visibleRanges.some((range) => to >= range.from && from <= range.to);
+	for (const reference of footnotes.references) {
+		if (!visible(reference.from, reference.to)) continue;
+		if (!cursorTouchesRange(state, reference.from, reference.to)) {
+			pushReplace(reference.from, reference.to, Decoration.replace({ widget: new FootnoteReferenceWidget(reference) }));
+		}
+	}
+	for (const definition of footnotes.definitions.values()) {
+		if (!visible(definition.markerFrom, definition.markerTo)) continue;
+		decorations.push(
+			Decoration.mark({ class: 'mlp-footnote-definition-marker' }).range(definition.markerFrom, definition.markerTo),
+		);
+		decorations.push(Decoration.widget({ widget: new FootnoteBackWidget(definition.id), side: 1 }).range(definition.markerTo));
+	}
+
 	for (const [lineFrom, cls] of seenLine) {
 		decorations.push(Decoration.line({ class: cls }).range(lineFrom));
 	}
@@ -1495,6 +1525,13 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
 				const start = performance.now();
 				this.decorations = buildDecorations(update.view);
 				recordDecorationRebuild(reason, update.view, performance.now() - start);
+				// A syntax-tree advance can replace source markers with inline widgets
+				// (or reveal them again when the selection moves). Those decorations can
+				// change wrapping and line height after the transaction that supplied
+				// them, so explicitly enqueue CodeMirror's supported measurement pass.
+				// This is event-driven: ordinary cursor movement only measures when the
+				// decoration set actually changes, never on every animation frame.
+				requestMeasureAfterDecorationUpdate(update.view);
 			}
 		}
 	},

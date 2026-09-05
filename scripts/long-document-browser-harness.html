@@ -93,11 +93,45 @@
 			'Link prose before [a rendered link](https://example.org) after the link and more words for wrapping.',
 			'',
 			'Emphasis prose before **strong text** and *emphasis text* after the markers with more words for wrapping.',
+			'',
+			'[^15]: First inline footnote definition.',
+			'[^16]: Second inline footnote definition.',
+		].join('\n');
+	}
+
+	function buildInteractionFixture() {
+		const sentence = 'The target paragraph deliberately combines **emphasis**, [a rendered link](https://example.org), inline math $M_s$, adjacent footnote-like references [^15][^16], and enough ordinary prose to force CodeMirror to wrap one logical source line into many visual rows. ';
+		const target = 'TARGET-PARAGRAPH-START ' + sentence.repeat(7) + 'TARGET-PARAGRAPH-END.';
+		return [
+			'# Geometry interaction fixture',
+			'',
+			'Before paragraph: this short paragraph establishes the source block immediately before the target.',
+			'',
+			target,
+			'',
+			'> A blockquote appears elsewhere so the fixture exercises another line decoration.',
+			'',
+			'- a list item with ordinary content',
+			'- another list item with ordinary content',
+			'',
+			'Following paragraph: FOLLOWING-PARAGRAPH-START this text must never receive a click or arrow placement intended for the target.',
+			'',
+			'```python',
+			'value = 42',
+			'```',
+			'',
+			'| kind | value |',
+			'|:--|--:|',
+			'| block widget fixture | 1 |',
+			'',
+			'[^15]: First footnote definition.',
+			'[^16]: Second footnote definition.',
 		].join('\n');
 	}
 
 	async function loadSource() {
 		if (testParams.get('inline') === '1') return { text: buildInlineFixture(), kind: 'inline-geometry' };
+		if (testParams.get('interaction') === '1') return { text: buildInteractionFixture(), kind: 'interaction-geometry' };
 		const benchmarkLines = Number(testParams.get('lines'));
 		if (Number.isInteger(benchmarkLines) && benchmarkLines >= 10) return { ...buildBenchmarkFixture(benchmarkLines), kind: `benchmark-${benchmarkLines}` };
 		const sourcePath = testParams.get('source');
@@ -156,6 +190,22 @@
 			const rect = image.getBoundingClientRect();
 			return { display: style.display, marginTop: style.marginTop, marginBottom: style.marginBottom, width: style.width, height: style.height, rectHeight: rect.height, parentText: image.parentElement?.textContent };
 		});
+		const renderedFootnotes = [...document.querySelectorAll('.mlp-footnote-ref')].map((button) => button.textContent);
+		const firstReferenceFrom = text.indexOf('[^15]');
+		const firstDefinitionFrom = text.indexOf('[^15]:');
+		const firstReference = document.querySelector('.mlp-footnote-ref');
+		let navigation = { referenceCount: renderedFootnotes.length, toDefinition: null, backToReference: null };
+		if (firstReference instanceof HTMLElement) {
+			firstReference.click();
+			await sleep(80);
+			navigation.toDefinition = window.__mlpDebugSelection?.();
+			const back = document.querySelector('.mlp-footnote-back');
+			if (back instanceof HTMLElement) {
+				back.click();
+				await sleep(80);
+				navigation.backToReference = window.__mlpDebugSelection?.();
+			}
+		}
 		// A theme's generic `img` rule must not make CodeMirror's zero-width
 		// widget buffers add a blank-line-sized vertical margin. Compare the same
 		// line with widgets rendered and with its source syntax revealed; a small
@@ -167,7 +217,10 @@
 			return { name: item.name, renderedHeight, sourceHeight, extraHeight };
 		}).filter((item) => item.renderedHeight === null || item.sourceHeight === null || item.extraHeight > 8);
 		const widgetBufferFailures = allWidgetBuffers.filter((buffer) => buffer.marginTop !== '0px' || buffer.marginBottom !== '0px');
-		return { ok: geometryFailures.length === 0 && widgetBufferFailures.length === 0, sourceKind: 'inline-geometry', sourceLength: text.length, sourceLines: text.split('\n').length, rendered, source, allWidgetBuffers, geometryFailures, widgetBufferFailures };
+		const footnoteOk = renderedFootnotes.length === 2 &&
+			navigation.toDefinition?.head === firstDefinitionFrom &&
+			navigation.backToReference?.head === firstReferenceFrom;
+		return { ok: geometryFailures.length === 0 && widgetBufferFailures.length === 0 && footnoteOk, sourceKind: 'inline-geometry', sourceLength: text.length, sourceLines: text.split('\n').length, rendered, source, renderedFootnotes, navigation, allWidgetBuffers, geometryFailures, widgetBufferFailures };
 	}
 
 	async function loadThemeCss() {
@@ -180,9 +233,18 @@
 	}
 
 	function dispatchInit(text, css = '') {
+		window.__mlpTestSourceText = text;
 		window.dispatchEvent(new MessageEvent('message', { data: {
 			type: 'init', text, version: 1, css, codeTheme: 'light-plus', baseUri: location.origin + '/', dialect: 'markdown',
 		} }));
+	}
+
+	async function runInteractionReady() {
+		const source = await loadSource();
+		dispatchInit(source.text, await loadThemeCss());
+		await waitFor(() => snapshot()?.docLength === source.text.length, 2500);
+		await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+		return { ok: Boolean(snapshot()), baseline: false, sourceKind: source.kind, sourceLength: source.text.length, sourceLines: source.text.split('\n').length };
 	}
 
 	const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -253,7 +315,7 @@
 	}
 
 	(async () => {
-		try { window.__mlpLongDocumentResult = await (testParams.get('probe') === '1' ? runBugProbe() : testParams.get('inline') === '1' ? runInlineGeometry() : run()); }
+		try { window.__mlpLongDocumentResult = await (testParams.get('probe') === '1' ? runBugProbe() : testParams.get('inline') === '1' ? runInlineGeometry() : testParams.get('interaction') === '1' ? runInteractionReady() : run()); }
 		catch (error) { window.__mlpLongDocumentResult = { ok: false, error: String(error?.stack || error) }; }
 	})();
 </script>

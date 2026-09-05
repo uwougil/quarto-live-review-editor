@@ -6,6 +6,7 @@
 
 - 支持 `.md` 和 `.qmd` 文件。
 - 标题、强调、引用、列表、任务列表、链接、图片和表格的单栏实时预览。
+- 有唯一有效定义的脚注引用会显示为可点击上标；脚注定义保留源码，并提供返回上次引用的按钮。缺失或重复定义、围栏代码、行内代码、前置元数据和转义写法保持原文。
 - 使用本地 KaTeX 渲染行内公式 `$...$` 和块公式 `$$...$$`。
 - 光标或选区进入公式、表格、图表等区域时恢复源码编辑。
 - Mermaid 和 draw.io 图表原地渲染。
@@ -87,6 +88,8 @@ Quarto 示例位于 [examples/quarto-live-preview.qmd](examples/quarto-live-prev
 `npm run test:browser` 会启动真实 Chromium 和真实 CodeMirror `EditorView`，默认使用仓库内确定性的 realistic fixture，不依赖其他仓库或本机目录。fixture 覆盖前置元数据、标题、长段落、Unicode/CJK、行内/多行块公式、围栏代码、Quarto 代码单元、表格、Mermaid、链接、图片、引用和脚注。测试会滚动到 0%、25%、50%、75%、90%、99% 和 EOF，并检查文档长度、视口、滚动高度、语法树覆盖范围及实际 DOM 内容；`--source path/to/file.qmd` 可显式指定仓库内的其他夹具。首次运行前执行 `npm install` 和 `npx playwright install chromium`；之后使用 `npm run test:browser -- --benchmark` 可记录 1k、5k、10k、20k 行文档的就绪、滚动和 EOF 耗时、DOM 行数、装饰重建数、长任务及页面错误。
 
 ## 当前限制
+
+交互几何回归命令为 npm run test:browser -- --interaction --theme github-light.css。它会在真实 Chromium 中点击长段落的首行、中间行、倒数第二行和末行，随后用真实 ArrowDown/ArrowUp 穿过包裹行，并在运行时切换主题；回归同时比较 .cm-line 的实际高度和 CodeMirror 的 lineBlockAt 高度图。
 
 尚未实现 Quarto 代码执行、Jupyter/kernel、citation 渲染、cross-reference 解析、callout 渲染、shortcode 展开、Typst、Pandoc 子进程和 Quarto CLI 渲染；这些语法会保留为源码安全回退。
 

@@ -26,6 +26,8 @@ interface DebugWindow extends Window {
 	__mlpDebugSnapshot?: () => LivePreviewDebugSnapshot | null;
 	__mlpDebugScrollTo?: (top: number) => void;
 	__mlpDebugScrollToPosition?: (pos: number) => void;
+	__mlpDebugSelection?: () => { anchor: number; head: number; from: number; to: number; x: number | null; y: number | null; blockFrom: number; blockLength: number; blockTop: number; blockHeight: number } | null;
+	__mlpDebugLineBlock?: (pos: number) => { from: number; length: number; top: number; height: number } | null;
 }
 
 let debugView: EditorView | undefined;
@@ -82,5 +84,17 @@ export function installDebugView(view: EditorView): void {
 		if (!debugView) return;
 		const anchor = Math.max(0, Math.min(pos, debugView.state.doc.length));
 		debugView.dispatch({ effects: EditorView.scrollIntoView(anchor, { y: 'center' }) });
+	};
+	debugWindow.__mlpDebugSelection = () => {
+		if (!debugView) return null;
+		const range = debugView.state.selection.main;
+		const coords = debugView.coordsAtPos(range.head);
+		const block = debugView.lineBlockAt(range.head);
+		return { anchor: range.anchor, head: range.head, from: range.from, to: range.to, x: coords?.left ?? null, y: coords?.top ?? null, blockFrom: block.from, blockLength: block.length, blockTop: block.top, blockHeight: block.height };
+	};
+	debugWindow.__mlpDebugLineBlock = (pos) => {
+		if (!debugView) return null;
+		const block = debugView.lineBlockAt(Math.max(0, Math.min(pos, debugView.state.doc.length)));
+		return { from: block.from, length: block.length, top: block.top, height: block.height };
 	};
 }

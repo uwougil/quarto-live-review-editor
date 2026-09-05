@@ -21,6 +21,8 @@ import { mathRangesField } from '../quarto/math';
 import { installDebugView } from './debug';
 import { viewportSyntaxPlugin } from './viewportSyntax';
 import { mathDecorationsField } from './mathDecorations';
+import { footnoteIndexField, footnoteNavigationField } from './footnotes';
+import { layoutRefreshField, refreshEditorLayout } from './layoutRefresh';
 
 const remoteChange = Annotation.define<boolean>();
 const FLUSH_DEBOUNCE_MS = 250;
@@ -29,6 +31,16 @@ let view: EditorView | undefined;
 let baseVersion = 0;
 let pending: ChangeSet | null = null;
 let flushTimer: ReturnType<typeof setTimeout> | undefined;
+
+function requestMeasureAfterLayout(): void {
+	const target = view;
+	if (!target) return;
+	// A stylesheet mutation and a new EditorView can both happen before the
+	// browser has performed layout. The state-backed refresh re-enters
+	// CodeMirror's ordinary redraw/measurement path after the computed font
+	// metrics, wrapping width, and decoration boxes are observable.
+	refreshEditorLayout(target);
+}
 
 function flush() {
 	flushTimer = undefined;
@@ -65,6 +77,11 @@ function applyUserCss(css: string) {
 		document.head.appendChild(styleEl);
 	}
 	styleEl.textContent = adaptMarkdownCss(css);
+	// The stylesheet mutation changes the measured width/height of existing
+	// `.cm-line` boxes. CodeMirror's height map is not notified by a style-tag
+	// mutation on its own, so schedule its supported measurement pass after the
+	// new rules have entered the document.
+	requestMeasureAfterLayout();
 }
 
 function createExtensions(dialect: DocumentDialect): Extension[] {
@@ -73,6 +90,9 @@ function createExtensions(dialect: DocumentDialect): Extension[] {
 		documentDialect.of(dialect),
 		mathRangesField,
 		mathDecorationsField,
+		footnoteIndexField,
+		footnoteNavigationField,
+		layoutRefreshField,
 		markdownSupport,
 		viewportSyntaxPlugin,
 		// Extend closeBrackets' default pair set (`( [ { ' "`) with the emphasis
@@ -145,6 +165,12 @@ function createView(text: string, dialect: DocumentDialect) {
 		parent: root,
 	});
 	installDebugView(view);
+	// The initial stylesheet is installed before the view exists. The first
+	// EditorView measurement can therefore observe the pre-editor layout while
+	// line decorations and the content column are still entering the DOM. Queue
+	// one supported CodeMirror measurement after construction so its height map
+	// and height oracle agree with the final styled `.cm-line` boxes.
+	requestMeasureAfterLayout();
 }
 
 function resetView(text: string, dialect: DocumentDialect) {

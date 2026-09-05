@@ -312,6 +312,48 @@ html, body {
 	text-decoration: underline;
 }
 
+/* Footnotes stay inline and deliberately use no external margin: changing a
+   reference must not alter the wrapped paragraph's row geometry. */
+.mlp-footnote-ref,
+.mlp-footnote-back {
+	appearance: none;
+	border: 0;
+	background: transparent;
+	color: var(--vscode-textLink-foreground, #3794ff);
+	cursor: pointer;
+	font: inherit;
+	line-height: 0;
+	margin: 0;
+	padding: 0 0.08em;
+}
+.mlp-footnote-ref {
+	font-size: 0.72em;
+	position: relative;
+	top: -0.28em;
+	vertical-align: super;
+}
+.mlp-footnote-back {
+	font-size: 0.9em;
+	margin-left: 0.35em;
+	vertical-align: baseline;
+}
+.mlp-footnote-ref:hover,
+.mlp-footnote-back:hover {
+	text-decoration: underline;
+}
+.mlp-footnote-ref:focus-visible,
+.mlp-footnote-back:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder, #007fd4);
+	outline-offset: 2px;
+}
+.mlp-footnote-definition-marker {
+	color: var(--vscode-textLink-foreground, #3794ff);
+	font-weight: 600;
+}
+.mlp-layout-refresh-marker {
+	display: none !important;
+}
+
 .mlp-image {
 	max-width: 100%;
 	border-radius: 4px;

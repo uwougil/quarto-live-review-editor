@@ -51,6 +51,36 @@ describe('adaptMarkdownCss', () => {
 		expect(out).not.toContain('table img[align=right]');
 	});
 
+	it('maps one-value logical block spacing to both measured edges', () => {
+		const out = adaptMarkdownCss('p { padding-block: 3px; margin-block: 4px; }');
+		expect(out).toMatch(/\.mlp-line-paragraph-first[^{]*\{[\s\S]*padding-top: 3px/);
+		expect(out).toMatch(/\.mlp-line-paragraph-last[^{]*\{[\s\S]*padding-bottom: calc\(3px \+ 4px\)/);
+	});
+
+	it('maps two-value logical block spacing as block-start/block-end', () => {
+		const out = adaptMarkdownCss('p { padding-block: 1px 2px; margin-block: 3px 4px; }');
+		expect(out).toMatch(/\.mlp-line-paragraph-first[^{]*\{[\s\S]*padding-top: 1px/);
+		expect(out).toMatch(/\.mlp-line-paragraph-last[^{]*\{[\s\S]*padding-bottom: calc\(2px \+ 4px\)/);
+		expect(out).not.toMatch(/padding-bottom: calc\(1px \+ 3px\)/);
+	});
+
+	it('maps logical inline spacing as inline-start/inline-end', () => {
+		const out = adaptMarkdownCss('p { padding-inline: 5px 6px; margin-inline: 7px 8px; }');
+		expect(out).toContain('padding-left: calc(5px + 7px)');
+		expect(out).toContain('padding-right: calc(6px + 8px)');
+	});
+
+	it('folds physical top and bottom margins into measured padding', () => {
+		const out = adaptMarkdownCss('h1 { margin-top: 9px; margin-bottom: 10px; }');
+		// Top margins are deliberately dropped because this adapter cannot reproduce
+		// CSS margin collapse across independent CodeMirror lines; bottom margins
+		// are retained inside the measured last-line box.
+		expect(out).not.toContain('padding-top: 9px');
+		expect(out).toContain('padding-bottom: 10px');
+		expect(out).not.toContain('margin-top');
+		expect(out).not.toContain('margin-bottom');
+	});
+
 	it('maps every known block-level tag to its class regardless of declaration content (PBT-03 invariant)', () => {
 		fc.assert(
 			fc.property(fc.constantFrom(...MAPPED_BLOCK_TAGS), declaration, ([tag, expectedClass], decl) => {

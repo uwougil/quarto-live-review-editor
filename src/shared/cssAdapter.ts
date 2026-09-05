@@ -191,6 +191,16 @@ function expandBox(value: string): [string, string, string, string] {
 	return [p[0], p[1], p[2], p[3]];
 }
 
+/** Expand a logical axis shorthand: one value applies to both ends, two values
+ * are start/end (unlike the physical four-edge shorthand, where two values
+ * mean top/bottom and right/left). */
+function expandLogicalAxis(value: string): [string, string] | null {
+	const parts = value.split(/\s+/).filter(Boolean);
+	if (parts.length === 1) return [parts[0], parts[0]];
+	if (parts.length === 2) return [parts[0], parts[1]];
+	return null;
+}
+
 /** Expand a 1–4 value border-radius shorthand into [TL, TR, BR, BL]. */
 function expandRadius(value: string): [string, string, string, string] {
 	const p = value.split(/\s+/).filter(Boolean);
@@ -293,14 +303,18 @@ function distributeBlockDecl(prop: string, value: string, acc: BlockAcc): void {
 	}
 	if (p === 'padding-block' || p === 'margin-block') {
 		const kind = p.startsWith('padding') ? 'pad' : 'mar';
-		const [t, , b] = expandBox(value);
+		const axis = expandLogicalAxis(value);
+		if (!axis) return;
+		const [t, b] = axis;
 		set('Top', kind, t); set('Bottom', kind, b);
 		return;
 	}
 	if (p === 'padding-inline' || p === 'margin-inline') {
 		const kind = p.startsWith('padding') ? 'pad' : 'mar';
-		const parts = value.split(/\s+/).filter(Boolean);
-		set('Left', kind, parts[0]); set('Right', kind, parts[1] ?? parts[0]);
+		const axis = expandLogicalAxis(value);
+		if (!axis) return;
+		const [l, r] = axis;
+		set('Left', kind, l); set('Right', kind, r);
 		return;
 	}
 	const spacing = /^(padding|margin)-(top|bottom|left|right|inline-start|inline-end)$/.exec(p);

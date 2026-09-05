@@ -20,6 +20,7 @@ function parseArgs(argv) {
 		else if (arg === '--benchmark') args.benchmark = true;
 		else if (arg === '--probe') args.probe = true;
 		else if (arg === '--inline-geometry') args.inlineGeometry = true;
+		else if (arg === '--interaction') args.interaction = true;
 		else if (['--source', '--theme', '--bundle'].includes(arg)) {
 			const value = argv[++i];
 			if (!value) throw new Error(`${arg} requires a value`);
@@ -69,6 +70,7 @@ function queryFor(baseUrl, args, benchmarkLines, sourcePath) {
 	if (args.baseline) query.set('baseline', '1');
 	if (args.probe) query.set('probe', '1');
 	if (args.inlineGeometry) query.set('inline', '1');
+	if (args.interaction) query.set('interaction', '1');
 	return `${baseUrl}?${query}`;
 }
 
@@ -86,6 +88,7 @@ function compactResult(item) {
 		eof: { parserCaughtUp: item.eof?.parserCaughtUp, snapshot: compactSnapshot(item.eof?.snapshot) },
 		markers: (item.markers || []).map((marker) => Object.fromEntries(['label', 'found', 'pos', 'viewportContains', 'domContainsMarker'].map((key) => [key, marker[key]]))),
 		final: compactSnapshot(item.final), markerFailures: item.markerFailures, pageErrors: item.pageErrors, error: item.error,
+		interaction: item.interaction ? { checks: item.interaction.checks, initialDiagnostics: item.interaction.initialDiagnostics } : undefined,
 	};
 }
 
@@ -132,8 +135,108 @@ async function main() {
 			await page.waitForFunction(() => window.__mlpLongDocumentResult !== undefined, null, { timeout: 30000 });
 			const result = await page.evaluate(() => window.__mlpLongDocumentResult);
 			result.browserElapsedMs = Number((performance.now() - started).toFixed(1));
-			result.pageErrors = pageErrors;
+				result.pageErrors = pageErrors;
 			if (pageErrors.length) result.ok = false;
+			if (args.interaction) {
+					const geometryFor = async (label) => page.evaluate((name) => {
+						const target = [...document.querySelectorAll('.cm-line')].find((line) => line.textContent?.includes('TARGET-PARAGRAPH-START'));
+						if (!target) throw new Error('target paragraph DOM line not found');
+						const range = document.createRange();
+						range.selectNodeContents(target);
+						const fragments = [...range.getClientRects()].filter((rect) => rect.width > 1 && rect.height > 1).map((rect) => ({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, center: (rect.top + rect.bottom) / 2 }));
+						const rows = [];
+						for (const fragment of fragments) {
+							const row = rows.find((candidate) => Math.abs(candidate.center - fragment.center) <= 12);
+							if (row) {
+								row.left = Math.min(row.left, fragment.left);
+								row.right = Math.max(row.right, fragment.right);
+								row.top = Math.min(row.top, fragment.top);
+								row.bottom = Math.max(row.bottom, fragment.bottom);
+								row.center = (row.top + row.bottom) / 2;
+							} else rows.push({ left: fragment.left, right: fragment.right, top: fragment.top, bottom: fragment.bottom, center: fragment.center });
+						}
+						rows.sort((a, b) => a.top - b.top);
+						const text = target.textContent || '';
+						const source = window.__mlpTestSourceText || '';
+						const targetRect = target.getBoundingClientRect();
+						return { label: name, rows: rows.map(({ left, right, top, bottom }) => ({ left, right, top, bottom, width: right - left })), targetRect: { left: targetRect.left, right: targetRect.right, top: targetRect.top, bottom: targetRect.bottom, height: targetRect.height }, targetTextLength: text.length, targetStart: source.indexOf('TARGET-PARAGRAPH-START'), followingStart: source.indexOf('FOLLOWING-PARAGRAPH-START') };
+					}, label);
+					const runInteraction = async (label) => {
+						const geometry = await geometryFor(label);
+						const probes = [];
+						const rowIndexes = [...new Set([0, Math.floor(geometry.rows.length / 2), Math.max(0, geometry.rows.length - 2), geometry.rows.length - 1])];
+						for (const rowIndex of rowIndexes) {
+							await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'setCursor', pos: 0 } })));
+							await page.waitForTimeout(120);
+							const freshGeometry = await geometryFor(`${label}:mouse-row-${rowIndex}`);
+							const row = freshGeometry.rows[Math.min(rowIndex, freshGeometry.rows.length - 1)];
+							const x = (row.left + row.right) / 2;
+							const y = (row.top + row.bottom) / 2;
+							await page.mouse.click(x, y);
+							await page.waitForTimeout(40);
+							const selection = await page.evaluate(() => window.__mlpDebugSelection?.());
+							probes.push({ rowIndex, click: { x, y }, selection });
+						}
+						await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'setCursor', pos: 0 } })));
+						await page.waitForTimeout(120);
+						const renderedGeometry = await geometryFor(`${label}:keyboard-rendered`);
+						const first = renderedGeometry.rows[0];
+						await page.mouse.click((first.left + first.right) / 2, (first.top + first.bottom) / 2);
+						await page.waitForTimeout(40);
+						const sourceGeometry = await geometryFor(`${label}:keyboard-source`);
+						const middleSourceIndex = Math.floor(sourceGeometry.rows.length / 2);
+						const middleSource = sourceGeometry.rows[middleSourceIndex];
+						await page.mouse.click((middleSource.left + middleSource.right) / 2, (middleSource.top + middleSource.bottom) / 2);
+						await page.waitForTimeout(40);
+						const down = [];
+						for (let i = 0; i < Math.max(1, Math.min(8, sourceGeometry.rows.length - middleSourceIndex - 1)); i++) {
+							await page.keyboard.press('ArrowDown');
+							await page.waitForTimeout(20);
+							down.push(await page.evaluate(() => window.__mlpDebugSelection?.()));
+						}
+						const up = [];
+						for (let i = 0; i < down.length; i++) {
+							await page.keyboard.press('ArrowUp');
+							await page.waitForTimeout(20);
+							up.push(await page.evaluate(() => window.__mlpDebugSelection?.()));
+						}
+						return { geometry, sourceGeometry, probes, down, up };
+					};
+				const initialDiagnostics = await page.evaluate(() => {
+					const source = window.__mlpTestSourceText || '';
+					const targetStart = source.indexOf('TARGET-PARAGRAPH-START');
+					const target = [...document.querySelectorAll('.cm-line')].find((line) => line.textContent?.includes('TARGET-PARAGRAPH-START'));
+					const rect = target?.getBoundingClientRect();
+					return { block: window.__mlpDebugLineBlock?.(targetStart), dom: rect ? { top: rect.top, bottom: rect.bottom, height: rect.height } : null };
+				});
+				const before = await runInteraction('before-theme');
+			let after = null;
+			if (args.theme) {
+				const runtimeTheme = args.theme === 'dark.css' ? 'github-light.css' : 'dark.css';
+				const css = await (await fetch(new URL(`/media/sample-styles/${runtimeTheme}`, baseUrl))).text();
+				await page.evaluate((value) => window.dispatchEvent(new MessageEvent('message', { data: { type: 'applyCss', css: value } })), css);
+				await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+					after = await runInteraction(`after-theme:${runtimeTheme}`);
+				}
+			const paragraphs = (probe) => probe.probes.every(({ selection }) => selection && selection.head >= probe.geometry.targetStart && selection.head < probe.geometry.followingStart);
+			const visualRows = (values) => values.length >= 5 && values.every((selection, index) => selection && selection.y !== null && (index === 0 || Math.abs(selection.y - values[index - 1].y) > 1));
+			const reverseRows = (probe) => {
+				const y = (selection) => selection?.y ?? null;
+				const downFirst = y(probe.down[0]);
+				const downLast = y(probe.down[probe.down.length - 1]);
+				const upFirst = y(probe.up[0]);
+				const upLast = y(probe.up[probe.up.length - 1]);
+				return visualRows(probe.up) && downFirst !== null && downLast !== null && upFirst !== null && upLast !== null && downLast > downFirst && upFirst > upLast;
+			};
+			const arrowInside = (probe) => probe.down.every((selection) => selection && selection.head >= probe.geometry.targetStart && selection.head < probe.geometry.followingStart) && probe.up.every((selection) => selection && selection.head >= probe.geometry.targetStart && selection.head < probe.geometry.followingStart);
+			const initialGeometryStable = initialDiagnostics.block && initialDiagnostics.dom && Math.abs(initialDiagnostics.block.height - initialDiagnostics.dom.height) <= 1;
+			const interaction = { before, after, initialDiagnostics, checks: { beforeRows: before.geometry.rows.length, beforeMouseInside: paragraphs(before), beforeArrowInside: arrowInside(before), beforeArrowMoves: visualRows(before.down), beforeArrowReverses: reverseRows(before), initialGeometryStable, afterRows: after?.geometry.rows.length ?? null, afterMouseInside: after ? paragraphs(after) : null, afterArrowInside: after ? arrowInside(after) : null, afterArrowMoves: after ? visualRows(after.down) : null, afterArrowReverses: after ? reverseRows(after) : null } };
+			result.interaction = interaction;
+			result.ok = result.ok && before.geometry.rows.length >= 5 && interaction.checks.beforeMouseInside && interaction.checks.beforeArrowInside && interaction.checks.beforeArrowMoves && interaction.checks.beforeArrowReverses && interaction.checks.initialGeometryStable && (!after || (after.geometry.rows.length >= 5 && interaction.checks.afterMouseInside && interaction.checks.afterArrowInside && interaction.checks.afterArrowMoves && interaction.checks.afterArrowReverses));
+			await page.close();
+			allResults.push(result);
+			continue;
+			}
 			allResults.push(result);
 			await page.close();
 		}
