@@ -74,13 +74,16 @@ Quarto 特有的 callout、shortcode、citation、cross-reference 和代码单�
 | `mdLivePreview.enabledStyles` | 当前启用的 CSS 主题。 |
 | `mdLivePreview.defaultEditor` | `prompt` 使用普通编辑器，`livePreview` 默认使用实时预览，`default` 使用普通编辑器。 |
 
-## 测试
+## Development / Tests（开发与测试）
 
 ```powershell
 npm run typecheck
 npm test
 npm run compile
 npm run test:browser
+npm run test:browser:geometry
+npm run test:browser:inline
+npm run test:browser:inline-interaction
 ```
 
 Quarto 示例位于 [examples/quarto-live-preview.qmd](examples/quarto-live-preview.qmd)，科研回归 fixture 位于 [examples/quarto-scientific.qmd](examples/quarto-scientific.qmd)。
@@ -89,7 +92,7 @@ Quarto 示例位于 [examples/quarto-live-preview.qmd](examples/quarto-live-prev
 
 ## 当前限制
 
-交互几何回归命令为 npm run test:browser -- --interaction --theme github-light.css。它会在真实 Chromium 中点击长段落的首行、中间行、倒数第二行和末行，随后用真实 ArrowDown/ArrowUp 穿过包裹行，并在运行时切换主题；回归同时比较 .cm-line 的实际高度和 CodeMirror 的 lineBlockAt 高度图。
+交互几何回归命令为 `npm run test:browser -- --interaction --theme github-light.css`。它会在真实 Chromium 中点击长段落的首行、中间行、倒数第二行和末行，随后用真实 ArrowDown/ArrowUp 穿过包裹行，并在运行时切换主题；回归同时比较 `.cm-line` 的实际高度和 CodeMirror 的 `lineBlockAt` 高度图。脚注交互回归由 `npm run test:browser:inline-interaction` 覆盖鼠标落点、左右键逐个进入脚注、上下键避开隐藏源码、重复脚注定位和共享边界。
 
 尚未实现 Quarto 代码执行、Jupyter/kernel、citation 渲染、cross-reference 解析、callout 渲染、shortcode 展开、Typst、Pandoc 子进程和 Quarto CLI 渲染；这些语法会保留为源码安全回退。
 

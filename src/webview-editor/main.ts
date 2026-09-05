@@ -21,7 +21,7 @@ import { mathRangesField } from '../quarto/math';
 import { installDebugView } from './debug';
 import { viewportSyntaxPlugin } from './viewportSyntax';
 import { mathDecorationsField } from './mathDecorations';
-import { footnoteAtomicRangesField, footnoteIndexField, footnoteNavigationField } from './footnotes';
+import { createFootnoteMouseHandler, footnoteIndexField, footnoteNavigationField, moveVerticallyAvoidingFootnotes } from './footnotes';
 
 const remoteChange = Annotation.define<boolean>();
 const FLUSH_DEBOUNCE_MS = 250;
@@ -91,8 +91,8 @@ function createExtensions(dialect: DocumentDialect): Extension[] {
 		mathRangesField,
 		mathDecorationsField,
 		footnoteIndexField,
-		footnoteAtomicRangesField,
 		footnoteNavigationField,
+		createFootnoteMouseHandler(),
 		markdownSupport,
 		viewportSyntaxPlugin,
 		lineDecorationsField,
@@ -114,6 +114,8 @@ function createExtensions(dialect: DocumentDialect): Extension[] {
 			postToHost({ type: 'pasteImage', atPos, mimeType, dataBase64, needsOwnParagraph }),
 		),
 		keymap.of([
+			{ key: 'ArrowUp', run: moveVerticallyAvoidingFootnotes(false) },
+			{ key: 'ArrowDown', run: moveVerticallyAvoidingFootnotes(true) },
 			...closeBracketsKeymap,
 			// Flush any not-yet-sent keystrokes before asking the host to undo/redo —
 			// otherwise the host's document is missing the latest edits when it acts,

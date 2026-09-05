@@ -168,7 +168,7 @@
 		const beforeCluster = 'The discussion of Berry curvature, symmetry constraints, and antiferromagnetic spintronics advances in a carefully documented direction until it reaches the next ';
 		const afterCluster = 'Here we present the reproducible measurements and the interpretation that follows the consecutive references. ';
 		const tail = 'The remaining context stays ordinary and editable while the rendered references preserve the source structure during keyboard navigation. '.repeat(14);
-		const paragraph = `${lead}${beforeCluster}spintronics[^1][^2][^3][^4] ${afterCluster}${tail}FOOTNOTE-INTERACTION-END.`;
+		const paragraph = `${lead}${beforeCluster}spintronics[^1][^2][^3][^4]${afterCluster}${tail} First occurrence[^same] is separated from the second occurrence[^same] to verify exact duplicate navigation. FOOTNOTE-INTERACTION-END.`;
 		return [
 			paragraph,
 			'',
@@ -176,6 +176,7 @@
 			'[^2]: Second interaction-test footnote definition.',
 			'[^3]: Third interaction-test footnote definition.',
 			'[^4]: Fourth interaction-test footnote definition.',
+			'[^same]: Shared duplicate-occurrence footnote definition.',
 		].join('\n');
 	}
 

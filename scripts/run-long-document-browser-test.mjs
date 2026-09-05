@@ -113,10 +113,18 @@ async function runFootnoteInteraction(page, text) {
 	const references = [1, 2, 3, 4].map((ordinal) => {
 		const token = `[^${ordinal}]`;
 		const from = text.indexOf(token);
-		return { ordinal, from, to: from + token.length };
+		return { id: String(ordinal), ordinal, token, from, to: from + token.length };
 	});
-	const definitionHeads = [1, 2, 3, 4].map((ordinal) => text.indexOf(`[^${ordinal}]:`));
-	if (references.some((reference) => reference.from < 0) || definitionHeads.some((head) => head < 0)) {
+	const duplicateToken = '[^same]';
+	const firstDuplicateFrom = text.indexOf(duplicateToken);
+	const secondDuplicateFrom = text.indexOf(duplicateToken, firstDuplicateFrom + duplicateToken.length);
+	const duplicateReferences = [firstDuplicateFrom, secondDuplicateFrom].map((from) => ({ id: 'same', ordinal: 5, token: duplicateToken, from, to: from + duplicateToken.length }));
+	const allReferences = [...references, ...duplicateReferences];
+	const definitionHeads = new Map([
+		...references.map((reference) => [reference.id, text.indexOf(`${reference.token}:`)]),
+		['same', text.indexOf('[^same]:')],
+	]);
+	if (allReferences.some((reference) => reference.from < 0) || [...definitionHeads.values()].some((head) => head < 0)) {
 		throw new Error('footnote interaction fixture positions were not found');
 	}
 
@@ -148,14 +156,18 @@ async function runFootnoteInteraction(page, text) {
 				return true;
 			},
 			textRect,
-			buttonRect(ordinal) {
-				const button = [...document.querySelectorAll('.mlp-footnote-ref')].find((candidate) => candidate.textContent?.trim() === String(ordinal));
+			buttonRect(referenceFrom) {
+				const line = findLine();
+				if (!line) return null;
+				const referenceIndex = ranges.findIndex((reference) => reference.from === referenceFrom);
+				const buttons = [...line.querySelectorAll('.mlp-footnote-ref')];
+				const button = buttons[referenceIndex];
 				if (!(button instanceof HTMLElement)) return null;
 				button.scrollIntoView({ block: 'center', inline: 'nearest' });
 				return rectData(button.getBoundingClientRect());
 			},
-			backRect() {
-				const button = document.querySelector('.mlp-footnote-back');
+			backRect(id) {
+				const button = [...document.querySelectorAll('.mlp-footnote-back')].find((candidate) => candidate.getAttribute('aria-label')?.includes(`脚注 ${id}`)) || document.querySelector('.mlp-footnote-back');
 				if (!(button instanceof HTMLElement)) return null;
 				button.scrollIntoView({ block: 'center', inline: 'nearest' });
 				return rectData(button.getBoundingClientRect());
@@ -163,14 +175,14 @@ async function runFootnoteInteraction(page, text) {
 			state() {
 				const line = findLine();
 				const lineText = line?.textContent || '';
-				const rawSourceTokens = ranges.filter((range) => lineText.includes(`[^${range.ordinal}]`)).map((range) => range.ordinal);
+				const rawSourceTokens = ranges.filter((range) => lineText.includes(range.token)).map((range) => range.id + ':' + range.from);
 				const widgetOrdinals = [...(line?.querySelectorAll('.mlp-footnote-ref') || [])].map((button) => Number(button.textContent));
 				const selection = window.__mlpDebugSelection?.() || null;
-				const selectionInsideReferences = selection ? ranges.filter((range) => selection.head > range.from && selection.head < range.to).map((range) => range.ordinal) : [];
-				return { linePresent: Boolean(line), lineText, rawSourceTokens, widgetOrdinals, activeSourceCount: rawSourceTokens.length, selectionInsideReferences, selection };
+				const selectionInsideReferences = selection ? ranges.filter((range) => selection.head > range.from && selection.head < range.to).map((range) => range.id + ':' + range.from) : [];
+				return { linePresent: Boolean(line), rawSourceTokens, widgetOrdinals, widgetCount: widgetOrdinals.length, activeSourceCount: rawSourceTokens.length, selectionInsideReferences, selection };
 			},
 		};
-	}, references);
+	}, allReferences);
 
 	const settle = () => page.waitForTimeout(80);
 	const apiState = () => page.evaluate(() => window.__mlpFootnoteInteraction?.state());
@@ -184,7 +196,7 @@ async function runFootnoteInteraction(page, text) {
 		traces.push({ label, state });
 		return state;
 	};
-	const ordinaryState = (state) => Boolean(state && state.linePresent && state.activeSourceCount === 0 && state.widgetOrdinals.length === 4 && state.selectionInsideReferences.length === 0);
+	const ordinaryState = (state) => Boolean(state && state.linePresent && state.activeSourceCount === 0 && state.widgetCount === allReferences.length && state.selectionInsideReferences.length === 0);
 	const clickText = async (needle, side) => {
 		await scrollLine();
 		const rect = await page.evaluate((value) => window.__mlpFootnoteInteraction?.textRect(value), needle);
@@ -194,38 +206,43 @@ async function runFootnoteInteraction(page, text) {
 		await settle();
 		return { x, y: rect.y };
 	};
+	const press = async (key) => {
+		await page.keyboard.press(key);
+		await settle();
+	};
 
 	await scrollLine();
 	const initial = await record('initial');
-	const beforeProseClick = await clickText('spintronics', 'end');
+	const beforeProseClick = await clickText('next spintronics', 'end');
 	const afterProseClick = await record('prose-immediately-before-cluster');
+	const spintronicsFrom = text.indexOf('spintronics[^1]');
+	const spintronicsTo = spintronicsFrom + 'spintronics'.length;
+	const firstReference = references[0];
+	const lastReference = references[3];
 
 	const down = [];
+	await clickText('advances in', 'end');
 	for (let i = 0; i < 8; i += 1) {
-		await page.keyboard.press('ArrowDown');
-		await settle();
+		await press('ArrowDown');
 		down.push(await record(`ArrowDown-${i + 1}`));
 	}
 	const up = [];
 	for (let i = 0; i < 8; i += 1) {
-		await page.keyboard.press('ArrowUp');
-		await settle();
+		await press('ArrowUp');
 		up.push(await record(`ArrowUp-${i + 1}`));
 	}
 
-	const horizontalRight = [];
-	await clickText('spintronics', 'end');
-	for (let i = 0; i < 8; i += 1) {
-		await page.keyboard.press('ArrowRight');
-		await settle();
-		horizontalRight.push(await record(`ArrowRight-${i + 1}`));
+	await clickText('next spintronics', 'end');
+	const right = [];
+	for (let i = 0; i < 7; i += 1) {
+		await press('ArrowRight');
+		right.push(await record(`ArrowRight-${i + 1}`));
 	}
-	const horizontalLeft = [];
 	await clickText('Here we present', 'start');
-	for (let i = 0; i < 8; i += 1) {
-		await page.keyboard.press('ArrowLeft');
-		await settle();
-		horizontalLeft.push(await record(`ArrowLeft-${i + 1}`));
+	const left = [];
+	for (let i = 0; i < 7; i += 1) {
+		await press('ArrowLeft');
+		left.push(await record(`ArrowLeft-${i + 1}`));
 	}
 
 	const boundaries = [];
@@ -239,21 +256,34 @@ async function runFootnoteInteraction(page, text) {
 	const navigation = [];
 	for (const reference of references) {
 		await scrollLine();
-		const button = await page.evaluate((ordinal) => window.__mlpFootnoteInteraction?.buttonRect(ordinal), reference.ordinal);
-		if (!button) throw new Error(`rendered footnote button ${reference.ordinal} not found`);
+		const button = await page.evaluate((from) => window.__mlpFootnoteInteraction?.buttonRect(from), reference.from);
+		if (!button) throw new Error(`rendered footnote button at ${reference.from} not found`);
 		await page.mouse.click(button.x, button.y);
 		await settle();
 		const toDefinition = await page.evaluate(() => window.__mlpDebugSelection?.());
-		const back = await page.evaluate(() => window.__mlpFootnoteInteraction?.backRect());
-		if (!back) throw new Error(`footnote back button ${reference.ordinal} not found`);
+		const back = await page.evaluate((id) => window.__mlpFootnoteInteraction?.backRect(id), reference.id);
+		if (!back) throw new Error(`footnote back button for ${reference.id} not found`);
 		await page.mouse.click(back.x, back.y);
 		await settle();
-		const afterBack = await record(`mouse-footnote-${reference.ordinal}-back`);
-		navigation.push({ ordinal: reference.ordinal, toDefinition, expectedDefinition: definitionHeads[reference.ordinal - 1], afterBack });
+		const afterBack = await record(`mouse-footnote-${reference.id}-${reference.from}-back`);
+		navigation.push({ id: reference.id, from: reference.from, toDefinition, expectedDefinition: definitionHeads.get(reference.id), afterBack });
+	}
+	for (const reference of [duplicateReferences[1], duplicateReferences[0]]) {
+		await scrollLine();
+		const button = await page.evaluate((from) => window.__mlpFootnoteInteraction?.buttonRect(from), reference.from);
+		if (!button) throw new Error(`duplicate footnote button at ${reference.from} not found`);
+		await page.mouse.click(button.x, button.y);
+		await settle();
+		const toDefinition = await page.evaluate(() => window.__mlpDebugSelection?.());
+		const back = await page.evaluate((id) => window.__mlpFootnoteInteraction?.backRect(id), reference.id);
+		if (!back) throw new Error('duplicate footnote back button not found');
+		await page.mouse.click(back.x, back.y);
+		await settle();
+		navigation.push({ id: reference.id, from: reference.from, toDefinition, expectedDefinition: definitionHeads.get(reference.id), afterBack: await record(`duplicate-${reference.from}-back`) });
 	}
 
 	await scrollLine();
-	const fixedPoint = await page.evaluate((needle) => window.__mlpFootnoteInteraction?.textRect(needle), 'spintronics');
+	const fixedPoint = await page.evaluate((needle) => window.__mlpFootnoteInteraction?.textRect(needle), 'next spintronics');
 	if (!fixedPoint) throw new Error('fixed repeated-click coordinate could not be measured');
 	const fixedClick = { x: Math.max(fixedPoint.left + 1, fixedPoint.right - 2), y: fixedPoint.y };
 	const repeated = [];
@@ -262,38 +292,52 @@ async function runFootnoteInteraction(page, text) {
 		await settle();
 		repeated.push(await record(`repeated-click-${i + 1}`));
 	}
+	const afterCluster = await clickText('Here we present', 'start');
+	const afterClusterState = await record('prose-immediately-after-cluster');
+	const afterClusterFrom = text.indexOf('Here we present');
 
-	const allStates = [initial, afterProseClick, ...down, ...up, ...horizontalRight, ...horizontalLeft, ...boundaries.map((item) => item.state), ...navigation.map((item) => item.afterBack), ...repeated];
+	const allStates = [initial, afterProseClick, ...down, ...up, ...right, ...left, ...boundaries.map((item) => item.state), ...navigation.map((item) => item.afterBack), ...repeated, afterClusterState];
 	const distinctY = (values) => {
 		const ys = values.map((state) => state?.selection?.y).filter((value) => typeof value === 'number');
 		return new Set(ys.map((value) => Math.round(value))).size >= 2;
 	};
 	const noSource = (values) => values.every(ordinaryState);
+	const selectionNear = (state, from, to) => Boolean(state?.selection && state.selection.head >= from - 1 && state.selection.head <= to + 1);
 	const navigationOk = navigation.every((item) => item.toDefinition?.head === item.expectedDefinition && ordinaryState(item.afterBack));
+	const rightFirstEntry = right[0];
+	const leftFirstEntry = left[0];
+	const repeatedHeads = new Set(repeated.map((state) => state?.selection?.head));
 	const checks = {
-		proseImmediatelyBeforeCluster: ordinaryState(afterProseClick),
-		arrowDownNoSource: noSource(down),
-		arrowUpNoSource: noSource(up),
+		proseBeforeClusterPosition: ordinaryState(afterProseClick) && afterProseClick.selection.head <= firstReference.from && selectionNear(afterProseClick, spintronicsTo - 1, firstReference.from),
+		proseAfterClusterPosition: ordinaryState(afterClusterState) && afterClusterState.selection.head >= lastReference.to && selectionNear(afterClusterState, lastReference.to, afterClusterFrom + 1),
+		arrowDownNoAccidentalSource: noSource(down),
+		arrowUpNoAccidentalSource: noSource(up),
 		arrowDownMovesVisualRows: distinctY(down),
 		arrowUpMovesVisualRows: distinctY(up),
-		arrowRightNoSource: noSource(horizontalRight),
-		arrowLeftNoSource: noSource(horizontalLeft),
+		arrowRightEntersFirstReference: rightFirstEntry?.rawSourceTokens.length === 1 && rightFirstEntry.rawSourceTokens[0] === `${firstReference.id}:${firstReference.from}` && rightFirstEntry.selection.head > firstReference.from && rightFirstEntry.selection.head < firstReference.to,
+		arrowRightEntersLaterReferencesOneAtATime: right.some((state) => state.rawSourceTokens.some((token) => token === `${references[1].id}:${references[1].from}`)) && right.every((state) => state.activeSourceCount <= 1),
+		arrowLeftEntersLastReference: leftFirstEntry?.rawSourceTokens.length === 1 && leftFirstEntry.rawSourceTokens[0] === `${lastReference.id}:${lastReference.from}` && leftFirstEntry.selection.head > lastReference.from && leftFirstEntry.selection.head < lastReference.to,
+		arrowLeftEntersEarlierReferencesOneAtATime: left.some((state) => state.rawSourceTokens.some((token) => token === `${references[2].id}:${references[2].from}`)) && left.every((state) => state.activeSourceCount <= 1),
 		sharedBoundariesActivateNeither: boundaries.every((item) => ordinaryState(item.state)),
 		mouseNavigationPreserved: navigationOk,
-		repeatedClicksStable: noSource(repeated),
+		duplicateOccurrencesReturnExactly: navigation.filter((item) => item.id === 'same').every((item) => item.afterBack.selection.head === item.from),
+		repeatedClicksStable: noSource(repeated) && repeatedHeads.size <= 2 && repeated.every((state) => selectionNear(state, spintronicsTo - 1, firstReference.from)),
 		activeSourceAtMostOne: allStates.every((state) => (state?.activeSourceCount ?? 0) <= 1),
 	};
 	return {
 		ok: Object.values(checks).every(Boolean),
 		checks,
 		beforeProseClick,
+		afterProseClick,
+		afterCluster,
+		afterClusterState,
 		boundaries,
 		navigation,
-		repeated,
+		repeated: repeated.map((state) => ({ activeSourceCount: state?.activeSourceCount, widgetCount: state?.widgetCount, head: state?.selection?.head })),
 		down: down.map((state) => state?.selection),
 		up: up.map((state) => state?.selection),
-		horizontalRight: horizontalRight.map((state) => state?.selection),
-		horizontalLeft: horizontalLeft.map((state) => state?.selection),
+		right: right.map((state) => ({ rawSourceTokens: state?.rawSourceTokens, head: state?.selection?.head })),
+		left: left.map((state) => ({ rawSourceTokens: state?.rawSourceTokens, head: state?.selection?.head })),
 		traceCount: traces.length,
 	};
 }

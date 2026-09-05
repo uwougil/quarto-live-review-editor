@@ -1,5 +1,5 @@
-import { StateEffect, StateField, type EditorState, type Text } from '@codemirror/state';
-import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view';
+import { EditorSelection, StateEffect, StateField, type EditorState, type Text } from '@codemirror/state';
+import { EditorView, WidgetType, type Command } from '@codemirror/view';
 import { findFenceSpans, scanSourceLines } from '../quarto/fence';
 import { selectionTouchesInlineRange } from '../shared/selection';
 
@@ -142,27 +142,6 @@ export const footnoteIndexField = StateField.define<FootnoteIndex>({
 	},
 });
 
-// The replacement widgets live in the viewport decoration plugin, but cursor
-// motion must also know that their source ranges are atomic. Keep a matching
-// state field so ArrowLeft/Right/Up/Down and pointer selection skip the source
-// bytes that are currently represented by a rendered footnote reference.
-const footnoteAtomicDecoration = Decoration.mark({});
-
-function buildFootnoteAtomicRanges(state: EditorState): DecorationSet {
-	const ranges = state.field(footnoteIndexField).references
-		.filter((reference) => !selectionTouchesInlineRange(state, reference.from, reference.to))
-		.map((reference) => footnoteAtomicDecoration.range(reference.from, reference.to));
-	return Decoration.set(ranges, true);
-}
-
-export const footnoteAtomicRangesField = StateField.define<DecorationSet>({
-	create: buildFootnoteAtomicRanges,
-	update(value, transaction) {
-		return transaction.docChanged || transaction.selection ? buildFootnoteAtomicRanges(transaction.state) : value;
-	},
-	provide: (field) => EditorView.atomicRanges.of((view) => view.state.field(field)),
-});
-
 interface FootnoteNavigation {
 	lastReferenceFrom: Map<string, number>;
 }
@@ -180,6 +159,151 @@ export const footnoteNavigationField = StateField.define<FootnoteNavigation>({
 		return { lastReferenceFrom };
 	},
 });
+
+/**
+ * Resolves a widget to the occurrence that it represents in the current
+ * document. The source position is the occurrence identity; ordinal is only a
+ * display label and is shared by repeated references such as `A[^x] ... B[^x]`.
+ * The nearest same-id occurrence is a safe fallback for the brief interval in
+ * which a stale widget is being replaced after an edit.
+ */
+export function resolveFootnoteReference(index: FootnoteIndex, widgetReference: FootnoteReference): FootnoteReference | undefined {
+	const samePosition = index.references.find((reference) =>
+		reference.id === widgetReference.id &&
+		reference.from === widgetReference.from &&
+		reference.to === widgetReference.to,
+	);
+	if (samePosition) return samePosition;
+	return index.references
+		.filter((reference) => reference.id === widgetReference.id)
+		.sort((a, b) => Math.abs(a.from - widgetReference.from) - Math.abs(b.from - widgetReference.from))[0];
+}
+
+function renderedFootnote(reference: FootnoteReference, state: EditorState): boolean {
+	return !selectionTouchesInlineRange(state, reference.from, reference.to);
+}
+
+function renderedFootnoteClusterAt(state: EditorState, position: number): { from: number; to: number } | null {
+	const references = state.field(footnoteIndexField).references;
+	const index = references.findIndex((reference) =>
+		renderedFootnote(reference, state) && position > reference.from && position < reference.to,
+	);
+	if (index < 0) return null;
+	let from = references[index].from;
+	let to = references[index].to;
+	for (let i = index - 1; i >= 0; i -= 1) {
+		const previous = references[i];
+		if (!renderedFootnote(previous, state) || previous.to !== from) break;
+		from = previous.from;
+	}
+	for (let i = index + 1; i < references.length; i += 1) {
+		const next = references[i];
+		if (!renderedFootnote(next, state) || next.from !== to) break;
+		to = next.to;
+	}
+	return { from, to };
+}
+
+/**
+ * Move vertically with CodeMirror's normal desired-column calculation, but
+ * keep a rendered footnote cluster from being entered accidentally. Horizontal
+ * movement deliberately does not use this command and therefore remains free
+ * to enter a reference and reveal its Markdown source.
+ */
+export function moveVerticallyAvoidingFootnotes(forward: boolean): Command {
+	return (view) => {
+		const state = view.state;
+		const ranges = state.selection.ranges.map((range) => {
+			if (!range.empty) return EditorSelection.cursor(forward ? range.to : range.from);
+			let moved = view.moveVertically(range, forward);
+			if (moved.head === range.head) moved = view.moveToLineBoundary(range, forward);
+			const cluster = renderedFootnoteClusterAt(state, moved.head);
+			if (!cluster) return moved;
+			const boundary = forward ? cluster.to : cluster.from;
+			return EditorSelection.cursor(boundary, moved.assoc, moved.bidiLevel ?? undefined, moved.goalColumn);
+		});
+		const selection = EditorSelection.create(ranges, state.selection.mainIndex);
+		if (selection.eq(state.selection, true)) return false;
+		view.dispatch({ selection, userEvent: 'select.line' });
+		return true;
+	};
+}
+
+interface BrowserCaretPoint {
+	node: Node;
+	offset: number;
+}
+
+function lineElementFor(node: Node): HTMLElement | null {
+	const element = node.nodeType === Node.ELEMENT_NODE ? node as HTMLElement : node.parentElement;
+	return element?.closest('.cm-line') ?? null;
+}
+
+function caretPointAt(event: MouseEvent): BrowserCaretPoint | null {
+	const documentWithCaret = document as Document & {
+		caretRangeFromPoint?: (x: number, y: number) => globalThis.Range | null;
+		caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+	};
+	const range = documentWithCaret.caretRangeFromPoint?.(event.clientX, event.clientY);
+	if (range) return { node: range.startContainer, offset: range.startOffset };
+	const position = documentWithCaret.caretPositionFromPoint?.(event.clientX, event.clientY);
+	return position ? { node: position.offsetNode, offset: position.offset } : null;
+}
+
+/**
+ * Protects only prose-side pointer placement around a rendered reference
+ * cluster. It asks the browser for the caret in the clicked text node and
+ * converts that DOM point back to a source position. This prevents CodeMirror's
+ * replacement-widget hit test from choosing the far edge of `[^1][^2]`, while
+ * clicks on the superscript itself continue to the widget's navigation handler.
+ */
+export function createFootnoteMouseHandler(): ReturnType<typeof EditorView.domEventHandlers> {
+	return EditorView.domEventHandlers({
+		mousedown(event, view) {
+			if (!(event instanceof MouseEvent) || event.button !== 0) return false;
+			const target = event.target instanceof Element ? event.target : null;
+			if (target?.closest('.mlp-footnote-ref')) return false;
+			const point = caretPointAt(event);
+			if (!point) return false;
+			const line = lineElementFor(point.node);
+			if (!line) return false;
+			const buttons = Array.from(line.querySelectorAll('.mlp-footnote-ref'));
+			if (buttons.length === 0) return false;
+			const firstButton = buttons[0];
+			const lastButton = buttons[buttons.length - 1];
+			const nodeBeforeFirst = Boolean(point.node.compareDocumentPosition(firstButton) & Node.DOCUMENT_POSITION_FOLLOWING);
+			const nodeAfterLast = Boolean(lastButton.compareDocumentPosition(point.node) & Node.DOCUMENT_POSITION_FOLLOWING);
+			if (!nodeBeforeFirst && !nodeAfterLast) return false;
+
+			let position: number;
+			try {
+				position = view.posAtDOM(point.node, point.offset);
+			} catch {
+				return false;
+			}
+			const index = view.state.field(footnoteIndexField);
+			const lineReferences = index.references.filter((reference) => {
+				if (!renderedFootnote(reference, view.state)) return false;
+				try {
+					return lineElementFor(view.domAtPos(reference.from, 1).node) === line;
+				} catch {
+					return false;
+				}
+			}).sort((a, b) => a.from - b.from);
+			if (lineReferences.length === 0) return false;
+			const firstReference = lineReferences[0];
+			const lastReference = lineReferences[lineReferences.length - 1];
+			const desired = nodeBeforeFirst
+				? Math.min(position, firstReference.from)
+				: Math.max(position, lastReference.to);
+			event.preventDefault();
+			event.stopPropagation();
+			view.dispatch({ selection: { anchor: desired }, userEvent: 'select.pointer' });
+			view.focus();
+			return true;
+		},
+	});
+}
 
 export class FootnoteReferenceWidget extends WidgetType {
 	constructor(private readonly reference: FootnoteReference) {
@@ -204,9 +328,7 @@ export class FootnoteReferenceWidget extends WidgetType {
 			event.preventDefault();
 			event.stopPropagation();
 			const index = view.state.field(footnoteIndexField);
-			const currentReference = index.references.find((reference) =>
-				reference.id === this.reference.id && reference.ordinal === this.reference.ordinal,
-			);
+			const currentReference = resolveFootnoteReference(index, this.reference);
 			const definition = currentReference ? index.definitions.get(currentReference.id) : undefined;
 			if (!definition) return;
 			view.dispatch({
