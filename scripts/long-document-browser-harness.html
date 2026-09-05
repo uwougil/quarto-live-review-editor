@@ -163,9 +163,26 @@
 		return lines;
 	}
 
+	function buildFootnoteInteractionFixture() {
+		const lead = 'FOOTNOTE-INTERACTION-START This realistic scientific paragraph keeps ordinary prose before the reference cluster and deliberately wraps as one logical line. ';
+		const beforeCluster = 'The discussion of Berry curvature, symmetry constraints, and antiferromagnetic spintronics advances in a carefully documented direction until it reaches the next ';
+		const afterCluster = 'Here we present the reproducible measurements and the interpretation that follows the consecutive references. ';
+		const tail = 'The remaining context stays ordinary and editable while the rendered references preserve the source structure during keyboard navigation. '.repeat(14);
+		const paragraph = `${lead}${beforeCluster}spintronics[^1][^2][^3][^4] ${afterCluster}${tail}FOOTNOTE-INTERACTION-END.`;
+		return [
+			paragraph,
+			'',
+			'[^1]: First interaction-test footnote definition.',
+			'[^2]: Second interaction-test footnote definition.',
+			'[^3]: Third interaction-test footnote definition.',
+			'[^4]: Fourth interaction-test footnote definition.',
+		].join('\n');
+	}
+
 	async function loadSource() {
 		if (testParams.get('inline') === '1') return { text: buildInlineFixture(), kind: 'inline-geometry' };
 		if (testParams.get('interaction') === '1') return { text: buildInteractionFixture(), kind: 'interaction-geometry' };
+		if (testParams.get('footnoteInteraction') === '1') return { text: buildFootnoteInteractionFixture(), kind: 'footnote-interaction' };
 		const benchmarkLines = Number(testParams.get('lines'));
 		if (Number.isInteger(benchmarkLines) && benchmarkLines >= 10) return { ...buildBenchmarkFixture(benchmarkLines), kind: `benchmark-${benchmarkLines}` };
 		const sourcePath = testParams.get('source');
@@ -401,7 +418,7 @@
 	}
 
 	(async () => {
-		try { window.__mlpLongDocumentResult = await (testParams.get('probe') === '1' ? runBugProbe() : testParams.get('inline') === '1' ? runInlineGeometry() : testParams.get('interaction') === '1' ? runInteractionReady() : run()); }
+		try { window.__mlpLongDocumentResult = await (testParams.get('probe') === '1' ? runBugProbe() : testParams.get('inline') === '1' ? runInlineGeometry() : testParams.get('interaction') === '1' || testParams.get('footnoteInteraction') === '1' ? runInteractionReady() : run()); }
 		catch (error) { window.__mlpLongDocumentResult = { ok: false, error: String(error?.stack || error) }; }
 	})();
 </script>

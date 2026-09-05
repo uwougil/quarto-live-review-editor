@@ -1,6 +1,7 @@
 import { StateEffect, StateField, type EditorState, type Text } from '@codemirror/state';
-import { WidgetType, type EditorView } from '@codemirror/view';
+import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view';
 import { findFenceSpans, scanSourceLines } from '../quarto/fence';
+import { selectionTouchesInlineRange } from '../shared/selection';
 
 export interface FootnoteReference {
 	id: string;
@@ -141,6 +142,27 @@ export const footnoteIndexField = StateField.define<FootnoteIndex>({
 	},
 });
 
+// The replacement widgets live in the viewport decoration plugin, but cursor
+// motion must also know that their source ranges are atomic. Keep a matching
+// state field so ArrowLeft/Right/Up/Down and pointer selection skip the source
+// bytes that are currently represented by a rendered footnote reference.
+const footnoteAtomicDecoration = Decoration.mark({});
+
+function buildFootnoteAtomicRanges(state: EditorState): DecorationSet {
+	const ranges = state.field(footnoteIndexField).references
+		.filter((reference) => !selectionTouchesInlineRange(state, reference.from, reference.to))
+		.map((reference) => footnoteAtomicDecoration.range(reference.from, reference.to));
+	return Decoration.set(ranges, true);
+}
+
+export const footnoteAtomicRangesField = StateField.define<DecorationSet>({
+	create: buildFootnoteAtomicRanges,
+	update(value, transaction) {
+		return transaction.docChanged || transaction.selection ? buildFootnoteAtomicRanges(transaction.state) : value;
+	},
+	provide: (field) => EditorView.atomicRanges.of((view) => view.state.field(field)),
+});
+
 interface FootnoteNavigation {
 	lastReferenceFrom: Map<string, number>;
 }
@@ -165,7 +187,10 @@ export class FootnoteReferenceWidget extends WidgetType {
 	}
 
 	eq(other: FootnoteReferenceWidget): boolean {
-		return other.reference.id === this.reference.id && other.reference.ordinal === this.reference.ordinal;
+		return other.reference.id === this.reference.id &&
+			other.reference.ordinal === this.reference.ordinal &&
+			other.reference.from === this.reference.from &&
+			other.reference.to === this.reference.to;
 	}
 
 	toDOM(view: EditorView): HTMLElement {
@@ -179,11 +204,14 @@ export class FootnoteReferenceWidget extends WidgetType {
 			event.preventDefault();
 			event.stopPropagation();
 			const index = view.state.field(footnoteIndexField);
-			const definition = index.definitions.get(this.reference.id);
+			const currentReference = index.references.find((reference) =>
+				reference.id === this.reference.id && reference.ordinal === this.reference.ordinal,
+			);
+			const definition = currentReference ? index.definitions.get(currentReference.id) : undefined;
 			if (!definition) return;
 			view.dispatch({
 				selection: { anchor: definition.markerFrom },
-				effects: footnoteNavigationEffect.of({ id: this.reference.id, referenceFrom: this.reference.from }),
+				effects: footnoteNavigationEffect.of({ id: this.reference.id, referenceFrom: currentReference?.from ?? this.reference.from }),
 				scrollIntoView: true,
 			});
 			view.focus();

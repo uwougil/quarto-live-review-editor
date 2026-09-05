@@ -80,15 +80,29 @@ describe('selectionTouchesInlineRange', () => {
 		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: boldFrom + 3 } }), boldFrom, boldTo)).toBe(true);
 	});
 
-	it('treats both inline endpoints as part of a caret range', () => {
-		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: boldFrom } }), boldFrom, boldTo)).toBe(true);
-		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: boldTo } }), boldFrom, boldTo)).toBe(true);
+	it('does not reveal at either shared inline endpoint', () => {
+		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: boldFrom } }), boldFrom, boldTo)).toBe(false);
+		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: boldTo } }), boldFrom, boldTo)).toBe(false);
+		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: boldFrom + 1 } }), boldFrom, boldTo)).toBe(true);
+		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: boldTo - 1 } }), boldFrom, boldTo)).toBe(true);
 	});
 
-	it('reveals an inline node only when a non-empty selection intersects it', () => {
-		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: 0, head: boldFrom } }), boldFrom, boldTo)).toBe(true);
+	it('uses half-open overlap for non-empty selections', () => {
+		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: 0, head: boldFrom } }), boldFrom, boldTo)).toBe(false);
+		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: 0, head: boldFrom + 1 } }), boldFrom, boldTo)).toBe(true);
 		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: 0, head: boldFrom - 1 } }), boldFrom, boldTo)).toBe(false);
-		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: doc.length, head: 0 } }), boldFrom, boldTo)).toBe(true);
+		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: boldTo, head: doc.length } }), boldFrom, boldTo)).toBe(false);
+		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: boldTo - 1, head: doc.length } }), boldFrom, boldTo)).toBe(true);
+	});
+
+	it('does not activate either side of an adjacent-reference boundary', () => {
+		const adjacent = '[^2][^3]';
+		const boundary = adjacent.indexOf('[^3]');
+		const stateAt = (anchor: number, head = anchor) => EditorState.create({ doc: adjacent, selection: { anchor, head } });
+		expect(selectionTouchesInlineRange(stateAt(boundary), 0, boundary)).toBe(false);
+		expect(selectionTouchesInlineRange(stateAt(boundary), boundary, adjacent.length)).toBe(false);
+		expect(selectionTouchesInlineRange(stateAt(boundary - 1), 0, boundary)).toBe(true);
+		expect(selectionTouchesInlineRange(stateAt(boundary + 1), boundary, adjacent.length)).toBe(true);
 	});
 
 	it('does not treat another construct on the same logical line as a hit', () => {

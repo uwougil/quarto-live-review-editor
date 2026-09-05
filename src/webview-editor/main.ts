@@ -21,7 +21,7 @@ import { mathRangesField } from '../quarto/math';
 import { installDebugView } from './debug';
 import { viewportSyntaxPlugin } from './viewportSyntax';
 import { mathDecorationsField } from './mathDecorations';
-import { footnoteIndexField, footnoteNavigationField } from './footnotes';
+import { footnoteAtomicRangesField, footnoteIndexField, footnoteNavigationField } from './footnotes';
 
 const remoteChange = Annotation.define<boolean>();
 const FLUSH_DEBOUNCE_MS = 250;
@@ -91,6 +91,7 @@ function createExtensions(dialect: DocumentDialect): Extension[] {
 		mathRangesField,
 		mathDecorationsField,
 		footnoteIndexField,
+		footnoteAtomicRangesField,
 		footnoteNavigationField,
 		markdownSupport,
 		viewportSyntaxPlugin,

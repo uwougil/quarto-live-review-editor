@@ -11,7 +11,7 @@ import { chromium } from 'playwright';
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function parseArgs(argv) {
-	const args = { baseline: false, synthetic: false, full: false, benchmark: false, probe: false, inlineGeometry: false };
+	const args = { baseline: false, synthetic: false, full: false, benchmark: false, probe: false, inlineGeometry: false, footnoteInteraction: false };
 	for (let i = 0; i < argv.length; i += 1) {
 		const arg = argv[i];
 		if (arg === '--baseline') args.baseline = true;
@@ -20,6 +20,7 @@ function parseArgs(argv) {
 		else if (arg === '--benchmark') args.benchmark = true;
 		else if (arg === '--probe') args.probe = true;
 		else if (arg === '--inline-geometry') args.inlineGeometry = true;
+		else if (arg === '--inline-interaction') args.footnoteInteraction = true;
 		else if (arg === '--interaction') args.interaction = true;
 		else if (['--source', '--theme', '--bundle'].includes(arg)) {
 			const value = argv[++i];
@@ -70,6 +71,7 @@ function queryFor(baseUrl, args, benchmarkLines, sourcePath) {
 	if (args.baseline) query.set('baseline', '1');
 	if (args.probe) query.set('probe', '1');
 	if (args.inlineGeometry) query.set('inline', '1');
+	if (args.footnoteInteraction) query.set('footnoteInteraction', '1');
 	if (args.interaction) query.set('interaction', '1');
 	return `${baseUrl}?${query}`;
 }
@@ -89,6 +91,7 @@ function compactResult(item) {
 		markers: (item.markers || []).map((marker) => Object.fromEntries(['label', 'found', 'pos', 'viewportContains', 'domContainsMarker'].map((key) => [key, marker[key]]))),
 		final: compactSnapshot(item.final), markerFailures: item.markerFailures, pageErrors: item.pageErrors, error: item.error,
 		interaction: item.interaction ? { checks: item.interaction.checks, initialDiagnostics: item.interaction.initialDiagnostics } : undefined,
+		footnoteInteraction: item.footnoteInteraction ? { checks: item.footnoteInteraction.checks, traceCount: item.footnoteInteraction.traceCount } : undefined,
 	};
 }
 
@@ -103,6 +106,195 @@ function benchmarkResult(items) {
 			maxDecorationRebuilds: Math.max(0, ...(item.samples || []).map((sample) => sample.snapshot?.decorationRebuildCount || 0), item.eof?.snapshot?.decorationRebuildCount || 0),
 			longTaskCount: item.longTaskCount || 0, longTaskTotalMs: item.longTaskTotalMs || 0, pageErrors: item.pageErrors || [],
 		})),
+	};
+}
+
+async function runFootnoteInteraction(page, text) {
+	const references = [1, 2, 3, 4].map((ordinal) => {
+		const token = `[^${ordinal}]`;
+		const from = text.indexOf(token);
+		return { ordinal, from, to: from + token.length };
+	});
+	const definitionHeads = [1, 2, 3, 4].map((ordinal) => text.indexOf(`[^${ordinal}]:`));
+	if (references.some((reference) => reference.from < 0) || definitionHeads.some((head) => head < 0)) {
+		throw new Error('footnote interaction fixture positions were not found');
+	}
+
+	await page.evaluate((ranges) => {
+		const findLine = () => [...document.querySelectorAll('.cm-line')].find((line) => line.textContent?.includes('FOOTNOTE-INTERACTION-START')) || null;
+		const rectData = (rect) => ({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, x: (rect.left + rect.right) / 2, y: (rect.top + rect.bottom) / 2 });
+		const textRect = (needle) => {
+			const root = findLine();
+			if (!root) return null;
+			const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+			let node;
+			while ((node = walker.nextNode())) {
+				const value = node.nodeValue || '';
+				const index = value.indexOf(needle);
+				if (index < 0) continue;
+				const range = document.createRange();
+				range.setStart(node, index);
+				range.setEnd(node, index + needle.length);
+				const rect = [...range.getClientRects()].find((candidate) => candidate.width > 1 && candidate.height > 1);
+				if (rect) return rectData(rect);
+			}
+			return null;
+		};
+		window.__mlpFootnoteInteraction = {
+			scrollLine() {
+				const line = findLine();
+				if (!line) return false;
+				line.scrollIntoView({ block: 'center', inline: 'nearest' });
+				return true;
+			},
+			textRect,
+			buttonRect(ordinal) {
+				const button = [...document.querySelectorAll('.mlp-footnote-ref')].find((candidate) => candidate.textContent?.trim() === String(ordinal));
+				if (!(button instanceof HTMLElement)) return null;
+				button.scrollIntoView({ block: 'center', inline: 'nearest' });
+				return rectData(button.getBoundingClientRect());
+			},
+			backRect() {
+				const button = document.querySelector('.mlp-footnote-back');
+				if (!(button instanceof HTMLElement)) return null;
+				button.scrollIntoView({ block: 'center', inline: 'nearest' });
+				return rectData(button.getBoundingClientRect());
+			},
+			state() {
+				const line = findLine();
+				const lineText = line?.textContent || '';
+				const rawSourceTokens = ranges.filter((range) => lineText.includes(`[^${range.ordinal}]`)).map((range) => range.ordinal);
+				const widgetOrdinals = [...(line?.querySelectorAll('.mlp-footnote-ref') || [])].map((button) => Number(button.textContent));
+				const selection = window.__mlpDebugSelection?.() || null;
+				const selectionInsideReferences = selection ? ranges.filter((range) => selection.head > range.from && selection.head < range.to).map((range) => range.ordinal) : [];
+				return { linePresent: Boolean(line), lineText, rawSourceTokens, widgetOrdinals, activeSourceCount: rawSourceTokens.length, selectionInsideReferences, selection };
+			},
+		};
+	}, references);
+
+	const settle = () => page.waitForTimeout(80);
+	const apiState = () => page.evaluate(() => window.__mlpFootnoteInteraction?.state());
+	const scrollLine = async () => {
+		if (!(await page.evaluate(() => window.__mlpFootnoteInteraction?.scrollLine()))) throw new Error('footnote interaction paragraph is not in the DOM');
+		await page.waitForTimeout(40);
+	};
+	const traces = [];
+	const record = async (label) => {
+		const state = await apiState();
+		traces.push({ label, state });
+		return state;
+	};
+	const ordinaryState = (state) => Boolean(state && state.linePresent && state.activeSourceCount === 0 && state.widgetOrdinals.length === 4 && state.selectionInsideReferences.length === 0);
+	const clickText = async (needle, side) => {
+		await scrollLine();
+		const rect = await page.evaluate((value) => window.__mlpFootnoteInteraction?.textRect(value), needle);
+		if (!rect) throw new Error(`text rect not found for ${needle}`);
+		const x = side === 'end' ? Math.max(rect.left + 1, rect.right - 2) : Math.min(rect.right - 1, rect.left + 2);
+		await page.mouse.click(x, rect.y);
+		await settle();
+		return { x, y: rect.y };
+	};
+
+	await scrollLine();
+	const initial = await record('initial');
+	const beforeProseClick = await clickText('spintronics', 'end');
+	const afterProseClick = await record('prose-immediately-before-cluster');
+
+	const down = [];
+	for (let i = 0; i < 8; i += 1) {
+		await page.keyboard.press('ArrowDown');
+		await settle();
+		down.push(await record(`ArrowDown-${i + 1}`));
+	}
+	const up = [];
+	for (let i = 0; i < 8; i += 1) {
+		await page.keyboard.press('ArrowUp');
+		await settle();
+		up.push(await record(`ArrowUp-${i + 1}`));
+	}
+
+	const horizontalRight = [];
+	await clickText('spintronics', 'end');
+	for (let i = 0; i < 8; i += 1) {
+		await page.keyboard.press('ArrowRight');
+		await settle();
+		horizontalRight.push(await record(`ArrowRight-${i + 1}`));
+	}
+	const horizontalLeft = [];
+	await clickText('Here we present', 'start');
+	for (let i = 0; i < 8; i += 1) {
+		await page.keyboard.press('ArrowLeft');
+		await settle();
+		horizontalLeft.push(await record(`ArrowLeft-${i + 1}`));
+	}
+
+	const boundaries = [];
+	for (let i = 0; i < references.length - 1; i += 1) {
+		const boundary = references[i + 1].from;
+		await page.evaluate((pos) => window.dispatchEvent(new MessageEvent('message', { data: { type: 'setCursor', pos } })), boundary);
+		await settle();
+		boundaries.push({ boundary, state: await record(`shared-boundary-${i + 1}`) });
+	}
+
+	const navigation = [];
+	for (const reference of references) {
+		await scrollLine();
+		const button = await page.evaluate((ordinal) => window.__mlpFootnoteInteraction?.buttonRect(ordinal), reference.ordinal);
+		if (!button) throw new Error(`rendered footnote button ${reference.ordinal} not found`);
+		await page.mouse.click(button.x, button.y);
+		await settle();
+		const toDefinition = await page.evaluate(() => window.__mlpDebugSelection?.());
+		const back = await page.evaluate(() => window.__mlpFootnoteInteraction?.backRect());
+		if (!back) throw new Error(`footnote back button ${reference.ordinal} not found`);
+		await page.mouse.click(back.x, back.y);
+		await settle();
+		const afterBack = await record(`mouse-footnote-${reference.ordinal}-back`);
+		navigation.push({ ordinal: reference.ordinal, toDefinition, expectedDefinition: definitionHeads[reference.ordinal - 1], afterBack });
+	}
+
+	await scrollLine();
+	const fixedPoint = await page.evaluate((needle) => window.__mlpFootnoteInteraction?.textRect(needle), 'spintronics');
+	if (!fixedPoint) throw new Error('fixed repeated-click coordinate could not be measured');
+	const fixedClick = { x: Math.max(fixedPoint.left + 1, fixedPoint.right - 2), y: fixedPoint.y };
+	const repeated = [];
+	for (let i = 0; i < 8; i += 1) {
+		await page.mouse.click(fixedClick.x, fixedClick.y);
+		await settle();
+		repeated.push(await record(`repeated-click-${i + 1}`));
+	}
+
+	const allStates = [initial, afterProseClick, ...down, ...up, ...horizontalRight, ...horizontalLeft, ...boundaries.map((item) => item.state), ...navigation.map((item) => item.afterBack), ...repeated];
+	const distinctY = (values) => {
+		const ys = values.map((state) => state?.selection?.y).filter((value) => typeof value === 'number');
+		return new Set(ys.map((value) => Math.round(value))).size >= 2;
+	};
+	const noSource = (values) => values.every(ordinaryState);
+	const navigationOk = navigation.every((item) => item.toDefinition?.head === item.expectedDefinition && ordinaryState(item.afterBack));
+	const checks = {
+		proseImmediatelyBeforeCluster: ordinaryState(afterProseClick),
+		arrowDownNoSource: noSource(down),
+		arrowUpNoSource: noSource(up),
+		arrowDownMovesVisualRows: distinctY(down),
+		arrowUpMovesVisualRows: distinctY(up),
+		arrowRightNoSource: noSource(horizontalRight),
+		arrowLeftNoSource: noSource(horizontalLeft),
+		sharedBoundariesActivateNeither: boundaries.every((item) => ordinaryState(item.state)),
+		mouseNavigationPreserved: navigationOk,
+		repeatedClicksStable: noSource(repeated),
+		activeSourceAtMostOne: allStates.every((state) => (state?.activeSourceCount ?? 0) <= 1),
+	};
+	return {
+		ok: Object.values(checks).every(Boolean),
+		checks,
+		beforeProseClick,
+		boundaries,
+		navigation,
+		repeated,
+		down: down.map((state) => state?.selection),
+		up: up.map((state) => state?.selection),
+		horizontalRight: horizontalRight.map((state) => state?.selection),
+		horizontalLeft: horizontalLeft.map((state) => state?.selection),
+		traceCount: traces.length,
 	};
 }
 
@@ -137,6 +329,19 @@ async function main() {
 			result.browserElapsedMs = Number((performance.now() - started).toFixed(1));
 				result.pageErrors = pageErrors;
 			if (pageErrors.length) result.ok = false;
+			if (args.footnoteInteraction) {
+				try {
+					const sourceText = await page.evaluate(() => window.__mlpTestSourceText || '');
+					result.footnoteInteraction = await runFootnoteInteraction(page, sourceText);
+					result.ok = result.ok && result.footnoteInteraction.ok;
+				} catch (error) {
+					result.ok = false;
+					result.error = String(error?.stack || error);
+				}
+				await page.close();
+				allResults.push(result);
+				continue;
+			}
 			if (args.interaction) {
 					const geometryFor = async (label) => page.evaluate((name) => {
 						const target = [...document.querySelectorAll('.cm-line')].find((line) => line.textContent?.includes('TARGET-PARAGRAPH-START'));
