@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import {
-	cursorTouchesRange,
+	cursorTouchesLineRange,
+	selectionTouchesInlineRange,
 	blockCursorTouchesRange,
 	setPointerDownForTesting,
 	setSuppressForTesting,
@@ -21,7 +22,7 @@ function stateWithSelection(anchor: number, head = anchor): EditorState {
 	return EditorState.create({ doc: DOC, selection: { anchor, head } });
 }
 
-describe('cursorTouchesRange', () => {
+describe('cursorTouchesLineRange', () => {
 	beforeEach(() => {
 		setPointerDownForTesting(false);
 		setSuppressForTesting(false);
@@ -31,13 +32,13 @@ describe('cursorTouchesRange', () => {
 		const state = stateWithSelection(0);
 		const { from, to } = tableRange(state);
 		const inside = state.doc.line(3).from + 2;
-		expect(cursorTouchesRange(stateWithSelection(inside), from, to)).toBe(true);
+		expect(cursorTouchesLineRange(stateWithSelection(inside), from, to)).toBe(true);
 	});
 
 	it('is false for a caret outside the range', () => {
 		const state = stateWithSelection(0);
 		const { from, to } = tableRange(state);
-		expect(cursorTouchesRange(stateWithSelection(1), from, to)).toBe(false);
+		expect(cursorTouchesLineRange(stateWithSelection(1), from, to)).toBe(false);
 	});
 
 	// Sweeping a selection across a rendered block is a copy gesture. Unrendering
@@ -47,7 +48,7 @@ describe('cursorTouchesRange', () => {
 		const state = stateWithSelection(0);
 		const { from, to } = tableRange(state);
 		const head = state.doc.line(3).from + 2;
-		expect(cursorTouchesRange(stateWithSelection(0, head), from, to)).toBe(false);
+		expect(cursorTouchesLineRange(stateWithSelection(0, head), from, to)).toBe(false);
 	});
 
 	// A blank line above a table resolves to document position 0, so pressing
@@ -55,7 +56,7 @@ describe('cursorTouchesRange', () => {
 	// the table — indistinguishable from a click on it. Suppressing while the
 	// button is held is what keeps the block from flipping to source mid-gesture.
 	// The mouse-gesture guards live in `blockCursorTouchesRange`, not here.
-	// `cursorTouchesRange` also decides whether a heading shows its `#` and
+	// `cursorTouchesLineRange` also decides whether a heading shows its `#` and
 	// whether `**bold**` shows its asterisks; guarding it meant clicking a
 	// heading moved the caret but left the markup hidden, so the line could not
 	// be edited by mouse at all.
@@ -65,7 +66,36 @@ describe('cursorTouchesRange', () => {
 		const inside = state.doc.line(3).from + 2;
 		setPointerDownForTesting(true);
 		setSuppressForTesting(true);
-		expect(cursorTouchesRange(stateWithSelection(inside), from, to)).toBe(true);
+		expect(cursorTouchesLineRange(stateWithSelection(inside), from, to)).toBe(true);
+	});
+});
+
+describe('selectionTouchesInlineRange', () => {
+	const doc = 'plain **bold** text [link](#target)';
+	const boldFrom = doc.indexOf('**bold**');
+	const boldTo = boldFrom + '**bold**'.length;
+
+	it('uses character offsets rather than the containing line', () => {
+		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: 1 } }), boldFrom, boldTo)).toBe(false);
+		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: boldFrom + 3 } }), boldFrom, boldTo)).toBe(true);
+	});
+
+	it('treats both inline endpoints as part of a caret range', () => {
+		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: boldFrom } }), boldFrom, boldTo)).toBe(true);
+		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: boldTo } }), boldFrom, boldTo)).toBe(true);
+	});
+
+	it('reveals an inline node only when a non-empty selection intersects it', () => {
+		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: 0, head: boldFrom } }), boldFrom, boldTo)).toBe(true);
+		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: 0, head: boldFrom - 1 } }), boldFrom, boldTo)).toBe(false);
+		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: doc.length, head: 0 } }), boldFrom, boldTo)).toBe(true);
+	});
+
+	it('does not treat another construct on the same logical line as a hit', () => {
+		const linkFrom = doc.indexOf('[link]');
+		const linkTo = doc.indexOf(')', linkFrom) + 1;
+		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: linkFrom + 2 } }), boldFrom, boldTo)).toBe(false);
+		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: linkFrom + 2 } }), linkFrom, linkTo)).toBe(true);
 	});
 });
 
@@ -76,7 +106,7 @@ describe('blockCursorTouchesRange', () => {
 		clearRevealedForTesting();
 	});
 
-	it('agrees with cursorTouchesRange when no gesture is in play', () => {
+	it('agrees with cursorTouchesLineRange when no gesture is in play', () => {
 		const state = stateWithSelection(0);
 		const { from, to } = tableRange(state);
 		const inside = state.doc.line(3).from + 2;

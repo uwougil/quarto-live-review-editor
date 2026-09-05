@@ -2,7 +2,7 @@ import { EditorView, ViewPlugin, ViewUpdate, Decoration, DecorationSet, WidgetTy
 import { syntaxTree } from '@codemirror/language';
 import { RangeSet, StateField, type Range, type EditorState } from '@codemirror/state';
 import type { SyntaxNode, SyntaxNodeRef } from '@lezer/common';
-import { cursorTouchesRange, blockCursorTouchesRange, noteRevealed } from './cmUtils';
+import { cursorTouchesLineRange, selectionTouchesInlineRange, blockCursorTouchesRange, noteRevealed } from './cmUtils';
 import { isDiagramLang } from './diagramLang';
 import { isDrawioPath } from './drawioFileClient';
 import { DrawioFileWidget } from './drawioWidget';
@@ -23,6 +23,14 @@ const HEADING_LINE_CLASS: Record<string, string> = {
 	ATXHeading5: 'mlp-line-h5',
 	ATXHeading6: 'mlp-line-h6',
 };
+
+const INLINE_MARK_PARENTS = new Set(['StrongEmphasis', 'Emphasis', 'Strikethrough']);
+
+/** Returns the complete inline syntax node that owns a delimiter mark. */
+function enclosingInlineRange(node: SyntaxNodeRef): { from: number; to: number } {
+	const parent = node.node.parent;
+	return parent && INLINE_MARK_PARENTS.has(parent.name) ? parent : node.node;
+}
 
 export function isLineAligned(state: EditorState, from: number, to: number): boolean {
 	return from === state.doc.lineAt(from).from && to === state.doc.lineAt(to).to;
@@ -480,7 +488,7 @@ class TableWidget extends WidgetType {
 			if (ref.to > view.state.doc.length) return null;
 			if (view.state.sliceDoc(ref.from, ref.to) !== ref.source) return null;
 			// The caret must end up on a line *outside* the table. Any position on a
-			// table line makes `cursorTouchesRange` true, which drops the rendered
+			// table line makes `cursorTouchesLineRange` true, which drops the rendered
 			// widget for raw pipe text — the very mode switch this editor exists to
 			// avoid, and it would fire the instant the edit was saved.
 			const changes = { from: ref.from, to: ref.to, insert: next };
@@ -657,7 +665,7 @@ class TableWidget extends WidgetType {
 		// CodeMirror reading the event as an interaction with the *widget's*
 		// document position.) So while a click handler was in charge, every press
 		// on the table had already moved the caret into it by the time that handler
-		// ran, and a caret on a table line makes `cursorTouchesRange` withhold this
+		// ran, and a caret on a table line makes `cursorTouchesLineRange` withhold this
 		// widget — the table flipped to raw pipe text. It usually looked fine only
 		// because `beginEditing` then re-rendered fast enough to hide it; whenever
 		// the click handler bailed out early instead, the revert was what remained.
@@ -1246,9 +1254,9 @@ function buildLineDecorations(state: EditorState): DecorationSet {
 					const lastLineNum = doc.lineAt(node.to).number;
 					const hasContentLines = lastLineNum > firstLineNum + 1;
 					const firstFenceHidden =
-						hasContentLines && !cursorTouchesRange(state, doc.line(firstLineNum).from, doc.line(firstLineNum).to);
+						hasContentLines && !cursorTouchesLineRange(state, doc.line(firstLineNum).from, doc.line(firstLineNum).to);
 					const lastFenceHidden =
-						hasContentLines && !cursorTouchesRange(state, doc.line(lastLineNum).from, doc.line(lastLineNum).to);
+						hasContentLines && !cursorTouchesLineRange(state, doc.line(lastLineNum).from, doc.line(lastLineNum).to);
 					const firstContentLine = firstFenceHidden ? firstLineNum + 1 : firstLineNum;
 					const lastContentLine = lastFenceHidden ? lastLineNum - 1 : lastLineNum;
 					addLineRange(node.from, node.to, (n) => {
@@ -1333,7 +1341,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 
 				switch (name) {
 					case 'HeaderMark': {
-						if (!cursorTouchesRange(state, node.from, node.to)) {
+						if (!cursorTouchesLineRange(state, node.from, node.to)) {
 							const next = state.sliceDoc(node.to, node.to + 1);
 							const to = next === ' ' ? node.to + 1 : node.to;
 							// A plain replace (no widget) here: the heading line already
@@ -1344,9 +1352,8 @@ function buildDecorations(view: EditorView): DecorationSet {
 						return;
 					}
 					case 'QuoteMark':
-					case 'CodeMark':
 					case 'CodeInfo': {
-						if (!cursorTouchesRange(state, node.from, node.to)) {
+						if (!cursorTouchesLineRange(state, node.from, node.to)) {
 							// Also swallow the single space after the marker so hidden markers
 							// don't leave a dangling indent.
 							const next = state.sliceDoc(node.to, node.to + 1);
@@ -1355,9 +1362,28 @@ function buildDecorations(view: EditorView): DecorationSet {
 						}
 						return;
 					}
+					case 'CodeMark': {
+						// CodeMark is shared by fenced code and inline code. Only the
+						// latter is an inline editing unit; fenced-code delimiters retain
+						// their line/block reveal behavior.
+						const parent = node.node.parent;
+						const touches = parent?.name === 'InlineCode'
+							? selectionTouchesInlineRange(state, parent.from, parent.to)
+							: cursorTouchesLineRange(state, node.from, node.to);
+						if (!touches) {
+							const next = state.sliceDoc(node.to, node.to + 1);
+							const to = next === ' ' ? node.to + 1 : node.to;
+							pushReplace(node.from, to, hiddenMarkerDeco);
+						}
+						return;
+					}
 					case 'EmphasisMark':
 					case 'StrikethroughMark': {
-						if (!cursorTouchesRange(state, node.from, node.to)) {
+						// The enclosing emphasis node is the editing unit. Testing only
+						// this delimiter would reveal a marker only when the caret touches
+						// that particular '*'/'_'/'~~' token.
+						const range = enclosingInlineRange(node);
+						if (!selectionTouchesInlineRange(state, range.from, range.to)) {
 							pushReplace(node.from, node.to, hiddenMarkerDeco);
 						}
 						return;
@@ -1382,7 +1408,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 					case 'ListMark': {
 						if (listItemIsTask(state, node)) {
 							// Task items render a checkbox from the TaskMarker; drop the bullet.
-							if (!cursorTouchesRange(state, node.from, node.to)) {
+							if (!cursorTouchesLineRange(state, node.from, node.to)) {
 								const next = state.sliceDoc(node.to, node.to + 1);
 								pushReplace(node.from, next === ' ' ? node.to + 1 : node.to, hiddenMarkerDeco);
 							}
@@ -1390,7 +1416,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 						}
 						const markText = state.sliceDoc(node.from, node.to);
 						if (/^[-*+]$/.test(markText)) {
-							if (!cursorTouchesRange(state, node.from, node.to)) {
+							if (!cursorTouchesLineRange(state, node.from, node.to)) {
 								pushReplace(node.from, node.to, Decoration.replace({ widget: new BulletWidget() }));
 							} else {
 								decorations.push(Decoration.mark({ class: 'mlp-list-mark' }).range(node.from, node.to));
@@ -1402,7 +1428,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 						return;
 					}
 					case 'TaskMarker': {
-						if (!cursorTouchesRange(state, node.from, node.to)) {
+						if (!cursorTouchesLineRange(state, node.from, node.to)) {
 							const checked = /[xX]/.test(state.sliceDoc(node.from, node.to));
 							pushReplace(node.from, node.to, Decoration.replace({ widget: new CheckboxWidget(checked, node.from) }));
 						}
@@ -1426,7 +1452,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 							// Rendered as a diagram by blockDecorationsField; skip entirely.
 							return false;
 						}
-						const cursorAway = !cursorTouchesRange(state, node.from, node.to);
+						const cursorAway = !cursorTouchesLineRange(state, node.from, node.to);
 						const firstLineNum = doc.lineAt(node.from).number;
 						const lastLineNum = doc.lineAt(node.to).number;
 						// The opening/closing ``` fence lines have no visible text once their
@@ -1464,7 +1490,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 						decorations.push(
 							Decoration.mark({ tagName: 'a', class: 'mlp-link', attributes: { 'data-href': href } }).range(labelFrom, labelTo),
 						);
-						if (!cursorTouchesRange(state, node.from, node.to)) {
+						if (!selectionTouchesInlineRange(state, node.from, node.to)) {
 							if (labelFrom > node.from) pushReplace(node.from, labelFrom, hiddenMarkerDeco);
 							if (node.to > labelTo) pushReplace(labelTo, node.to, hiddenMarkerDeco);
 						}
@@ -1478,7 +1504,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 						const urlNode = node.node.getChild('URL');
 						const src = urlNode ? state.sliceDoc(urlNode.from, urlNode.to) : '';
 						const alt = state.sliceDoc(altFrom, altTo);
-						if (!cursorTouchesRange(state, node.from, node.to)) {
+						if (!selectionTouchesInlineRange(state, node.from, node.to)) {
 							// A `.drawio` reference is XML, not an image format: an <img>
 							// pointed at it renders nothing at all, so it goes to the
 							// diagram widget (which reads the file through the host)
@@ -1513,7 +1539,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 	const visible = (from: number, to: number) => view.visibleRanges.some((range) => to >= range.from && from <= range.to);
 	for (const reference of footnotes.references) {
 		if (!visible(reference.from, reference.to)) continue;
-		if (!cursorTouchesRange(state, reference.from, reference.to)) {
+		if (!selectionTouchesInlineRange(state, reference.from, reference.to)) {
 			pushReplace(reference.from, reference.to, Decoration.replace({ widget: new FootnoteReferenceWidget(reference) }));
 		}
 	}

@@ -8,7 +8,7 @@ import { allowRevealOnce } from './cmUtils';
  * Each of these widgets replaces a run of Markdown with a rendered view, and
  * each needs a way back to the text behind it — to fix a diagram's syntax, to
  * add a table row, to correct a YAML key. Putting the caret inside the block is
- * what does it: `cursorTouchesRange` (cmUtils.ts) then withholds the widget and
+ * what does it: `cursorTouchesLineRange` (cmUtils.ts) then withholds the widget and
  * the raw source shows through.
  *
  * Clicking the block itself used to be that gesture, and for Mermaid and

@@ -123,7 +123,7 @@ describe('sanitizeCellInput', () => {
 
 describe('caretPastTable', () => {
 	// The caret must land outside the table: anywhere on a table line makes
-	// cursorTouchesRange true, which unrenders the table into raw pipe text.
+	// cursorTouchesLineRange true, which unrenders the table into raw pipe text.
 	it('returns the start of the line after the table', () => {
 		const doc = '| a | b |\n|---|---|\n| 1 | 2 |\nafter\n';
 		const state = stateFor(doc);

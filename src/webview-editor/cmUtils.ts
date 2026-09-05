@@ -1,5 +1,7 @@
 import type { EditorState } from '@codemirror/state';
 
+export { selectionTouchesInlineRange } from '../shared/selection';
+
 /**
  * Whether a mouse button is currently held down anywhere in the document.
  *
@@ -12,7 +14,7 @@ import type { EditorState } from '@codemirror/state';
  * still down is what tells the two apart: a gesture in progress is not yet a
  * decision to edit.
  *
- * Tracked here, at module scope, because `cursorTouchesRange` is called from
+ * Tracked here, at module scope, because `cursorTouchesLineRange` is called from
  * pure state-derived code (decoration builders) that has no view or event to
  * consult. Listeners are attached once, in the capture phase so nothing can
  * stop them, and only when a DOM is actually present (the unit tests run in
@@ -198,19 +200,20 @@ export function setPointerDownForTesting(value: boolean): void {
 }
 
 /**
- * `cursorTouchesRange`, plus the mouse-gesture guards that only *block widgets*
+ * `cursorTouchesLineRange`, plus the mouse-gesture guards that only *block widgets*
  * want.
  *
- * The guards are deliberately not part of `cursorTouchesRange` itself. That
+ * The guards are deliberately not part of `cursorTouchesLineRange` itself. That
  * function also decides whether a heading shows its `#`, whether `**bold**`
  * shows its asterisks, and so on for every inline construct — and suppressing
  * those after a mouse gesture meant clicking a heading moved the caret there
- * but left the markup hidden, so the line could not be edited by mouse at all.
+ * but left its line marker hidden, so the line could not be edited by mouse at
+ * all. Inline syntax uses `selectionTouchesInlineRange` instead.
  * Only a block that replaces its whole source with a rendered widget has the
  * problem these guards exist for.
  */
 export function blockCursorTouchesRange(state: EditorState, from: number, to: number): boolean {
-	const touching = cursorTouchesRange(state, from, to);
+	const touching = cursorTouchesLineRange(state, from, to);
 	if (!touching) return false;
 	// A block already showing its source keeps showing it, whatever the mouse is
 	// doing. The guards below exist to stop a *rendered* block being revealed by
@@ -242,7 +245,7 @@ export function blockCursorTouchesRange(state: EditorState, from: number, to: nu
  * - Any caret position while the mouse is still down — a drag in progress, which
  *   has not resolved into anything yet. See `pointerDown` above.
  */
-export function cursorTouchesRange(state: EditorState, from: number, to: number): boolean {
+export function cursorTouchesLineRange(state: EditorState, from: number, to: number): boolean {
 	const startLine = state.doc.lineAt(Math.min(from, state.doc.length)).number;
 	const endLine = state.doc.lineAt(Math.min(to, state.doc.length)).number;
 	for (const range of state.selection.ranges) {
@@ -254,3 +257,10 @@ export function cursorTouchesRange(state: EditorState, from: number, to: number)
 	}
 	return false;
 }
+
+/**
+ * Backwards-compatible name for callers that still need line/block semantics.
+ * New code should say `cursorTouchesLineRange` so it cannot be mistaken for
+ * exact inline syntax hit testing.
+ */
+export const cursorTouchesRange = cursorTouchesLineRange;

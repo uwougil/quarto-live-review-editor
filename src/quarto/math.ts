@@ -1,6 +1,7 @@
 import { StateField, type EditorState, type Transaction } from '@codemirror/state';
 import { getDocumentDialect, type DocumentDialect } from './dialect';
 import { findFenceSpans, scanSourceLines } from './fence';
+import { selectionTouchesInlineRange } from '../shared/selection';
 
 export interface MathRange {
 	from: number;
@@ -173,11 +174,7 @@ function mapRangesForDelimiterFreeEdit(
 }
 
 export function mathRangeTouchesSelection(state: EditorState, range: MathRange): boolean {
-	return state.selection.ranges.some((selection) =>
-		selection.empty
-			? selection.head >= range.from && selection.head <= range.to
-			: selection.from <= range.to && selection.to >= range.from,
-	);
+	return selectionTouchesInlineRange(state, range.from, range.to);
 }
 
 /** Full math parsing happens once at creation and only after document edits. */

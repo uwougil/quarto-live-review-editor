@@ -83,19 +83,37 @@
 	}
 
 	function buildInlineFixture() {
+		const image = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+		const inline = [
+			'INLINE-REVEAL-START ordinary prose',
+			'**bold-one**',
+			'**bold-two**',
+			'*italic-one*',
+			'_italic-two_',
+			'~~strike-one~~',
+			'~~strike-two~~',
+			'`code-one`',
+			'`code-two`',
+			'[link-one](#target-one)',
+			'[link-two](#target-two)',
+			`![image-one](${image})`,
+			'A[^15]',
+			'B[^16]',
+			'C[^17]',
+			'D[^18]',
+			'E[^19]',
+			'$M_s$',
+			'ordinary prose before the long wrapping tail',
+		].join(' ');
+		const wrappingTail = 'ordinary words keep this one logical Markdown line soft-wrapped across many visual CodeMirror rows. '.repeat(18);
 		return [
-			'Plain prose without inline syntax, included as the compact line-box control.',
-			'',
-			'Ordinary prose before $M_s$ after formula and more words repeated enough to wrap across the editor width.',
-			'',
-			'Citation-like prose foo[^15][^16] bar and more words repeated enough to wrap across the editor width.',
-			'',
-			'Link prose before [a rendered link](https://example.org) after the link and more words for wrapping.',
-			'',
-			'Emphasis prose before **strong text** and *emphasis text* after the markers with more words for wrapping.',
+			`${inline} ${wrappingTail}INLINE-REVEAL-END.`,
 			'',
 			'[^15]: First inline footnote definition.',
 			'[^16]: Second inline footnote definition.',
+			'[^17]: Third inline footnote definition.',
+			'[^18]: Fourth inline footnote definition.',
+			'[^19]: Fifth inline footnote definition.',
 		].join('\n');
 	}
 
@@ -166,6 +184,12 @@
 		const line = [...document.querySelectorAll('.cm-line')].find((candidate) => candidate.textContent?.includes(anchor));
 		if (!line) return null;
 		const rect = line.getBoundingClientRect();
+		const contentRange = document.createRange();
+		contentRange.selectNodeContents(line);
+		const visualRows = [];
+		for (const fragment of [...contentRange.getClientRects()].filter((candidate) => candidate.width > 1 && candidate.height > 1)) {
+			if (!visualRows.some((top) => Math.abs(top - fragment.top) <= 1)) visualRows.push(fragment.top);
+		}
 		const internalImages = [...line.querySelectorAll('img')].map((image) => {
 			const style = getComputedStyle(image);
 			const imageRect = image.getBoundingClientRect();
@@ -179,28 +203,70 @@
 				rectHeight: imageRect.height,
 			};
 		});
-		return { text: line.textContent, top: rect.top, height: rect.height, html: line.innerHTML.slice(0, 800), internalImages };
+		const links = [...line.querySelectorAll('a.mlp-link')].map((link) => link.getAttribute('data-href'));
+		return { text: line.textContent, top: rect.top, height: rect.height, visualRows: visualRows.length, html: line.innerHTML.slice(0, 800), internalImages, links };
 	}
 
 	async function runInlineGeometry() {
 		const text = buildInlineFixture();
-		const anchors = [
-			{ name: 'math', anchor: 'Ordinary prose before', pos: text.indexOf('$M_s$') + 2 },
-			{ name: 'consecutive-notes', anchor: 'Citation-like prose foo', pos: text.indexOf('[^15]') + 2 },
-			{ name: 'link', anchor: 'Link prose before', pos: text.indexOf('[a rendered link]') + 2 },
-			{ name: 'emphasis', anchor: 'Emphasis prose before', pos: text.indexOf('**strong text**') + 3 },
+		const tokens = {
+			boldOne: '**bold-one**',
+			boldTwo: '**bold-two**',
+			italicOne: '*italic-one*',
+			italicTwo: '_italic-two_',
+			strikeOne: '~~strike-one~~',
+			strikeTwo: '~~strike-two~~',
+			codeOne: '`code-one`',
+			codeTwo: '`code-two`',
+			linkOne: '[link-one](#target-one)',
+			linkTwo: '[link-two](#target-two)',
+			imageOne: '![image-one](data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=)',
+			footnote15: '[^15]',
+			footnote16: '[^16]',
+			footnote17: '[^17]',
+			footnote18: '[^18]',
+			footnote19: '[^19]',
+			math: '$M_s$',
+		};
+		const items = [
+			{ name: 'ordinary', pos: text.indexOf('ordinary prose') + 2 },
+			{ name: 'boldOne', pos: text.indexOf(tokens.boldOne) + 3 },
+			{ name: 'boldTwo', pos: text.indexOf(tokens.boldTwo) + 3 },
+			{ name: 'italicOne', pos: text.indexOf(tokens.italicOne) + 2 },
+			{ name: 'italicTwo', pos: text.indexOf(tokens.italicTwo) + 2 },
+			{ name: 'strikeOne', pos: text.indexOf(tokens.strikeOne) + 3 },
+			{ name: 'strikeTwo', pos: text.indexOf(tokens.strikeTwo) + 3 },
+			{ name: 'codeOne', pos: text.indexOf(tokens.codeOne) + 2 },
+			{ name: 'codeTwo', pos: text.indexOf(tokens.codeTwo) + 2 },
+			{ name: 'linkOne', pos: text.indexOf(tokens.linkOne) + 2 },
+			{ name: 'linkTwo', pos: text.indexOf(tokens.linkTwo) + 2 },
+			{ name: 'imageOne', pos: text.indexOf(tokens.imageOne) + 2 },
+			{ name: 'footnote15', pos: text.indexOf(tokens.footnote15) + 2 },
+			{ name: 'footnote16', pos: text.indexOf(tokens.footnote16) + 2 },
+			{ name: 'footnote17', pos: text.indexOf(tokens.footnote17) + 2 },
+			{ name: 'footnote18', pos: text.indexOf(tokens.footnote18) + 2 },
+			{ name: 'footnote19', pos: text.indexOf(tokens.footnote19) + 2 },
+			{ name: 'math', pos: text.indexOf(tokens.math) + 2 },
 		];
 		dispatchInit(text, await loadThemeCss());
 		await waitFor(() => snapshot()?.docLength === text.length, 2500);
 		const rendered = [];
 		const source = [];
-		for (const item of anchors) {
-			await setCursorForTest(0);
-			rendered.push({ name: item.name, geometry: inlineLineSnapshot(item.anchor) });
+		const revealChecks = [];
+		const lineAnchor = 'INLINE-REVEAL-START';
+		for (const item of items) {
+			await setCursorForTest(items[0].pos);
+			const renderedGeometry = inlineLineSnapshot(lineAnchor);
+			rendered.push({ name: item.name, geometry: renderedGeometry });
 			await setCursorForTest(item.pos);
-			source.push({ name: item.name, geometry: inlineLineSnapshot(item.anchor) });
+			const sourceGeometry = inlineLineSnapshot(lineAnchor);
+			source.push({ name: item.name, geometry: sourceGeometry });
+			const sourceText = sourceGeometry?.text || '';
+			const presence = Object.fromEntries(Object.entries(tokens).map(([name, token]) => [name, sourceText.includes(token)]));
+			const activeOnly = Object.entries(presence).every(([name, present]) => present === (name === item.name));
+			revealChecks.push({ name: item.name, position: item.pos, presence, activeOnly, visualRows: sourceGeometry?.visualRows ?? 0 });
 		}
-		await setCursorForTest(0);
+		await setCursorForTest(items[0].pos);
 		const allWidgetBuffers = [...document.querySelectorAll('.cm-widgetBuffer')].map((image) => {
 			const style = getComputedStyle(image);
 			const rect = image.getBoundingClientRect();
@@ -233,10 +299,14 @@
 			return { name: item.name, renderedHeight, sourceHeight, extraHeight };
 		}).filter((item) => item.renderedHeight === null || item.sourceHeight === null || item.extraHeight > 8);
 		const widgetBufferFailures = allWidgetBuffers.filter((buffer) => buffer.marginTop !== '0px' || buffer.marginBottom !== '0px');
-		const footnoteOk = renderedFootnotes.length === 2 &&
+		const footnoteOk = renderedFootnotes.length === 5 &&
 			navigation.toDefinition?.head === firstDefinitionFrom &&
 			navigation.backToReference?.head === firstReferenceFrom;
-		return { ok: geometryFailures.length === 0 && widgetBufferFailures.length === 0 && footnoteOk, sourceKind: 'inline-geometry', sourceLength: text.length, sourceLines: text.split('\n').length, rendered, source, renderedFootnotes, navigation, allWidgetBuffers, geometryFailures, widgetBufferFailures };
+		const renderedBaseline = rendered[0]?.geometry;
+		const linkRendered = renderedBaseline?.links?.includes('#target-one') === true;
+		const allRevealCasesPass = revealChecks.length === items.length && revealChecks.every((check) => check.activeOnly);
+		const longLineWrapped = (renderedBaseline?.visualRows || 0) >= 5;
+		return { ok: geometryFailures.length === 0 && widgetBufferFailures.length === 0 && footnoteOk && linkRendered && allRevealCasesPass && longLineWrapped, sourceKind: 'inline-geometry', sourceLength: text.length, sourceLines: text.split('\n').length, rendered, source, revealChecks, renderedFootnotes, navigation, allWidgetBuffers, geometryFailures, widgetBufferFailures, linkRendered, longLineWrapped };
 	}
 
 	async function loadThemeCss() {

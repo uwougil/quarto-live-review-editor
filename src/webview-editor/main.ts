@@ -142,7 +142,7 @@ function createExtensions(dialect: DocumentDialect): Extension[] {
 
 // A fresh EditorState's selection defaults to position 0 — i.e. line 1 — which
 // is exactly where a leading frontmatter block's own range starts. Left as-is,
-// `cursorTouchesRange` would read that default as "the cursor is touching the
+// `cursorTouchesLineRange` would read that default as "the cursor is touching the
 // frontmatter block" and keep it as raw source on every load, never rendering
 // the table until the user happened to move the cursor away first. Placing the
 // initial selection just past the block (only when one is actually present)
