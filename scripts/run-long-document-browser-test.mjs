@@ -499,4 +499,9 @@ async function main() {
 	return allResults.every((item) => item.ok) ? 0 : 1;
 }
 
-main().catch((error) => { process.stderr.write(`${error?.stack || error}\n`); process.exitCode = 1; });
+main().then((exitCode) => {
+	if (exitCode) process.exitCode = exitCode;
+}).catch((error) => {
+	process.stderr.write(`${error?.stack || error}\n`);
+	process.exitCode = 1;
+});
