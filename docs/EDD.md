@@ -79,7 +79,7 @@ Webview Editor
 - `.qmd` 通过 `documentDialect` facet 标记为 `quarto`；`.md` 标记为 `markdown`。
 - 普通围栏和 Quarto/Pandoc brace info 统一由 `parseFenceInfo` 解析语言、类、ID、键值属性和位置参数。
 - 代码单元只高亮和保持源码，不执行。
-- front matter 由行扫描检测：首行必须严格为 `---`，随后找到单独的 `---` 闭合行；文档中部同形内容不是 front matter。
+- front matter 由统一的行扫描规则检测：首行必须严格为 `---`，随后找到单独一行的 `---` 或 `...` 闭合行；文档中部同形内容不是 front matter。所有依赖 front matter 范围的消费者必须遵循这套终止规则。
 - YAML 成功且有顶层键时显示 `mlp-frontmatter` 表格；空 YAML 使用零高度 widget；解析失败显示 `role="alert"` 错误 widget。
 - front matter 范围与表格/代码块范围重叠时，块装饰遍历必须优先跳过重叠节点。
 - front matter 的显示样式属于扩展基底 CSS，使用 VS Code CSS 变量，不纳入用户 Markdown CSS 主题改写。
