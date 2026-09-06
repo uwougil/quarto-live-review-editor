@@ -74,6 +74,15 @@ Quarto 特有的 callout、shortcode、citation、cross-reference 和代码单�
 | `mdLivePreview.enabledStyles` | 当前启用的 CSS 主题。 |
 | `mdLivePreview.defaultEditor` | `prompt` 使用普通编辑器，`livePreview` 默认使用实时预览，`default` 使用普通编辑器。 |
 
+## 项目规范文档
+
+- [产品需求文档（PRD）](docs/PRD.md)：产品目标、范围、非目标和用户验收行为。
+- [工程设计文档（EDD）](docs/EDD.md)：架构边界、数据流、安全约束、测试和 CI 契约。
+- [执行里程碑](docs/milestones/)：当前已完成的 front matter 功能和仓库再整理记录。
+- [代理维护指南](AGENTS.md)：安装、验证、生成文件和安全规则。
+
+原有 `specs/` 与 `doc/` 目录保留为历史设计资料；新的产品和工程决策以 `docs/` 中的文档为准。
+
 ## Development / Tests（开发与测试）
 
 ```powershell
