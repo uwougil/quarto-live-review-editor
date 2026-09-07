@@ -48,6 +48,8 @@ Webview Editor
 │   └── 脚注索引、引用/定义导航和隐藏源码交互保护
 ├── src/webview-editor/frontmatterWidget.ts
 │   └── 文档首部 YAML front matter 检测、解析和 widget
+├── src/webview-editor/documentZoom.ts
+│   └── Live Preview 文档字号事件边界、快捷键和 CSS 缩放状态
 └── src/quarto/
     ├── dialect.ts：按路径区分 Markdown/Quarto
     ├── fence.ts：普通 Markdown 围栏与 Quarto/Pandoc 属性
@@ -61,6 +63,7 @@ Webview Editor
 3. `livePreviewPlugin` 和 `blockDecorationsField` 根据源位置生成 decoration/widget；widget 只改变显示，不改变文档内容。
 4. 用户编辑产生 `ChangeSet`，经过短暂 debounce 后发送回宿主，由 `DocumentSyncSession` 写入 VS Code 文档。
 5. 用户主题通过 `adaptMarkdownCss` 注入到独立 style 元素，并请求 CodeMirror 的测量流程，避免高度图过期。
+6. 文档字号由扩展宿主的 `globalState` 共享持久化；webview 在根节点设置 CSS 自定义属性，并在字号变化后的下一帧请求 CodeMirror 重新测量，保持行框、widget 和命中测试几何有效。
 
 源位置是所有交互的身份：点击、脚注回跳、表格编辑、图片和图表操作都必须使用 CodeMirror 文档偏移或 DOM 到文档位置的 API，不使用屏幕像素推断文档位置。
 
@@ -84,6 +87,13 @@ Webview Editor
 - front matter 范围与表格/代码块范围重叠时，块装饰遍历必须优先跳过重叠节点。
 - front matter 的显示样式属于扩展基底 CSS，使用 VS Code CSS 变量，不纳入用户 Markdown CSS 主题改写。
 
+### 5.1 文档字号缩放
+
+- `documentZoom.ts` 只监听 Live Preview 根节点；只有其后代获得焦点时，Ctrl/Mod+滚轮和 Ctrl/Mod++、Ctrl/Mod+-、Ctrl/Mod+0 才会被处理。
+- 文档字号范围为 70% 至 200%，默认值和步进均为 100%/10%；边界操作仍取消浏览器默认缩放，但不越界。
+- 宿主通过 `mdLivePreview.documentZoomPercent` 保存单一全局值，并向所有已打开的 `DocumentSyncSession` 广播；webview 的本地交互再回传 `setZoom`。
+- 缩放使用 CSS 自定义属性参与字体、间距和核心 widget 布局，不使用 `transform: scale`，不改变 CodeMirror 文档、选区或源文本；变化后调用 `requestMeasure`。
+
 详细的 feature 级验收和历史任务映射见 [`milestones/frontmatter-preview.md`](milestones/frontmatter-preview.md)。
 
 ## 6. VS Code 资源和安全边界
@@ -106,9 +116,10 @@ npm run test:browser
 npm run test:browser:geometry
 npm run test:browser:inline
 npm run test:browser:inline-interaction
+npm run test:browser:zoom
 ```
 
-CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行四个浏览器命令。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。
+CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行五个浏览器命令。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。
 
 ## 8. 研究依据
 

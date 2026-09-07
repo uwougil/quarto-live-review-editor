@@ -64,7 +64,7 @@ vi.mock('vscode', () => {
 import * as vscode from 'vscode';
 import { DocumentSyncSession } from './documentSync';
 
-function createSession(version = 1, text = 'abc') {
+function createSession(version = 1, text = 'abc', zoomPercent = 100, onZoomChange: (percent: number) => void = () => undefined) {
 	const document = {
 		uri: vscode.Uri.file('/notes/example.qmd'),
 		version,
@@ -85,7 +85,7 @@ function createSession(version = 1, text = 'abc') {
 			asWebviewUri: (uri: vscode.Uri) => uri,
 		},
 	} as unknown as vscode.WebviewPanel;
-	return new DocumentSyncSession(document, panel, () => '');
+	return new DocumentSyncSession(document, panel, () => '', undefined, () => zoomPercent, onZoomChange);
 }
 
 async function send(session: DocumentSyncSession, message: unknown): Promise<void> {
@@ -132,6 +132,30 @@ describe('DocumentSyncSession image operation boundary', () => {
 		expect(mockState.posts).toContainEqual({ type: 'imageResult', requestId: 9, ok: true });
 		const cursor = mockState.posts.find((message) => (message as { type?: string }).type === 'setCursor') as { pos: number };
 		expect(cursor.pos).toBeGreaterThan(2);
+		session.dispose();
+	});
+});
+
+describe('DocumentSyncSession document zoom', () => {
+	it('includes the shared zoom preference in init and forwards local changes', async () => {
+		let requestedZoom = 100;
+		const session = createSession(1, 'abc', 140, (percent: number) => { requestedZoom = percent; });
+
+		await send(session, { type: 'ready' });
+		expect(mockState.posts).toContainEqual(expect.objectContaining({ type: 'init', zoomPercent: 140 }));
+		await send(session, { type: 'setZoom', percent: 170 });
+		expect(requestedZoom).toBe(170);
+		session.notifyDocumentZoomChanged(200);
+		expect(mockState.posts).toContainEqual({ type: 'setZoom', percent: 200 });
+		session.dispose();
+	});
+
+	it('normalizes an invalid zoom request before handing it to the provider', async () => {
+		let requestedZoom = 0;
+		const session = createSession(1, 'abc', 100, (percent: number) => { requestedZoom = percent; });
+
+		await send(session, { type: 'setZoom', percent: 999 });
+		expect(requestedZoom).toBe(200);
 		session.dispose();
 	});
 });
