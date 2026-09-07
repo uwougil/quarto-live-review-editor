@@ -90,7 +90,9 @@ function createSession(version = 1, text = 'abc') {
 
 async function send(session: DocumentSyncSession, message: unknown): Promise<void> {
 	mockState.messageHandler?.(message);
-	await (session as unknown as { editQueue: Promise<void> }).editQueue;
+	// Document mutations are serialized by the per-document coordinator. The
+	// mocked filesystem/applyEdit operations resolve on the microtask queue.
+	await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 beforeEach(() => {

@@ -3,11 +3,13 @@ import { DocumentSyncSession } from './documentSync';
 import { extractHeadings } from '../shared/headings';
 import type { HeadingItem } from '../shared/headings';
 import { selectActiveSession } from '../shared/activeSession';
+import { DocumentSyncCoordinator } from './documentSyncCoordinator';
 
 export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvider {
 	static readonly viewType = 'mdLivePreview.editor';
 
 	private readonly sessions = new Set<DocumentSyncSession>();
+	private readonly coordinators = new Map<string, DocumentSyncCoordinator>();
 
 	private constructor(
 		private readonly context: vscode.ExtensionContext,
@@ -40,12 +42,22 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 		};
 		webviewPanel.webview.html = this.buildHtml(webviewPanel.webview);
 
-		const session = new DocumentSyncSession(document, webviewPanel, this.getCss, (uri, line) => this.openDocumentAtLine(uri, line));
+		const uriKey = document.uri.toString();
+		let coordinator = this.coordinators.get(uriKey);
+		if (!coordinator) {
+			coordinator = new DocumentSyncCoordinator(document);
+			this.coordinators.set(uriKey, coordinator);
+		}
+		const session = new DocumentSyncSession(document, webviewPanel, this.getCss, (uri, line) => this.openDocumentAtLine(uri, line), coordinator);
 		this.sessions.add(session);
 
 		webviewPanel.onDidDispose(() => {
 			session.dispose();
 			this.sessions.delete(session);
+			if (coordinator.peerCount === 0) {
+				coordinator.dispose();
+				this.coordinators.delete(uriKey);
+			}
 		});
 	}
 
