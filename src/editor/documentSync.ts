@@ -7,6 +7,7 @@ import { isPathInside } from '../shared/pathContainment';
 import { documentDialectForPath } from '../quarto/dialect';
 import { findMarkdownAnchorLine } from '../shared/headings';
 import { TokenizationGate } from './tokenizationGuard';
+import { DOCUMENT_ZOOM_DEFAULT, normalizeDocumentZoom } from '../shared/documentZoom';
 
 /**
  * Largest `.drawio` file that will be read and parsed.
@@ -60,6 +61,8 @@ export class DocumentSyncSession {
 		private readonly webviewPanel: vscode.WebviewPanel,
 		private readonly getCss: () => string,
 		private readonly openDocumentAtLine?: (uri: vscode.Uri, line?: number) => Promise<void>,
+		private readonly getDocumentZoom: () => number = () => DOCUMENT_ZOOM_DEFAULT,
+		private readonly onDocumentZoomChange: (percent: number) => void = () => undefined,
 	) {
 		this.lastAppliedVersion = document.version;
 
@@ -113,6 +116,9 @@ export class DocumentSyncSession {
 				break;
 			case 'readDrawioFile':
 				void this.handleReadDrawioFile(message.requestId, message.src);
+				break;
+			case 'setZoom':
+				this.onDocumentZoomChange(normalizeDocumentZoom(message.percent));
 				break;
 		}
 	}
@@ -358,6 +364,7 @@ export class DocumentSyncSession {
 			codeTheme: pickCodeTheme(),
 			dialect: documentDialectForPath(this.document.uri.path),
 			baseUri: `${this.webviewPanel.webview.asWebviewUri(docDir).toString()}/`,
+			zoomPercent: normalizeDocumentZoom(this.getDocumentZoom()),
 		});
 		this.lastAppliedVersion = this.document.version;
 	}
@@ -458,6 +465,10 @@ export class DocumentSyncSession {
 
 	notifyCssChanged() {
 		this.post({ type: 'applyCss', css: this.getCss() });
+	}
+
+	notifyDocumentZoomChanged(percent: number): void {
+		this.post({ type: 'setZoom', percent: normalizeDocumentZoom(percent) });
 	}
 
 	getDocument(): vscode.TextDocument {
