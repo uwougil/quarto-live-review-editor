@@ -23,7 +23,7 @@ export type HostToEditorMessage =
 	// `baseUri` is the webview-loadable URI (with a trailing slash) of the
 	// folder containing the document, used to resolve relative image paths
 	// (e.g. `assets/foo.png`) to something the webview is actually allowed to load.
-	| { type: 'init'; text: string; version: number; css: string; codeTheme: string; baseUri: string; dialect: DocumentDialect }
+	| { type: 'init'; text: string; version: number; css: string; codeTheme: string; baseUri: string; dialect: DocumentDialect; zoomPercent: number }
 	| { type: 'externalUpdate'; changes: TextChange[]; baseVersion: number; version: number }
 	| { type: 'ackEdit'; editId: number; version: number }
 	| { type: 'resync'; text: string; version: number; rejectedEditId?: number }
@@ -36,6 +36,7 @@ export type HostToEditorMessage =
 	// document can have requests in flight at the same time.
 	| { type: 'drawioFile'; requestId: number; text?: string; error?: string }
 	| { type: 'imageResult'; requestId: number; ok: boolean; error?: string }
+	| { type: 'setZoom'; percent: number }
 	| { type: 'setCursor'; pos: number };
 
 export type EditorToHostMessage =
@@ -50,7 +51,8 @@ export type EditorToHostMessage =
 	// itself, and an <img> cannot render mxGraph XML, so the host reads the file
 	// and sends its text back for the widget to parse. `src` is the raw, relative
 	// path exactly as written in the Markdown; the host resolves it.
-	| { type: 'readDrawioFile'; requestId: number; src: string };
+	| { type: 'readDrawioFile'; requestId: number; src: string }
+	| { type: 'setZoom'; percent: number };
 
 export interface StyleEntry {
 	id: string;

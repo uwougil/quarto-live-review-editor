@@ -8,6 +8,9 @@ html, body {
 
 #mlp-root {
 	height: 100%;
+	/* DocumentZoomController updates this inherited factor for this Live Preview
+	   panel only. */
+	--mlp-document-zoom: 1;
 }
 
 .cm-editor {
@@ -23,7 +26,7 @@ html, body {
 	/* Append Japanese fallbacks so CJK glyphs render with a proper font when the
 	   editor font lacks them. */
 	font-family: var(--vscode-editor-font-family, monospace), "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif;
-	font-size: var(--vscode-editor-font-size, 14px);
+	font-size: calc(var(--vscode-editor-font-size, 14px) * var(--mlp-document-zoom, 1));
 }
 
 /* CodeMirror paints a blue focus ring around the whole editor; suppress it. */
@@ -43,7 +46,9 @@ html, body {
    side gutters on wide screens without cramping narrow (e.g. side-by-side)
    layouts. */
 .cm-editor .cm-content {
-	padding: 1.5rem clamp(1rem, 3.5vw, 2.5rem) 40vh;
+	padding: calc(1.5rem * var(--mlp-document-zoom, 1))
+		clamp(calc(1rem * var(--mlp-document-zoom, 1)), calc(3.5vw * var(--mlp-document-zoom, 1)), calc(2.5rem * var(--mlp-document-zoom, 1)))
+		40vh;
 	/* Prefer the theme's dedicated cursor color; fall back to the editor's own
 	   foreground (guaranteed to contrast with --vscode-editor-background,
 	   unlike a hardcoded gray which can vanish against a light theme) rather
@@ -67,7 +72,7 @@ html, body {
    Headings, inline code, etc. size themselves in `em`, so they scale off this
    base and stay proportional to whatever the user set in VS Code. */
 .cm-editor .cm-content.cm-content {
-	font-size: var(--vscode-editor-font-size, 14px);
+	font-size: calc(var(--vscode-editor-font-size, 14px) * var(--mlp-document-zoom, 1));
 }
 
 /* Readable selection highlight for both native and CM-drawn selections. */
@@ -383,12 +388,12 @@ html, body {
 	   (rather than margin) keeps the space inside the box CodeMirror measures —
 	   see blockWidgetWrap.ts. Without it the control sat on the table's last rule
 	   and reached down onto the following line. */
-	padding-bottom: 18px;
+	padding-bottom: calc(18px * var(--mlp-document-zoom, 1));
 	/* Room on the right for the "add column" bar, which sits outside the table's
 	   own box. Without it the bar overhangs the editor's content column and can
 	   be clipped or force a horizontal scrollbar. */
-	padding-right: 18px;
-	margin-right: -18px;
+	padding-right: calc(18px * var(--mlp-document-zoom, 1));
+	margin-right: calc(-18px * var(--mlp-document-zoom, 1));
 }
 /* Strip above the table holding its controls. Right-aligned so the button lines
    up with the table's own right edge rather than floating loose. */
@@ -547,7 +552,7 @@ table.mlp-table {
    so the drag actually highlights. */
 table.mlp-table th, table.mlp-table td {
 	border: 1px solid rgba(127, 127, 127, 0.35);
-	padding: 5px 11px;
+	padding: calc(5px * var(--mlp-document-zoom, 1)) calc(11px * var(--mlp-document-zoom, 1));
 	text-align: left;
 	cursor: text;
 	user-select: text;
@@ -566,7 +571,7 @@ table.mlp-table th, table.mlp-table td {
 	   row jumped and the table shifted under the pointer on every click. */
 	/* On a table cell `height` acts as a minimum — the cell still grows for text
 	   that wraps to a second line — so this reserves the space without capping it. */
-	height: 34px;
+	height: calc(34px * var(--mlp-document-zoom, 1));
 	box-sizing: border-box;
 	vertical-align: middle;
 }
@@ -617,7 +622,7 @@ table.mlp-frontmatter {
 }
 table.mlp-frontmatter th, table.mlp-frontmatter td {
 	border: 1px solid rgba(127, 127, 127, 0.35);
-	padding: 5px 11px;
+	padding: calc(5px * var(--mlp-document-zoom, 1)) calc(11px * var(--mlp-document-zoom, 1));
 	text-align: left;
 	vertical-align: top;
 }
@@ -634,13 +639,13 @@ table.mlp-frontmatter td pre {
 
 .mlp-frontmatter-error {
 	margin: 0; /* spacing lives on the `.mlp-block` wrapper */
-	padding: 8px 13px;
+	padding: calc(8px * var(--mlp-document-zoom, 1)) calc(13px * var(--mlp-document-zoom, 1));
 	border-left: 4px solid var(--vscode-editorError-foreground, #f48771);
 	background: var(--vscode-inputValidation-errorBackground, rgba(244, 135, 113, 0.1));
 	color: var(--vscode-editorError-foreground, #f48771);
 }
 .mlp-frontmatter-error pre {
-	margin: 6px 0 0;
+	margin: calc(6px * var(--mlp-document-zoom, 1)) 0 0;
 	white-space: pre-wrap;
 	color: inherit;
 	background: transparent;

@@ -20,6 +20,7 @@ npm run test:browser:geometry
 npm run test:browser:inline
 npm run test:browser:inline-interaction
 npm run test:browser:arrow-scroll
+npm run test:browser:zoom
 ```
 
 CI 在 Ubuntu/Node 22 上执行同一组核心检查，并在浏览器回归前编译 `dist/`。
@@ -47,3 +48,9 @@ CI 在 Ubuntu/Node 22 上执行同一组核心检查，并在浏览器回归前�
 - 不提交 `.env`、密钥、token、cookie、机器专属路径或生成的私有数据。
 - 不使用强制推送、历史重写或破坏性清理；当前发布远程为 `github`，上游远程为 `origin`。
 - 修改用户意图时先更新 `docs/PRD.md`、`docs/EDD.md` 或相应里程碑，再实现代码。
+
+## Issue and PR handoff
+
+- Issue-backed changes normally use an isolated `codex/<issue>-<short-name>` branch or worktree and are delivered through a Pull Request; do not commit directly to `main`.
+- The PR description must let another agent reconstruct the handoff from the linked Issue, PRD/EDD impact, commits and diff, verification commands/results, and CI status without private conversation state.
+- Required verification must pass before merge. A PRD/EDD semantic change requires explicit human resolution and must be recorded in the canonical document.

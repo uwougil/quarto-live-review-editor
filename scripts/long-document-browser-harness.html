@@ -380,7 +380,7 @@
 	function dispatchInit(text, css = '') {
 		window.__mlpTestSourceText = text;
 		window.dispatchEvent(new MessageEvent('message', { data: {
-			type: 'init', text, version: 1, css, codeTheme: 'light-plus', baseUri: location.origin + '/', dialect: 'markdown',
+			type: 'init', text, version: 1, css, codeTheme: 'light-plus', baseUri: location.origin + '/', dialect: 'markdown', zoomPercent: 100,
 		} }));
 	}
 

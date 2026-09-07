@@ -5,7 +5,7 @@ import { StyleStore } from './sidebar/styleStore';
 import { OutlineViewProvider } from './sidebar/OutlineViewProvider';
 import { setGrammarRoot } from './editor/shikiHost';
 import {
-	reconcileEditorAssociations,
+	reconcileInspectedEditorAssociations,
 	type DefaultEditorMode,
 	type EditorAssociationState,
 } from './shared/editorAssociations';
@@ -133,9 +133,14 @@ async function maybeReopenAsLivePreview(tab: vscode.Tab, attempt = 0): Promise<v
 async function syncDefaultEditorAssociation(context: vscode.ExtensionContext): Promise<void> {
 	const mode = vscode.workspace.getConfiguration('mdLivePreview').get<DefaultEditorMode>('defaultEditor', 'prompt');
 	const rootConfig = vscode.workspace.getConfiguration();
-	const current = rootConfig.get<Record<string, unknown>>('workbench.editorAssociations') ?? {};
+	const inspection = rootConfig.inspect<Record<string, unknown>>('workbench.editorAssociations');
 	const previous = context.globalState.get<EditorAssociationState>(EDITOR_ASSOCIATION_STATE_KEY);
-	const result = reconcileEditorAssociations(current, mode, MarkdownLivePreviewProvider.viewType, previous);
+	const result = reconcileInspectedEditorAssociations(
+		inspection,
+		mode,
+		MarkdownLivePreviewProvider.viewType,
+		previous,
+	);
 	if (result.associationsChanged) {
 		await rootConfig.update('workbench.editorAssociations', result.associations, vscode.ConfigurationTarget.Global);
 	}

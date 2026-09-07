@@ -2,6 +2,8 @@
 
 <!-- Use `Fixes #<number>` or `Refs #<number>` when applicable. -->
 
+Closes #<!-- issue number -->
+
 ## Change summary
 
 <!-- What changed, and why is this the smallest coherent change? -->
@@ -14,7 +16,7 @@
 
 ## Verification
 
-<!-- List exact commands and outcomes. Do not claim a full pass when only a subset ran. -->
+<!-- List the exact commands run and their results. Note any unrelated/pre-existing failure. -->
 
 - [ ] `npm run typecheck`
 - [ ] `npm test`
@@ -25,6 +27,8 @@
 
 - PRD/EDD semantics unchanged.
 - PRD/EDD changes, explicitly resolved in: <!-- link or decision reference -->
+- PRD/EDD impact: <!-- none, or link to the updated canonical document and summarize the decision -->
+- Scope or follow-up: <!-- note anything intentionally not included -->
 
 ## Handoff notes
 
