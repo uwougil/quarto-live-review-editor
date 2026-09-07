@@ -100,10 +100,10 @@ export class DocumentSyncSession {
 				// Chained onto editQueue (not fired immediately) so it can't run ahead
 				// of an 'edit' message still being applied — otherwise it would undo
 				// the wrong (older) change and desync from the webview's local state.
-				this.editQueue = this.editQueue.catch(() => undefined).then(() => vscode.commands.executeCommand('undo'));
+				this.editQueue = this.editQueue.catch(() => undefined).then(() => this.runHistoryCommand('undo'));
 				break;
 			case 'redo':
-				this.editQueue = this.editQueue.catch(() => undefined).then(() => vscode.commands.executeCommand('redo'));
+				this.editQueue = this.editQueue.catch(() => undefined).then(() => this.runHistoryCommand('redo'));
 				break;
 			case 'openLink':
 				void this.openLink(message.href);
@@ -115,6 +115,38 @@ export class DocumentSyncSession {
 				void this.handleReadDrawioFile(message.requestId, message.src);
 				break;
 		}
+	}
+
+	/**
+	 * Runs a native history command against the session that originated it.
+	 *
+	 * `undo` and `redo` are global, focus-based VS Code commands. The message
+	 * itself belongs to this session, but the queued callback may run after the
+	 * user has activated another editor. Reveal this panel first, then verify
+	 * that both the panel and its document are still active before invoking the
+	 * command. If VS Code cannot restore that context (for example, the panel
+	 * was disposed while the edit queue was draining), refuse the operation so
+	 * another document is never modified by accident.
+	 */
+	private async runHistoryCommand(command: 'undo' | 'redo'): Promise<void> {
+		if (!this.webviewPanel.active) {
+			try {
+				this.webviewPanel.reveal(undefined, false);
+			} catch {
+				return;
+			}
+		}
+
+		if (!this.webviewPanel.active) return;
+		const activeTabGroup = vscode.window.tabGroups?.activeTabGroup;
+		if (activeTabGroup) {
+			const input = activeTabGroup.activeTab?.input;
+			if (!(input instanceof vscode.TabInputCustom) || input.uri.toString() !== this.document.uri.toString()) {
+				return;
+			}
+		}
+
+		await vscode.commands.executeCommand(command);
 	}
 
 	/**
