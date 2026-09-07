@@ -110,7 +110,26 @@ npm run test:browser:inline-interaction
 
 CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行四个浏览器命令。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。
 
-## 8. 研究依据
+## 8. Issue 与 PR 交付契约
+
+GitHub Issue 是后续工作的持久 Work Contract，记录范围、验收条件和必要的产品/工程决策。Pull Request 是 Issue-backed 变更的标准 Delivery / Handoff Contract；它不是可选的提交包装，而是让人和其他代理在没有私有对话上下文时重建工作依据的主要交接记录。
+
+正常生命周期为：
+
+```text
+Issue → 独立 branch/worktree → implementation → commit → push → PR
+      → CI + task-local review → repair → merge → Issue closure
+```
+
+PR 至少应包含：
+
+- 关联 Issue 和明确的变更范围；
+- 本地验证命令及结果、对应 CI 状态和已知限制；
+- 对 PRD/EDD 的影响说明；若改变产品或工程语义，必须先取得明确的人类决策并更新 `docs/` 中的 canonical 文档。
+
+除仓库初始引导外，后续 Issue-backed 工作不应直接推送到 `main`。只有必需 CI 和 task-local review 通过后才能合并；`main` 表示已接受的实现现实。PR 模板见 [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPLATE.md)。
+
+## 9. 研究依据
 
 以下是本次整理所依据的当前一手资料和项目实际配置：
 
