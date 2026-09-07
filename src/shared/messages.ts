@@ -32,6 +32,7 @@ export type HostToEditorMessage =
 		baseUri: string;
 		dialect: DocumentDialect;
 		typewriterMode: boolean;
+		zoomPercent: number;
 	}
 	| { type: 'externalUpdate'; changes: TextChange[]; baseVersion: number; version: number }
 	| { type: 'ackEdit'; editId: number; version: number }
@@ -46,6 +47,7 @@ export type HostToEditorMessage =
 	// document can have requests in flight at the same time.
 	| { type: 'drawioFile'; requestId: number; text?: string; error?: string }
 	| { type: 'imageResult'; requestId: number; ok: boolean; error?: string }
+	| { type: 'setZoom'; percent: number }
 	| { type: 'setCursor'; pos: number };
 
 export type EditorToHostMessage =
@@ -60,7 +62,8 @@ export type EditorToHostMessage =
 	// itself, and an <img> cannot render mxGraph XML, so the host reads the file
 	// and sends its text back for the widget to parse. `src` is the raw, relative
 	// path exactly as written in the Markdown; the host resolves it.
-	| { type: 'readDrawioFile'; requestId: number; src: string };
+	| { type: 'readDrawioFile'; requestId: number; src: string }
+	| { type: 'setZoom'; percent: number };
 
 export interface StyleEntry {
 	id: string;

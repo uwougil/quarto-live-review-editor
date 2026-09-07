@@ -3,17 +3,26 @@ import { DocumentSyncSession } from './documentSync';
 import { extractHeadings } from '../shared/headings';
 import type { HeadingItem } from '../shared/headings';
 import { selectActiveSession } from '../shared/activeSession';
+import { DocumentSyncCoordinator } from './documentSyncCoordinator';
+import { DOCUMENT_ZOOM_DEFAULT, normalizeDocumentZoom } from '../shared/documentZoom';
 
 export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvider {
 	static readonly viewType = 'mdLivePreview.editor';
+	private static readonly DOCUMENT_ZOOM_STATE_KEY = 'mdLivePreview.documentZoomPercent';
 
 	private readonly sessions = new Set<DocumentSyncSession>();
+	private readonly coordinators = new Map<string, DocumentSyncCoordinator>();
+	private documentZoomPercent: number;
 
 	private constructor(
 		private readonly context: vscode.ExtensionContext,
 		private readonly getCss: () => string,
 		private readonly getTypewriterMode: () => boolean,
-	) {}
+	) {
+		this.documentZoomPercent = normalizeDocumentZoom(
+			context.globalState.get<unknown>(MarkdownLivePreviewProvider.DOCUMENT_ZOOM_STATE_KEY, DOCUMENT_ZOOM_DEFAULT),
+		);
+	}
 
 	static register(
 		context: vscode.ExtensionContext,
@@ -42,11 +51,20 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 		};
 		webviewPanel.webview.html = this.buildHtml(webviewPanel.webview);
 
+		const uriKey = document.uri.toString();
+		let coordinator = this.coordinators.get(uriKey);
+		if (!coordinator) {
+			coordinator = new DocumentSyncCoordinator(document);
+				this.coordinators.set(uriKey, coordinator);
+			}
 		const session = new DocumentSyncSession(
 			document,
 			webviewPanel,
 			this.getCss,
 			(uri, line) => this.openDocumentAtLine(uri, line),
+			() => this.documentZoomPercent,
+			(percent) => this.setDocumentZoom(percent),
+			coordinator,
 			this.getTypewriterMode,
 		);
 		this.sessions.add(session);
@@ -54,6 +72,10 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 		webviewPanel.onDidDispose(() => {
 			session.dispose();
 			this.sessions.delete(session);
+			if (coordinator.peerCount === 0) {
+				coordinator.dispose();
+				this.coordinators.delete(uriKey);
+			}
 		});
 	}
 
@@ -69,6 +91,14 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 		for (const session of this.sessions) {
 			session.notifyTypewriterModeChanged();
 		}
+	}
+
+	/** Updates and broadcasts the one zoom preference shared by every preview. */
+	private setDocumentZoom(percent: number): void {
+		const next = normalizeDocumentZoom(percent);
+		this.documentZoomPercent = next;
+		this.context.globalState.update(MarkdownLivePreviewProvider.DOCUMENT_ZOOM_STATE_KEY, next).then(undefined, () => undefined);
+		for (const session of this.sessions) session.notifyDocumentZoomChanged(next);
 	}
 
 	/**

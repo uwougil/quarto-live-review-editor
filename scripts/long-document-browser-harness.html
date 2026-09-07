@@ -347,7 +347,7 @@
 	function dispatchInit(text, css = '', typewriterMode = false) {
 		window.__mlpTestSourceText = text;
 		window.dispatchEvent(new MessageEvent('message', { data: {
-			type: 'init', text, version: 1, css, codeTheme: 'light-plus', baseUri: location.origin + '/', dialect: 'markdown', typewriterMode,
+			type: 'init', text, version: 1, css, codeTheme: 'light-plus', baseUri: location.origin + '/', dialect: 'markdown', typewriterMode, zoomPercent: 100,
 		} }));
 	}
 

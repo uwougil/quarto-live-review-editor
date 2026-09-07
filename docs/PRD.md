@@ -31,10 +31,13 @@ Quarto Live Review Editor 是一个 VS Code 扩展，为 Markdown 和 Quarto (`.
 5. 提供 VS Code、Dark、GitHub Light、GitHub Dark 和 Claude 内置主题，以及用户 CSS 主题管理。
 6. 通过单元测试和真实 Chromium 回归测试保护长文档、几何布局和交互行为。
 7. 提供可选的 Typewriter Mode，在输入或上下移动光标时把主光标保持在编辑器视口约 40% 的位置，同时把鼠标滚动和显式导航交还给用户。
+8. 提供独立于 VS Code 全局缩放的 Live Preview 文档字号缩放，并在所有文档间共享和持久化。
 
 ### 3.2 非目标
 
 当前版本不执行 Quarto 文档，不启动 Jupyter/kernel，不调用 Pandoc 或 Quarto CLI，不实现 citation 渲染、cross-reference 解析、callout 渲染、shortcode 展开或 Typst 渲染。上述内容应保持源码安全，而不是伪装成已渲染结果。
+
+文档字号缩放不改变 VS Code 全局缩放、浏览器页面缩放或源文本，不为单个文档/面板保存独立值，也不使用整个编辑器的 transform 缩放；Mermaid 和 draw.io 内部内容不要求随外层字号缩放。
 
 ## 4. 功能需求
 
@@ -50,6 +53,7 @@ Quarto Live Review Editor 是一个 VS Code 扩展，为 Markdown 和 Quarto (`.
 | FR-8 | 大文档必须使用视口化渲染和受控的语法解析，不能因打开文档而无条件解析整篇文档或创建全量 DOM。 | P0 |
 | FR-9 | 扩展必须提供文档大纲、图片粘贴、表格编辑和实时保存能力。 | P1 |
 | FR-10 | 用户可启用 Typewriter Mode；输入、删除、Enter 和上下移动光标时，主光标应尽量保持在编辑器视口约 40% 的位置，且不改写文档内容。 | P1 |
+| FR-11 | Live Preview 必须支持 70% 至 200% 的文档字号缩放，使用 10% 步进、快捷键与 Ctrl/Mod+滚轮，并共享持久化设置。 | P1 |
 
 ## 5. 可接受行为
 
@@ -58,6 +62,7 @@ Quarto Live Review Editor 是一个 VS Code 扩展，为 Markdown 和 Quarto (`.
 - 缺失或重复脚注定义、代码围栏、行内代码、未实现的 Quarto 扩展语法不得被错误地转换为虚假渲染结果。
 - 主题切换、长段落软换行、上下键移动和脚注定位不得造成光标跳跃、隐藏源码意外展开或 CodeMirror 几何异常。
 - Typewriter Mode 默认关闭；启用后只跟随写作型键盘/输入交互，目标位置不可达时在文档首尾自然钳制；鼠标点击、滚轮滚动和宿主驱动的显式跳转必须暂停自动定位。
+- 文档字号缩放只作用于获得焦点的 Live Preview 内容，必须同步更新段落、标题、列表、代码、表格、front matter、脚注和数学布局；缩放不得移动光标、改变选区或修改源文本。
 - 保存后文件内容必须仍是用户输入的 Markdown/Quarto 源文本。
 
 ## 6. 约束与验收入口
