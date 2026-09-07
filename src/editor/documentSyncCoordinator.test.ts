@@ -37,12 +37,13 @@ function document(initial = '') {
 	};
 }
 
-function peer(): DocumentSyncPeer & { updates: any[]; acks: any[]; resyncs: number[] } {
+function peer(): DocumentSyncPeer & { updates: any[]; acks: any[]; resyncs: number[]; commands: string[] } {
 	return {
-		updates: [], acks: [], resyncs: [],
+		updates: [], acks: [], resyncs: [], commands: [],
 		receiveDocumentChanges(changes, baseVersion, version) { this.updates.push({ changes, baseVersion, version }); },
 		acknowledgeEdit(editId, version) { this.acks.push({ editId, version }); },
 		resync(editId) { this.resyncs.push(editId ?? -1); },
+		async runHistoryCommand(command) { this.commands.push(command); },
 	};
 }
 
@@ -95,5 +96,19 @@ describe('DocumentSyncCoordinator', () => {
 		coordinator.removePeer(a);
 		coordinator.dispose();
 		expect(listeners.size).toBe(0);
+	});
+
+	it('queues history commands for their originating peer', async () => {
+		const doc = document('ab');
+		const coordinator = new DocumentSyncCoordinator(doc as any);
+		const a = peer(); const b = peer();
+		coordinator.addPeer(a); coordinator.addPeer(b);
+
+		await coordinator.enqueueCommand(a, 'undo');
+		await coordinator.enqueueCommand(b, 'redo');
+
+		expect(a.commands).toEqual(['undo']);
+		expect(b.commands).toEqual(['redo']);
+		coordinator.dispose();
 	});
 });

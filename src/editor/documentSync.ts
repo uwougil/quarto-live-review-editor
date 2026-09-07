@@ -84,11 +84,12 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 				break;
 			case 'undo':
 				// The shared coordinator queues this behind edits from every panel so
-				// undo cannot act on an older document state.
-				void this.coordinator.enqueueCommand('undo');
+				// undo cannot act on an older document state. The session callback also
+				// restores and verifies this panel before invoking the global command.
+				void this.coordinator.enqueueCommand(this, 'undo');
 				break;
 			case 'redo':
-				void this.coordinator.enqueueCommand('redo');
+				void this.coordinator.enqueueCommand(this, 'redo');
 				break;
 			case 'openLink':
 				void this.openLink(message.href);
@@ -100,6 +101,38 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 				void this.handleReadDrawioFile(message.requestId, message.src);
 				break;
 		}
+	}
+
+	/**
+	 * Runs a native history command against the session that originated it.
+	 *
+	 * `undo` and `redo` are global, focus-based VS Code commands. The message
+	 * itself belongs to this session, but the queued callback may run after the
+	 * user has activated another editor. Reveal this panel first, then verify
+	 * that both the panel and its document are still active before invoking the
+	 * command. If VS Code cannot restore that context (for example, the panel
+	 * was disposed while the edit queue was draining), refuse the operation so
+	 * another document is never modified by accident.
+	 */
+	async runHistoryCommand(command: 'undo' | 'redo'): Promise<void> {
+		if (!this.webviewPanel.active) {
+			try {
+				this.webviewPanel.reveal(undefined, false);
+			} catch {
+				return;
+			}
+		}
+
+		if (!this.webviewPanel.active) return;
+		const activeTabGroup = vscode.window.tabGroups?.activeTabGroup;
+		if (activeTabGroup) {
+			const input = activeTabGroup.activeTab?.input;
+			if (!(input instanceof vscode.TabInputCustom) || input.uri.toString() !== this.document.uri.toString()) {
+				return;
+			}
+		}
+
+		await vscode.commands.executeCommand(command);
 	}
 
 	/**

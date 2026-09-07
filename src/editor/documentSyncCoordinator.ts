@@ -5,6 +5,7 @@ export interface DocumentSyncPeer {
 	receiveDocumentChanges(changes: TextChange[], baseVersion: number, version: number): void;
 	acknowledgeEdit(editId: number, version: number): void;
 	resync(rejectedEditId?: number): void;
+	runHistoryCommand(command: 'undo' | 'redo'): Promise<void>;
 }
 
 /** The single mutation and change-dispatch boundary for one TextDocument URI. */
@@ -78,8 +79,11 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		});
 	}
 
-	enqueueCommand(command: 'undo' | 'redo'): Promise<void> {
-		return this.enqueue(async () => { await vscode.commands.executeCommand(command); });
+	enqueueCommand(peer: DocumentSyncPeer, command: 'undo' | 'redo'): Promise<void> {
+		return this.enqueue(async () => {
+			if (!this.peers.has(peer)) return;
+			await peer.runHistoryCommand(command);
+		});
 	}
 
 	/** Queue a host-originated document mutation (for example image paste). */
