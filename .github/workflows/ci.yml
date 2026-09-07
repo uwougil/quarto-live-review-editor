@@ -64,5 +64,7 @@ jobs:
         run: npm run test:browser:inline-interaction
       - name: Typewriter mode regression
         run: npm run test:browser:typewriter
+      - name: Arrow scroll regression
+        run: npm run test:browser:arrow-scroll
       - name: Document zoom regression
         run: npm run test:browser:zoom

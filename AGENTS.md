@@ -20,10 +20,18 @@ npm run test:browser:geometry
 npm run test:browser:inline
 npm run test:browser:inline-interaction
 npm run test:browser:typewriter
+npm run test:browser:arrow-scroll
 npm run test:browser:zoom
 ```
 
 CI 在 Ubuntu/Node 22 上执行同一组核心检查，并在浏览器回归前编译 `dist/`。
+
+## Issue-backed delivery
+
+- GitHub Issue 是本次工作的 Work Contract；Issue-backed 修改使用隔离分支或 worktree，并通过 Pull Request 交付。
+- PR 描述必须链接 Issue，说明变更范围、验收标准映射、验证命令/结果，以及对 PRD/EDD 的影响；这些信息应足以让另一位 agent 在没有私聊上下文的情况下接手。
+- 必需验证未通过时不得合并。任何 PRD/EDD 语义变化都必须先由人明确决策；普通实现不得静默改写产品或工程意图。
+- 交付前检查 `git status`、最终 diff、忽略文件和 tracked secrets；不要提交 `dist/`、`node_modules/`、VSIX、日志或机器专属文件。
 
 ## Architecture boundaries
 

@@ -224,7 +224,17 @@ export function moveVerticallyAvoidingFootnotes(forward: boolean): Command {
 		});
 		const selection = EditorSelection.create(ranges, state.selection.mainIndex);
 		if (selection.eq(state.selection, true)) return false;
-		view.dispatch({ selection, userEvent: 'select.line' });
+		// The custom command replaces CodeMirror's built-in vertical-motion
+		// command, so it must request the same visibility guarantee itself. The
+		// default "nearest" strategy changes scrollTop only by the overflow
+		// needed to reveal the main caret; it neither centers the caret nor jumps
+		// by a fixed number of lines. This is especially important when the
+		// footnote guard snaps a candidate to the edge of a rendered cluster.
+		view.dispatch({
+			selection,
+			effects: EditorView.scrollIntoView(selection.main.head, { y: 'nearest' }),
+			userEvent: 'select.line',
+		});
 		return true;
 	};
 }

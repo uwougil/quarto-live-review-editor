@@ -128,10 +128,11 @@ npm run test:browser:geometry
 npm run test:browser:inline
 npm run test:browser:inline-interaction
 npm run test:browser:typewriter
+npm run test:browser:arrow-scroll
 npm run test:browser:zoom
 ```
 
-CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行六个浏览器命令。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。
+CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行七个浏览器命令。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。
 
 ## 8. 研究依据
 

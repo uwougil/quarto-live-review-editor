@@ -187,11 +187,50 @@
 		return Array.from({ length: 180 }, (_, index) => `TYPEWRITER-${String(index + 1).padStart(3, '0')} ${sentence.repeat(2)}`).join('\n');
 	}
 
+	function buildArrowScrollFixture() {
+		const wrapped = 'ordinary wrapped words keep the logical source line long enough to cross several visual rows while the caret moves one row at a time. '.repeat(16);
+		const lines = [
+			'# Arrow scroll fixture',
+			'',
+			'ARROW-TOP-START document-start paragraph.',
+			'',
+			...Array.from({ length: 24 }, (_, index) => `ARROW-PREFIX-${index + 1} ordinary content keeps the middle cases away from the document top.`),
+			'',
+			'## Wrapped paragraph',
+			`ARROW-WRAPPED-START ${wrapped}ARROW-WRAPPED-END.`,
+			'',
+			'> ARROW-BLOCKQUOTE-START quoted content remains editable while the viewport follows the caret.',
+			'> The second blockquote line provides a real line boundary for vertical movement.',
+			'',
+			'- ARROW-LIST-START list content remains source-safe during navigation.',
+			'- The second list item provides another ordinary line boundary.',
+			'',
+			'```{python}',
+			'ARROW-CODE-START value = 42',
+			'for item in range(12):',
+			'    print(item)',
+			'ARROW-CODE-END',
+			'```',
+			'',
+			`ARROW-FOOTNOTE-START ${wrapped.slice(0, 330)} before [^one][^two][^three] after the rendered cluster.`,
+			'',
+			...Array.from({ length: 30 }, (_, index) => `ARROW-FILLER-${index + 1} ordinary content keeps the document long enough to exercise viewport edges.`),
+			'',
+			'ARROW-EOF-START document-end paragraph.',
+			'',
+			'[^one]: First arrow-scroll footnote.',
+			'[^two]: Second arrow-scroll footnote.',
+			'[^three]: Third arrow-scroll footnote.',
+		];
+		return lines.join('\n');
+	}
+
 	async function loadSource() {
 		if (testParams.get('inline') === '1') return { text: buildInlineFixture(), kind: 'inline-geometry' };
 		if (testParams.get('interaction') === '1') return { text: buildInteractionFixture(), kind: 'interaction-geometry' };
 		if (testParams.get('footnoteInteraction') === '1') return { text: buildFootnoteInteractionFixture(), kind: 'footnote-interaction' };
 		if (testParams.get('typewriter') === '1') return { text: buildTypewriterFixture(), kind: 'typewriter' };
+		if (testParams.get('arrowScroll') === '1') return { text: buildArrowScrollFixture(), kind: 'arrow-scroll' };
 		const benchmarkLines = Number(testParams.get('lines'));
 		if (Number.isInteger(benchmarkLines) && benchmarkLines >= 10) return { ...buildBenchmarkFixture(benchmarkLines), kind: `benchmark-${benchmarkLines}` };
 		const sourcePath = testParams.get('source');
@@ -454,7 +493,7 @@
 	}
 
 	(async () => {
-		try { window.__mlpLongDocumentResult = await (testParams.get('probe') === '1' ? runBugProbe() : testParams.get('inline') === '1' ? runInlineGeometry() : testParams.get('typewriter') === '1' ? runTypewriterMode() : testParams.get('interaction') === '1' || testParams.get('footnoteInteraction') === '1' ? runInteractionReady() : run()); }
+		try { window.__mlpLongDocumentResult = await (testParams.get('probe') === '1' ? runBugProbe() : testParams.get('inline') === '1' ? runInlineGeometry() : testParams.get('typewriter') === '1' ? runTypewriterMode() : testParams.get('interaction') === '1' || testParams.get('footnoteInteraction') === '1' || testParams.get('arrowScroll') === '1' ? runInteractionReady() : run()); }
 		catch (error) { window.__mlpLongDocumentResult = { ok: false, error: String(error?.stack || error) }; }
 	})();
 </script>
