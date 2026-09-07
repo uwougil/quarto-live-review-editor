@@ -17,6 +17,7 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 	private constructor(
 		private readonly context: vscode.ExtensionContext,
 		private readonly getCss: () => string,
+		private readonly getTypewriterMode: () => boolean,
 	) {
 		this.documentZoomPercent = normalizeDocumentZoom(
 			context.globalState.get<unknown>(MarkdownLivePreviewProvider.DOCUMENT_ZOOM_STATE_KEY, DOCUMENT_ZOOM_DEFAULT),
@@ -26,8 +27,9 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 	static register(
 		context: vscode.ExtensionContext,
 		getCss: () => string,
+		getTypewriterMode: () => boolean = () => false,
 	): { disposable: vscode.Disposable; provider: MarkdownLivePreviewProvider } {
-		const provider = new MarkdownLivePreviewProvider(context, getCss);
+		const provider = new MarkdownLivePreviewProvider(context, getCss, getTypewriterMode);
 		const disposable = vscode.window.registerCustomEditorProvider(MarkdownLivePreviewProvider.viewType, provider, {
 			webviewOptions: { retainContextWhenHidden: true },
 			supportsMultipleEditorsPerDocument: true,
@@ -53,8 +55,8 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 		let coordinator = this.coordinators.get(uriKey);
 		if (!coordinator) {
 			coordinator = new DocumentSyncCoordinator(document);
-			this.coordinators.set(uriKey, coordinator);
-		}
+				this.coordinators.set(uriKey, coordinator);
+			}
 		const session = new DocumentSyncSession(
 			document,
 			webviewPanel,
@@ -63,6 +65,7 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 			() => this.documentZoomPercent,
 			(percent) => this.setDocumentZoom(percent),
 			coordinator,
+			this.getTypewriterMode,
 		);
 		this.sessions.add(session);
 
@@ -80,6 +83,13 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 	broadcastCssChanged(): void {
 		for (const session of this.sessions) {
 			session.notifyCssChanged();
+		}
+	}
+
+	/** Called when the global Typewriter Mode setting changes. */
+	broadcastTypewriterModeChanged(): void {
+		for (const session of this.sessions) {
+			session.notifyTypewriterModeChanged();
 		}
 	}
 

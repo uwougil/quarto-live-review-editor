@@ -23,7 +23,8 @@ export class StyleManagerViewProvider implements vscode.WebviewViewProvider {
 			vscode.workspace.onDidChangeConfiguration((e) => {
 				if (
 					e.affectsConfiguration(`${CONFIG_SECTION}.defaultEditor`) ||
-					e.affectsConfiguration(`${CONFIG_SECTION}.codeTheme`)
+					e.affectsConfiguration(`${CONFIG_SECTION}.codeTheme`) ||
+					e.affectsConfiguration(`${CONFIG_SECTION}.typewriterMode`)
 				) {
 					void this.pushStyles();
 				}
@@ -110,6 +111,7 @@ export class StyleManagerViewProvider implements vscode.WebviewViewProvider {
 		return {
 			defaultEditor: config.get<string>('defaultEditor', 'prompt'),
 			codeTheme: config.get<string>('codeTheme', 'auto'),
+			typewriterMode: config.get<boolean>('typewriterMode', false),
 		};
 	}
 

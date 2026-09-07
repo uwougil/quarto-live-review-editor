@@ -11,7 +11,7 @@ import { chromium } from 'playwright';
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function parseArgs(argv) {
-	const args = { baseline: false, synthetic: false, full: false, benchmark: false, probe: false, inlineGeometry: false, footnoteInteraction: false, arrowScroll: false };
+	const args = { baseline: false, synthetic: false, full: false, benchmark: false, probe: false, inlineGeometry: false, footnoteInteraction: false, typewriter: false, arrowScroll: false };
 	for (let i = 0; i < argv.length; i += 1) {
 		const arg = argv[i];
 		if (arg === '--baseline') args.baseline = true;
@@ -21,6 +21,7 @@ function parseArgs(argv) {
 		else if (arg === '--probe') args.probe = true;
 		else if (arg === '--inline-geometry') args.inlineGeometry = true;
 		else if (arg === '--inline-interaction') args.footnoteInteraction = true;
+		else if (arg === '--typewriter') args.typewriter = true;
 		else if (arg === '--arrow-scroll') args.arrowScroll = true;
 		else if (arg === '--interaction') args.interaction = true;
 		else if (['--source', '--theme', '--bundle'].includes(arg)) {
@@ -75,6 +76,7 @@ function queryFor(baseUrl, args, benchmarkLines, sourcePath) {
 	if (args.footnoteInteraction) query.set('footnoteInteraction', '1');
 	if (args.arrowScroll) query.set('arrowScroll', '1');
 	if (args.interaction) query.set('interaction', '1');
+	if (args.typewriter) query.set('typewriter', '1');
 	return `${baseUrl}?${query}`;
 }
 
@@ -94,6 +96,7 @@ function compactResult(item) {
 		final: compactSnapshot(item.final), interactions: item.interactions, markerFailures: item.markerFailures, pageErrors: item.pageErrors, error: item.error,
 		interaction: item.interaction ? { checks: item.interaction.checks, initialDiagnostics: item.interaction.initialDiagnostics } : undefined,
 		footnoteInteraction: item.footnoteInteraction ? { checks: item.footnoteInteraction.checks, traceCount: item.footnoteInteraction.traceCount } : undefined,
+		typewriter: item.typewriter ? { checks: item.typewriter.checks, targetCenter: item.typewriter.targetCenter } : undefined,
 		arrowScroll: item.arrowScroll,
 	};
 }
@@ -347,6 +350,53 @@ async function runFootnoteInteraction(page, text) {
 	};
 }
 
+async function runTypewriterInteraction(page, sourceLength, marker) {
+	const target = await page.evaluate((needle) => {
+		const source = window.__mlpTestSourceText || '';
+		const pos = source.indexOf(needle);
+		if (pos < 0) return null;
+		window.__mlpDebugSetSelection?.(pos);
+		window.__mlpDebugScrollToPosition?.(pos);
+		return { sourceLength: source.length };
+	}, marker);
+	if (!target) throw new Error('typewriter target line is not mounted');
+	await page.waitForTimeout(80);
+	await page.evaluate(() => {
+		const scroller = document.querySelector('.cm-scroller');
+		if (!(scroller instanceof HTMLElement)) throw new Error('editor scroller not found');
+		scroller.scrollTop = Math.min(scroller.scrollTop + 320, scroller.scrollHeight - scroller.clientHeight);
+	});
+	await page.waitForTimeout(80);
+	const beforeClick = await page.evaluate((needle) => {
+		const line = [...document.querySelectorAll('.cm-line')].find((candidate) => candidate.textContent?.includes(needle));
+		if (!line) return null;
+		const rect = line.getBoundingClientRect();
+		return { x: Math.min(rect.right - 3, rect.left + 30), y: (rect.top + rect.bottom) / 2 };
+	}, marker);
+	if (!beforeClick) throw new Error('typewriter target line is not visible');
+	await page.mouse.click(beforeClick.x, beforeClick.y);
+	await page.waitForTimeout(50);
+	const before = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+	await page.keyboard.type('x');
+	await page.waitForTimeout(120);
+	const after = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+	const targetCenter = (after.snapshot?.clientHeight || 0) * 0.4;
+	const beforeCenter = before.selection?.y === null || before.selection?.y === undefined ? null : before.selection.y + before.selection.defaultLineHeight / 2;
+	const afterCenter = after.selection?.y === null || after.selection?.y === undefined ? null : after.selection.y + after.selection.defaultLineHeight / 2;
+	const scrollBeforeWheel = after.snapshot?.scrollTop ?? 0;
+	await page.mouse.wheel(0, 200);
+	await page.waitForTimeout(80);
+	const afterWheel = await page.evaluate(() => window.__mlpDebugSnapshot?.());
+	const checks = {
+		typingChangedDocument: after.snapshot?.docLength === sourceLength + 1,
+		caretStayedVisible: afterCenter !== null && afterCenter > 0 && afterCenter < (after.snapshot?.clientHeight || 0),
+		caretMovedTowardTarget: beforeCenter !== null && afterCenter !== null && Math.abs(afterCenter - targetCenter) < Math.abs(beforeCenter - targetCenter),
+		caretNearTarget: afterCenter !== null && Math.abs(afterCenter - targetCenter) <= Math.max(24, (after.selection?.defaultLineHeight || 20) * 2),
+		wheelRemainsUserOwned: afterWheel?.scrollTop !== undefined && Math.abs(afterWheel.scrollTop - scrollBeforeWheel) > 1,
+	};
+	return { ok: Object.values(checks).every(Boolean), checks, before, after, afterWheel, targetCenter };
+}
+
 async function runArrowScroll(page, text) {
 	const settle = () => page.waitForTimeout(80);
 	const metrics = () => page.evaluate(() => {
@@ -491,6 +541,19 @@ async function main() {
 					const sourceText = await page.evaluate(() => window.__mlpTestSourceText || '');
 					result.footnoteInteraction = await runFootnoteInteraction(page, sourceText);
 					result.ok = result.ok && result.footnoteInteraction.ok;
+				} catch (error) {
+					result.ok = false;
+					result.error = String(error?.stack || error);
+				}
+				await page.close();
+				allResults.push(result);
+				continue;
+			}
+			if (args.typewriter) {
+				try {
+					const sourceText = await page.evaluate(() => window.__mlpTestSourceText || '');
+					result.typewriter = await runTypewriterInteraction(page, sourceText.length, result.targetMarker || 'TYPEWRITER-120');
+					result.ok = result.ok && result.typewriter.ok;
 				} catch (error) {
 					result.ok = false;
 					result.error = String(error?.stack || error);

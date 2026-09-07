@@ -55,6 +55,7 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 		private readonly getDocumentZoom: () => number = () => DOCUMENT_ZOOM_DEFAULT,
 		private readonly onDocumentZoomChange: (percent: number) => void = () => undefined,
 		coordinator?: DocumentSyncCoordinator,
+		private readonly getTypewriterMode: () => boolean = () => false,
 	) {
 		this.ownsCoordinator = !coordinator;
 		this.coordinator = coordinator ?? new DocumentSyncCoordinator(document);
@@ -347,6 +348,7 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 			codeTheme: pickCodeTheme(),
 			dialect: documentDialectForPath(this.document.uri.path),
 			baseUri: `${this.webviewPanel.webview.asWebviewUri(docDir).toString()}/`,
+			typewriterMode: this.getTypewriterMode(),
 			zoomPercent: normalizeDocumentZoom(this.getDocumentZoom()),
 		});
 	}
@@ -389,6 +391,10 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 
 	notifyCssChanged() {
 		this.post({ type: 'applyCss', css: this.getCss() });
+	}
+
+	notifyTypewriterModeChanged() {
+		this.post({ type: 'typewriterModeChanged', enabled: this.getTypewriterMode() });
 	}
 
 	notifyDocumentZoomChanged(percent: number): void {

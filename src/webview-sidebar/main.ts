@@ -170,6 +170,19 @@ function buildSelect(
 	return wrap;
 }
 
+function buildCheckbox(label: string, checked: boolean, onChange: (checked: boolean) => void): HTMLElement {
+	const wrap = document.createElement('label');
+	wrap.className = 'mlp-checkbox-field';
+	const input = document.createElement('input');
+	input.type = 'checkbox';
+	input.checked = checked;
+	input.addEventListener('change', () => onChange(input.checked));
+	const text = document.createElement('span');
+	text.textContent = label;
+	wrap.append(input, text);
+	return wrap;
+}
+
 function buildSettings(settings: SidebarSettings): HTMLElement {
 	const section = document.createElement('div');
 	section.className = 'mlp-settings';
@@ -203,6 +216,11 @@ function buildSettings(settings: SidebarSettings): HTMLElement {
 				['github-light', 'GitHub Light'],
 			],
 			(v) => post({ type: 'setSetting', key: 'codeTheme', value: v }),
+		),
+	);
+	section.appendChild(
+		buildCheckbox('Typewriter Mode（输入时将光标保持在视口约 40%）', settings.typewriterMode, (checked) =>
+			post({ type: 'setSetting', key: 'typewriterMode', value: checked }),
 		),
 	);
 
