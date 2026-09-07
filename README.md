@@ -80,6 +80,7 @@ Quarto 特有的 callout、shortcode、citation、cross-reference 和代码单�
 - [工程设计文档（EDD）](docs/EDD.md)：架构边界、数据流、安全约束、测试和 CI 契约。
 - [执行里程碑](docs/milestones/)：当前已完成的 front matter 功能和仓库再整理记录。
 - [代理维护指南](AGENTS.md)：安装、验证、生成文件和安全规则。
+- [Pull Request 模板](.github/PULL_REQUEST_TEMPLATE.md)：Issue 关联、验收映射、验证证据和 PRD/EDD 影响。
 
 原有 `specs/` 与 `doc/` 目录保留为历史设计资料；新的产品和工程决策以 `docs/` 中的文档为准。
 
@@ -93,6 +94,7 @@ npm run test:browser
 npm run test:browser:geometry
 npm run test:browser:inline
 npm run test:browser:inline-interaction
+npm run test:browser:arrow-scroll
 ```
 
 Quarto 示例位于 [examples/quarto-live-preview.qmd](examples/quarto-live-preview.qmd)，科研回归 fixture 位于 [examples/quarto-scientific.qmd](examples/quarto-scientific.qmd)。
@@ -101,7 +103,7 @@ Quarto 示例位于 [examples/quarto-live-preview.qmd](examples/quarto-live-prev
 
 ## 当前限制
 
-交互几何回归命令为 `npm run test:browser -- --interaction --theme github-light.css`。它会在真实 Chromium 中点击长段落的首行、中间行、倒数第二行和末行，随后用真实 ArrowDown/ArrowUp 穿过包裹行，并在运行时切换主题；回归同时比较 `.cm-line` 的实际高度和 CodeMirror 的 `lineBlockAt` 高度图。脚注交互回归由 `npm run test:browser:inline-interaction` 覆盖鼠标落点、左右键逐个进入脚注、上下键避开隐藏源码、重复脚注定位和共享边界。
+交互几何回归命令为 `npm run test:browser -- --interaction --theme github-light.css`。它会在真实 Chromium 中点击长段落的首行、中间行、倒数第二行和末行，随后用真实 ArrowDown/ArrowUp 穿过包裹行，并在运行时切换主题；回归同时比较 `.cm-line` 的实际高度和 CodeMirror 的 `lineBlockAt` 高度图。脚注交互回归由 `npm run test:browser:inline-interaction` 覆盖鼠标落点、左右键逐个进入脚注、上下键避开隐藏源码、重复脚注定位和共享边界。`npm run test:browser:arrow-scroll` 额外覆盖上下边界、长行换行、blockquote/list、围栏代码、脚注 cluster 和多脚注，并验证 caret 可见性与最小必要滚动。
 
 尚未实现 Quarto 代码执行、Jupyter/kernel、citation 渲染、cross-reference 解析、callout 渲染、shortcode 展开、Typst、Pandoc 子进程和 Quarto CLI 渲染；这些语法会保留为源码安全回退。
 

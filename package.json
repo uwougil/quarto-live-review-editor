@@ -186,6 +186,7 @@
     "test:browser": "node scripts/run-long-document-browser-test.mjs",
     "test:browser:inline": "node scripts/run-long-document-browser-test.mjs --inline-geometry",
     "test:browser:inline-interaction": "node scripts/run-long-document-browser-test.mjs --inline-interaction",
+    "test:browser:arrow-scroll": "node scripts/run-long-document-browser-test.mjs --arrow-scroll",
     "test:browser:geometry": "node scripts/run-geometry-regression.mjs",
     "test:watch": "vitest",
     "generate:long-fixtures": "node scripts/generate-long-fixtures.mjs",
