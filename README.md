@@ -14,6 +14,7 @@
 - 代码块语法高亮、图片粘贴、文档大纲和 CSS 主题管理。
 - 内置 CSS 主题：VS Code、Dark、GitHub Light、Claude 和 GitHub Dark；主题之间互相独立，可在侧栏切换。
 - ` ```{python} `、` ```{r} `、` ```{julia} ` 和 ` ```{.python} ` 使用统一的 Quarto/Pandoc 围栏解析入口，并交给现有 Shiki 高亮体系。
+- Live Preview 支持独立于 VS Code 全局缩放的文档字号缩放：聚焦预览后使用 `Ctrl/Cmd + 滚轮`、`Ctrl/Cmd + +`、`Ctrl/Cmd + -` 调整，`Ctrl/Cmd + 0` 重置。范围为 70%–200%，所有 Live Preview 文档共享并持久化该值。
 
 ## 安装开发版
 
@@ -49,6 +50,10 @@ $$
 ```
 
 光标离开公式时显示渲染结果；点击公式或将选区移入公式时显示原始 `$` 语法。编辑和保存不会把公式替换成 HTML、Unicode 或 KaTeX 输出。
+
+### 文档字号缩放
+
+字号缩放只作用于 Live Preview 文档内容，不会修改 VS Code 的全局缩放，也不会修改磁盘中的 Markdown/Quarto 文本。只有 Live Preview 获得焦点时，带有平台对应 Mod 键的滚轮和快捷键才会生效；普通滚轮仍用于滚动。缩放值保存在扩展的全局偏好中，因此切换文档、打开多个预览面板或重启 VS Code 后仍保持一致。
 
 Quarto 特有的 callout、shortcode、citation、cross-reference 和代码单元目前保持源码安全，不会被错误改写；代码单元只负责识别和高亮，暂不执行。
 
@@ -93,9 +98,12 @@ npm run test:browser
 npm run test:browser:geometry
 npm run test:browser:inline
 npm run test:browser:inline-interaction
+npm run test:browser:zoom
 ```
 
 Quarto 示例位于 [examples/quarto-live-preview.qmd](examples/quarto-live-preview.qmd)，科研回归 fixture 位于 [examples/quarto-scientific.qmd](examples/quarto-scientific.qmd)。
+
+`npm run test:browser:zoom` 会在真实 Chromium 中验证字号增减、70%/200% 边界、重置、普通滚轮、编辑器焦点边界、长文档几何以及重新初始化文档时的共享 zoom 值。
 
 `npm run test:browser` 会启动真实 Chromium 和真实 CodeMirror `EditorView`，默认使用仓库内确定性的 realistic fixture，不依赖其他仓库或本机目录。fixture 覆盖前置元数据、标题、长段落、Unicode/CJK、行内/多行块公式、围栏代码、Quarto 代码单元、表格、Mermaid、链接、图片、引用和脚注。测试会滚动到 0%、25%、50%、75%、90%、99% 和 EOF，并检查文档长度、视口、滚动高度、语法树覆盖范围及实际 DOM 内容；`--source path/to/file.qmd` 可显式指定仓库内的其他夹具。首次运行前执行 `npm install` 和 `npx playwright install chromium`；之后使用 `npm run test:browser -- --benchmark` 可记录 5k、10k、25k、50k 行文档的就绪、滚动和 EOF 耗时、DOM 行数、装饰重建数、长任务及页面错误。
 
