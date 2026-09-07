@@ -91,6 +91,17 @@ Quarto 特有的 callout、shortcode、citation、cross-reference 和代码单�
 
 原有 `specs/` 与 `doc/` 目录保留为历史设计资料；新的产品和工程决策以 `docs/` 中的文档为准。
 
+## 贡献与交付流程
+
+后续功能、缺陷和会影响工程行为的文档变更应先建立 GitHub Issue，再在独立分支或 worktree 中实现，并通过 Pull Request 交付：
+
+```text
+Issue → branch/worktree → implementation → commit → push → PR
+      → CI + task-local review → repair → merge → Issue closure
+```
+
+PR 是可复现的交接记录，至少应链接 Issue，说明变更和 PRD/EDD 影响，并附上本地验证与 CI 证据。`main` 只表示已接受的实现；除初始仓库引导外，不应把 Issue-backed 工作直接推送到 `main`。提交 PR 时可使用 [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md)。
+
 ## Development / Tests（开发与测试）
 
 ```powershell

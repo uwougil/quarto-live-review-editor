@@ -13,12 +13,16 @@
 - 新增 [`docs/milestones/frontmatter-preview.md`](frontmatter-preview.md)，把已有 front matter 规格和已完成任务转换为执行意图。
 - 新增根目录 [`AGENTS.md`](../../AGENTS.md)，说明文档权威性、验证命令、架构边界和安全规则。
 - README 增加 canonical 文档入口；原 `specs/` 和 `doc/` 保留为历史设计资料，不删除、不覆盖。
+- 补充 Issue-backed 分支/worktree 与 PR-first 交付规则，使 PR 成为可重建的交接契约。
+- 新增轻量 [Pull Request 模板](../../.github/PULL_REQUEST_TEMPLATE.md)，要求记录 Issue、变更、验证证据和 PRD/EDD 影响。
 
 ## 验收标准
 
 - [x] `docs/PRD.md`、`docs/EDD.md` 和 `docs/milestones/*.md` 存在且互相链接。
 - [x] `AGENTS.md` 只包含仓库相关的操作规则和实际可执行命令。
 - [x] README 中的安装、构建、测试命令与 package scripts/CI 一致。
+- [x] 后续 Issue-backed 变更默认通过独立分支/worktree 和 Pull Request 交付；PR 描述可独立重建交接上下文。
+- [x] PR 模板覆盖 Issue 链接、变更摘要、验证证据和 PRD/EDD 影响。
 - [x] 未新增项目 skill、MCP、插件或空架构目录；本次不需要额外 agent 基础设施。
 - [x] 未修改现有产品行为、依赖版本或 Git 历史。
 - [x] 工作区无未预期文件，未发现 tracked secret。

@@ -7,6 +7,14 @@
 - 执行意图：[`docs/milestones/`](docs/milestones/)
 - `specs/frontmatter-preview/` 和 `doc/` 保存历史设计草稿，仅用于追溯；新的产品或工程决策应更新 `docs/` 中的 canonical 文档。
 
+## Issue 与 PR 交付规范
+
+- GitHub Issue 是后续工作的持久 Work Contract；功能、缺陷和会改变工程行为的文档工作，正常情况下都应先有对应 Issue。
+- 除仓库初始引导外，Issue-backed 变更应在独立分支或 worktree 中实现，并通过 Pull Request 合并；不要把后续工作直接推送到 `main`。
+- Pull Request 是标准的交付和交接契约。PR 描述必须链接 Issue，并说明变更范围、验证命令/CI 结果、已知限制，以及是否影响 PRD/EDD；另一个代理应能仅凭 PRD/EDD、Issue、提交、PR 描述与 diff、测试和 CI 重建上下文。
+- 只有必需的 CI 和 task-local review 通过后才能合并；涉及 PRD/EDD 语义变化时，先获得明确的人类决策并更新 canonical 文档。
+- `main` 表示已接受的实现现实；合并后再关闭对应 Issue。仓库初始引导可以直接建立默认分支，但不改变后续 PR-first 规则。
+
 ## Setup and verification
 
 ```powershell
