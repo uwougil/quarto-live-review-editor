@@ -78,7 +78,7 @@ function queryFor(baseUrl, args, benchmarkLines, sourcePath) {
 
 function compactSnapshot(snapshot) {
 	if (!snapshot) return null;
-	const keys = ['docLength', 'docLines', 'viewport', 'contentHeight', 'scrollTop', 'scrollHeight', 'clientHeight', 'domLineCount', 'syntaxTreeLength', 'syntaxTreeAvailableToViewport', 'syntaxTreeAvailableToDocument', 'syntaxParserRunning', 'decorationRebuildCount'];
+	const keys = ['docLength', 'docLines', 'viewport', 'contentHeight', 'scrollTop', 'scrollHeight', 'clientHeight', 'domLineCount', 'syntaxTreeLength', 'syntaxTreeAvailableToViewport', 'syntaxTreeAvailableToDocument', 'syntaxParserRunning', 'decorationRebuildCount', 'fullDecorationRebuildCount'];
 	return Object.fromEntries(keys.map((key) => [key, snapshot[key]]));
 }
 
@@ -89,7 +89,7 @@ function compactResult(item) {
 		samples: (item.samples || []).map((sample) => ({ label: sample.label, parserCaughtUp: sample.parserCaughtUp, snapshot: compactSnapshot(sample.snapshot) })),
 		eof: { parserCaughtUp: item.eof?.parserCaughtUp, snapshot: compactSnapshot(item.eof?.snapshot) },
 		markers: (item.markers || []).map((marker) => Object.fromEntries(['label', 'found', 'pos', 'viewportContains', 'domContainsMarker'].map((key) => [key, marker[key]]))),
-		final: compactSnapshot(item.final), markerFailures: item.markerFailures, pageErrors: item.pageErrors, error: item.error,
+		final: compactSnapshot(item.final), interactions: item.interactions, markerFailures: item.markerFailures, pageErrors: item.pageErrors, error: item.error,
 		interaction: item.interaction ? { checks: item.interaction.checks, initialDiagnostics: item.interaction.initialDiagnostics } : undefined,
 		footnoteInteraction: item.footnoteInteraction ? { checks: item.footnoteInteraction.checks, traceCount: item.footnoteInteraction.traceCount } : undefined,
 	};
@@ -104,6 +104,8 @@ function benchmarkResult(items) {
 			parserCaughtUp: (item.samples || []).map((sample) => sample.parserCaughtUp).concat(item.eof?.parserCaughtUp),
 			domLineCounts: (item.samples || []).map((sample) => sample.snapshot?.domLineCount),
 			maxDecorationRebuilds: Math.max(0, ...(item.samples || []).map((sample) => sample.snapshot?.decorationRebuildCount || 0), item.eof?.snapshot?.decorationRebuildCount || 0),
+			maxFullDecorationRebuilds: Math.max(0, ...(item.samples || []).map((sample) => sample.snapshot?.fullDecorationRebuildCount || 0), item.eof?.snapshot?.fullDecorationRebuildCount || 0),
+			interactions: item.interactions || [],
 			longTaskCount: item.longTaskCount || 0, longTaskTotalMs: item.longTaskTotalMs || 0, pageErrors: item.pageErrors || [],
 		})),
 	};
@@ -358,18 +360,24 @@ async function main() {
 	const port = server.address().port;
 	const baseUrl = `http://127.0.0.1:${port}/scripts/long-document-browser-harness.html`;
 	const browser = await chromium.launch({ headless: true });
-	const runs = args.benchmark ? [1000, 5000, 10000, 20000] : [null];
+	const runs = args.benchmark ? [5000, 10000, 25000, 50000] : [null];
 	const allResults = [];
 	try {
 		for (const benchmarkLines of runs) {
+			if (args.benchmark) process.stderr.write(`benchmark ${benchmarkLines} lines: start\n`);
 			const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 			const pageErrors = [];
 			if (args.probe) page.on('console', (message) => process.stdout.write(`[browser:${message.type()}] ${message.text()}\n`));
 			page.on('pageerror', (error) => pageErrors.push(String(error)));
 			const started = performance.now();
 			await page.goto(queryFor(baseUrl, args, benchmarkLines, sourcePath), { waitUntil: 'load' });
-			await page.waitForFunction(() => window.__mlpLongDocumentResult !== undefined, null, { timeout: 30000 });
+			await page.waitForFunction(() => window.__mlpLongDocumentResult !== undefined, null, { timeout: args.benchmark ? 120000 : 30000 });
 			const result = await page.evaluate(() => window.__mlpLongDocumentResult);
+			if (benchmarkLines !== null && result.sourceLines !== benchmarkLines) {
+				result.ok = false;
+				result.error = `benchmark fixture produced ${result.sourceLines} lines; expected ${benchmarkLines}`;
+			}
+			if (args.benchmark) process.stderr.write(`benchmark ${benchmarkLines} lines: complete\n`);
 			result.browserElapsedMs = Number((performance.now() - started).toFixed(1));
 				result.pageErrors = pageErrors;
 			if (pageErrors.length) result.ok = false;

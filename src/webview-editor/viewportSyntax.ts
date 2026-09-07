@@ -1,6 +1,7 @@
 import { forceParsing, syntaxTree, syntaxTreeAvailable } from '@codemirror/language';
 import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view';
 import { viewportParsingDisabledForTest } from './debug';
+import { refreshSyntaxDecorations } from './decorationRefresh';
 
 // Parsing only to the current viewport is important here. Calling
 // forceParsing(..., state.doc.length) would turn a scroll into a full-document
@@ -20,6 +21,7 @@ function parseViewport(view: EditorView): void {
 export const viewportSyntaxPlugin = ViewPlugin.fromClass(
 	class {
 		private timer: ReturnType<typeof setTimeout> | undefined;
+		private refreshTimer: ReturnType<typeof setTimeout> | undefined;
 		private scheduledTarget = -1;
 
 		constructor(view: EditorView) {
@@ -27,13 +29,29 @@ export const viewportSyntaxPlugin = ViewPlugin.fromClass(
 		}
 
 		update(update: ViewUpdate): void {
+			const treeChanged = syntaxTree(update.startState) !== syntaxTree(update.state);
+			const target = Math.min(update.view.viewport.to, update.state.doc.length);
+			if (
+				(update.viewportChanged && syntaxTreeAvailable(update.state, target)) ||
+				(treeChanged && !syntaxTreeAvailable(update.startState, target) && syntaxTreeAvailable(update.state, target))
+			) this.requestDecorationRefresh(update.view);
 			if (
 				update.docChanged ||
 				update.viewportChanged ||
-				syntaxTree(update.startState) !== syntaxTree(update.state)
+				treeChanged
 			) {
 				this.schedule(update.view);
 			}
+		}
+
+		private requestDecorationRefresh(view: EditorView): void {
+			if (this.refreshTimer !== undefined) return;
+			this.refreshTimer = setTimeout(() => {
+				this.refreshTimer = undefined;
+				if (view.dom.isConnected) {
+					view.dispatch({ effects: refreshSyntaxDecorations.of(view.visibleRanges.map(({ from, to }) => ({ from, to }))) });
+				}
+			}, 0);
 		}
 
 		private schedule(view: EditorView): void {
@@ -61,6 +79,7 @@ export const viewportSyntaxPlugin = ViewPlugin.fromClass(
 
 		destroy(): void {
 			if (this.timer !== undefined) clearTimeout(this.timer);
+			if (this.refreshTimer !== undefined) clearTimeout(this.refreshTimer);
 		}
 	},
 );

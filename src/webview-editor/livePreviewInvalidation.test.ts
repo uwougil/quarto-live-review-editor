@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { markdown } from '@codemirror/lang-markdown';
+import { GFM } from '@lezer/markdown';
 import { syntaxTree, syntaxTreeAvailable } from '@codemirror/language';
 import type { ViewUpdate } from '@codemirror/view';
-import { decorationRebuildReason } from './livePreviewPlugin';
+import { decorationRebuildReason, lineDecorationsField, selectionDecorationContextChanged } from './livePreviewPlugin';
+import { blockDecorationsField } from './blockDecorations';
+import { footnoteIndexField } from './footnotes';
 import { buildLongDocument } from '../quarto/longDocumentFixture';
 import { findMathRanges, mathRangesField } from '../quarto/math';
 
@@ -40,10 +43,30 @@ describe('live preview syntax invalidation', () => {
 		expect(decorationRebuildReason(fakeUpdate(state, state, { viewportChanged: true }))).toBe('viewportChanged');
 		expect(decorationRebuildReason(fakeUpdate(state, state, { docChanged: true }))).toBe('docChanged');
 	});
+
+	it('does not invalidate full-document line/block decorations for ordinary cursor moves', () => {
+		const doc = '# Heading\n\nordinary paragraph text';
+		const extensions = [markdown()];
+		const before = EditorState.create({ doc, selection: { anchor: doc.indexOf('ordinary') }, extensions });
+		const after = before.update({ selection: { anchor: doc.indexOf('paragraph') } }).state;
+		expect(selectionDecorationContextChanged(before, after, 'line')).toBe(false);
+		expect(selectionDecorationContextChanged(before, after, 'block')).toBe(false);
+	});
+
+	it('invalidates when the cursor enters a rendered table or fenced block boundary', () => {
+		const doc = '| a | b |\n| --- | --- |\n| 1 | 2 |\n\n```ts\nconst x = 1\n```\n\nend';
+		const extensions = [markdown({ extensions: GFM })];
+		const outside = EditorState.create({ doc, selection: { anchor: doc.length }, extensions });
+		const table = outside.update({ selection: { anchor: doc.indexOf('| 1') } }).state;
+		expect(selectionDecorationContextChanged(outside, table, 'block')).toBe(true);
+		const fenceOpen = outside.update({ selection: { anchor: doc.indexOf('```ts') } }).state;
+		const fenceBody = fenceOpen.update({ selection: { anchor: doc.indexOf('const') } }).state;
+		expect(selectionDecorationContextChanged(fenceOpen, fenceBody, 'line')).toBe(true);
+	});
 });
 
 describe('long document regression inputs', () => {
-	for (const lineCount of [10_000, 20_000]) {
+	for (const lineCount of [5_000, 10_000, 25_000, 50_000]) {
 		it(`builds a deterministic ${lineCount}-line document without forcing a full parse`, () => {
 			const doc = buildLongDocument(lineCount);
 			const state = EditorState.create({ doc, extensions: [markdown()] });
@@ -55,6 +78,25 @@ describe('long document regression inputs', () => {
 			// Do not call ensureSyntaxTree(..., doc.length) here. This assertion records
 			// the initial state expected before CodeMirror's background parser advances.
 			expect(syntaxTreeAvailable(state, state.doc.length)).toBe(false);
+		});
+	}
+
+	for (const lineCount of [5_000, 10_000, 25_000, 50_000]) {
+		it(`keeps full line/block decoration sets for an ordinary cursor move in ${lineCount} lines`, () => {
+			const doc = buildLongDocument(lineCount);
+			const state = EditorState.create({
+				doc,
+				selection: { anchor: Math.min(20, doc.length) },
+				extensions: [markdown({ extensions: GFM }), footnoteIndexField, lineDecorationsField, blockDecorationsField],
+			});
+			const linesBefore = state.field(lineDecorationsField);
+			const blocksBefore = state.field(blockDecorationsField);
+			const started = performance.now();
+			const moved = state.update({ selection: { anchor: Math.min(21, doc.length) } }).state;
+			const elapsed = performance.now() - started;
+			console.log(`decoration selection ${lineCount} lines: ${elapsed.toFixed(2)} ms (0 full rebuilds)`);
+			expect(moved.field(lineDecorationsField)).toBe(linesBefore);
+			expect(moved.field(blockDecorationsField)).toBe(blocksBefore);
 		});
 	}
 

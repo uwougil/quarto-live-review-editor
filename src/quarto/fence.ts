@@ -1,3 +1,5 @@
+import { findFrontmatterRange } from './frontmatter';
+
 export interface SourceLine {
 	from: number;
 	to: number;
@@ -147,19 +149,11 @@ function closingFence(line: SourceLine, open: OpenFence): boolean {
 	return Boolean(match && match[1][0] === open.marker && match[1].length >= open.markerLength);
 }
 
-function frontmatterEnd(lines: SourceLine[]): number | undefined {
-	if (lines.length === 0 || lines[0].text.trim() !== '---') return undefined;
-	for (let i = 1; i < lines.length; i++) {
-		if (/^\s*(?:---|\.\.\.)\s*$/.test(lines[i].text)) return i;
-	}
-	return lines.length;
-}
-
 /** Finds closed fenced blocks, including Quarto `{language}` cells. */
 export function findFenceBlocks(text: string): FenceBlock[] {
 	const lines = scanSourceLines(text);
 	const result: FenceBlock[] = [];
-	const fmEnd = frontmatterEnd(lines);
+	const fmEnd = findFrontmatterRange(text)?.closingLine;
 	let open: OpenFence | undefined;
 	for (let i = 0; i < lines.length; i++) {
 		if (fmEnd !== undefined && i <= fmEnd) continue;
@@ -191,7 +185,7 @@ export function findFenceBlocks(text: string): FenceBlock[] {
 /** Returns fence spans that also include an unclosed fence through EOF. */
 export function findFenceSpans(text: string): Array<{ from: number; to: number }> {
 	const lines = scanSourceLines(text);
-	const fmEnd = frontmatterEnd(lines);
+	const fmEnd = findFrontmatterRange(text)?.closingLine;
 	const spans: Array<{ from: number; to: number }> = [];
 	let open: OpenFence | undefined;
 	for (let i = 0; i < lines.length; i++) {

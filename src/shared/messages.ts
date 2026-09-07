@@ -24,9 +24,10 @@ export type HostToEditorMessage =
 	// folder containing the document, used to resolve relative image paths
 	// (e.g. `assets/foo.png`) to something the webview is actually allowed to load.
 	| { type: 'init'; text: string; version: number; css: string; codeTheme: string; baseUri: string; dialect: DocumentDialect }
-	| { type: 'externalUpdate'; changes: TextChange[]; version: number }
-	| { type: 'ackEdit'; version: number }
-	| { type: 'codeTokens'; blocks: CodeBlockTokens[] }
+	| { type: 'externalUpdate'; changes: TextChange[]; baseVersion: number; version: number }
+	| { type: 'ackEdit'; editId: number; version: number }
+	| { type: 'resync'; text: string; version: number; rejectedEditId?: number }
+	| { type: 'codeTokens'; version: number; generation: number; blocks: CodeBlockTokens[] }
 	| { type: 'applyCss'; css: string }
 	| { type: 'jumpToLine'; line: number }
 	// Reply to `readDrawioFile`. `text` is the file's contents, or `error` says
@@ -34,15 +35,17 @@ export type HostToEditorMessage =
 	// matches the reply to the widget that asked, since several diagrams in one
 	// document can have requests in flight at the same time.
 	| { type: 'drawioFile'; requestId: number; text?: string; error?: string }
+	| { type: 'imageResult'; requestId: number; ok: boolean; error?: string }
 	| { type: 'setCursor'; pos: number };
 
 export type EditorToHostMessage =
 	| { type: 'ready' }
-	| { type: 'edit'; baseVersion: number; changes: TextChange[] }
+	| { type: 'edit'; editId: number; baseVersion: number; changes: TextChange[] }
+	| { type: 'requestResync' }
 	| { type: 'undo' }
 	| { type: 'redo' }
 	| { type: 'openLink'; href: string }
-	| { type: 'pasteImage'; atPos: number; mimeType: string; dataBase64: string; needsOwnParagraph: boolean }
+	| { type: 'pasteImage'; requestId: number; baseVersion: number; atPos: number; mimeType: string; dataBase64: string; needsOwnParagraph: boolean }
 	// A `![](diagram.drawio)` reference: the webview cannot read workspace files
 	// itself, and an <img> cannot render mxGraph XML, so the host reads the file
 	// and sends its text back for the widget to parse. `src` is the raw, relative

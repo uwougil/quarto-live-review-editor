@@ -12,8 +12,15 @@ import { renderInlineInto, type CellInlineHooks } from './tableCellInline';
 import { createCodeModeButton, createCopyCodeButton } from './codeModeButton';
 import { insertRow, insertColumn, renderTableMarkdown, type TableEditModel } from './tableEdit';
 import { parseFenceInfo } from '../quarto/fence';
-import { recordDecorationRebuild } from './debug';
+import { recordDecorationRebuild, recordFullDecorationRebuild } from './debug';
 import { FootnoteBackWidget, FootnoteReferenceWidget, footnoteIndexField } from './footnotes';
+import {
+	initialDecorationRanges,
+	replaceDecorationRanges,
+	refreshSyntaxDecorations,
+	selectionDecorationRanges,
+	type DecorationRange,
+} from './decorationRefresh';
 
 const HEADING_LINE_CLASS: Record<string, string> = {
 	ATXHeading1: 'mlp-line-h1',
@@ -1169,6 +1176,51 @@ export function decorationRebuildReason(update: ViewUpdate): DecorationRebuildRe
 	return null;
 }
 
+export type SelectionDecorationContext = 'line' | 'block';
+
+function selectionDecorationContext(state: EditorState, kind: SelectionDecorationContext): string {
+	const contexts: string[] = [];
+	const fm = kind === 'block' ? detectFrontmatter(state) : null;
+	const tree = syntaxTree(state);
+	for (const range of state.selection.ranges) {
+		if (!range.empty) continue;
+		const line = state.doc.lineAt(range.head).number;
+		if (fm) {
+			const first = state.doc.lineAt(fm.from).number;
+			const last = state.doc.lineAt(fm.to).number;
+			if (line >= first && line <= last) contexts.push(`frontmatter:${fm.from}:${fm.to}`);
+		}
+		for (let node: SyntaxNode | null = tree.resolveInner(range.head, -1); node; node = node.parent) {
+			if (node.name === 'Table') {
+				contexts.push(`${kind}:table:${node.from}:${node.to}`);
+				break;
+			}
+			if (node.name !== 'FencedCode') continue;
+			if (kind === 'line') {
+				const first = state.doc.lineAt(node.from).number;
+				const last = state.doc.lineAt(node.to).number;
+				const role = line === first ? 'open' : line === last ? 'close' : 'body';
+				contexts.push(`line:fence:${node.from}:${node.to}:${role}`);
+			} else {
+				const infoNode = node.getChild('CodeInfo');
+				const info = parseFenceInfo(infoNode ? state.sliceDoc(infoNode.from, infoNode.to) : '');
+				if (isDiagramLang(info.language ?? '') !== null) contexts.push(`block:diagram:${node.from}:${node.to}`);
+			}
+			break;
+		}
+	}
+	return contexts.sort().join('|');
+}
+
+/** True only when a selection move can change full-document line/block ranges. */
+export function selectionDecorationContextChanged(
+	before: EditorState,
+	after: EditorState,
+	kind: SelectionDecorationContext,
+): boolean {
+	return selectionDecorationContext(before, kind) !== selectionDecorationContext(after, kind);
+}
+
 /**
  * Build the line decorations that participate in CodeMirror's height map.
  *
@@ -1177,28 +1229,38 @@ export function decorationRebuildReason(update: ViewUpdate): DecorationRebuildRe
  * or font-size on one of these classes can leave wrapped lines visually lower
  * than the coordinates CodeMirror uses for mouse and arrow-key navigation.
  */
-function buildLineDecorations(state: EditorState): DecorationSet {
+function buildLineDecorations(state: EditorState, ranges: readonly DecorationRange[]): DecorationSet {
+	const started = performance.now();
 	const { doc } = state;
 	const seenLine = new Map<number, string>();
 	const tree = syntaxTree(state);
 	const fm = detectFrontmatter(state);
+	let activeFirstLine = 1;
+	let activeLastLine = doc.lines;
 
 	const addLineClass = (lineFrom: number, cls: string) => {
+		const lineNumber = doc.lineAt(lineFrom).number;
+		if (lineNumber < activeFirstLine || lineNumber > activeLastLine) return;
 		const existing = seenLine.get(lineFrom);
-		seenLine.set(lineFrom, existing ? `${existing} ${cls}` : cls);
+		seenLine.set(lineFrom, existing ? [...new Set(`${existing} ${cls}`.split(' '))].join(' ') : cls);
 	};
 	const addLineRange = (from: number, to: number, cls: (lineNumber: number, first: boolean, last: boolean) => string) => {
-		const firstLine = doc.lineAt(from).number;
-		const lastLine = doc.lineAt(to).number;
+		const structuralFirst = doc.lineAt(from).number;
+		const structuralLast = doc.lineAt(to).number;
+		const firstLine = Math.max(structuralFirst, activeFirstLine);
+		const lastLine = Math.min(structuralLast, activeLastLine);
 		for (let n = firstLine; n <= lastLine; n++) {
-			const value = cls(n, n === firstLine, n === lastLine);
+			const value = cls(n, n === structuralFirst, n === structuralLast);
 			if (value) addLineClass(doc.line(n).from, value);
 		}
 	};
 
-	tree.iterate({
-		from: 0,
-		to: doc.length,
+	for (const range of ranges) {
+		activeFirstLine = doc.lineAt(Math.max(0, Math.min(range.from, doc.length))).number;
+		activeLastLine = doc.lineAt(Math.max(0, Math.min(range.to, doc.length))).number;
+		tree.iterate({
+		from: range.from,
+		to: range.to,
 		enter: (node) => {
 			if (fm && node.from >= fm.from && node.to <= fm.to) return false;
 			const name = node.name;
@@ -1271,23 +1333,30 @@ function buildLineDecorations(state: EditorState): DecorationSet {
 				}
 			}
 		},
-	});
+		});
+	}
 
-	return Decoration.set(
+	const result = Decoration.set(
 		[...seenLine].map(([lineFrom, cls]) => Decoration.line({ class: cls }).range(lineFrom)),
 		true,
 	);
+	recordFullDecorationRebuild('line', performance.now() - started);
+	return result;
 }
 
 export const lineDecorationsField = StateField.define<DecorationSet>({
-	create: buildLineDecorations,
+	create: (state) => buildLineDecorations(state, initialDecorationRanges(state)),
 	update(value, transaction) {
-		if (
-			transaction.docChanged ||
-			(transaction.selection && !transaction.startState.selection.eq(transaction.selection)) ||
-			syntaxTree(transaction.startState) !== syntaxTree(transaction.state)
-		) return buildLineDecorations(transaction.state);
-		return value;
+		let next = transaction.docChanged ? value.map(transaction.changes) : value;
+		const ranges = transaction.effects
+			.filter((effect) => effect.is(refreshSyntaxDecorations))
+			.flatMap((effect) => effect.value);
+		const selectionChanged = Boolean(transaction.selection && !transaction.startState.selection.eq(transaction.selection));
+		if (selectionChanged && selectionDecorationContextChanged(transaction.startState, transaction.state, 'line')) {
+			ranges.push(...selectionDecorationRanges(transaction.startState, transaction.state));
+		}
+		if (ranges.length > 0) next = replaceDecorationRanges(next, buildLineDecorations(transaction.state, ranges), ranges);
+		return next;
 	},
 	provide: (field) => EditorView.decorations.from(field),
 });

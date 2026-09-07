@@ -1,4 +1,4 @@
-import { EditorState, Annotation, type Extension, ChangeSet } from '@codemirror/state';
+import { EditorState, Annotation, type Extension } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { defaultKeymap, indentWithTab } from '@codemirror/commands';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
@@ -19,6 +19,7 @@ import type { TextChange } from '../shared/messages';
 import { documentDialect, type DocumentDialect } from '../quarto/dialect';
 import { mathRangesField } from '../quarto/math';
 import { installDebugView } from './debug';
+import { EditorSyncClient } from './syncClient';
 import { viewportSyntaxPlugin } from './viewportSyntax';
 import { mathDecorationsField } from './mathDecorations';
 import { createFootnoteMouseHandler, footnoteIndexField, footnoteNavigationField, moveVerticallyAvoidingFootnotes } from './footnotes';
@@ -27,9 +28,13 @@ const remoteChange = Annotation.define<boolean>();
 const FLUSH_DEBOUNCE_MS = 250;
 
 let view: EditorView | undefined;
-let baseVersion = 0;
-let pending: ChangeSet | null = null;
+let syncClient: EditorSyncClient | undefined;
 let flushTimer: ReturnType<typeof setTimeout> | undefined;
+let nextImageRequestId = 1;
+let imageInFlight: number | undefined;
+const imageQueue: Array<{ requestId: number; atPos: number; mimeType: string; dataBase64: string; needsOwnParagraph: boolean }> = [];
+const controlQueue: Array<'undo' | 'redo'> = [];
+let lastCodeTokenGeneration = 0;
 
 function requestMeasureAfterLayout(): void {
 	const target = view;
@@ -44,16 +49,7 @@ function requestMeasureAfterLayout(): void {
 
 function flush() {
 	flushTimer = undefined;
-	if (!view || !pending || pending.empty) {
-		pending = null;
-		return;
-	}
-	const changes: TextChange[] = [];
-	pending.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
-		changes.push({ from: fromA, to: toA, insert: inserted.toString() });
-	});
-	pending = null;
-	postToHost({ type: 'edit', baseVersion, changes });
+	drainOutbound();
 }
 
 function scheduleFlush() {
@@ -67,6 +63,35 @@ function flushNow() {
 		flushTimer = undefined;
 	}
 	flush();
+}
+
+function drainOutbound(): void {
+	if (!syncClient || imageInFlight !== undefined) return;
+	const edit = syncClient.takeNextEdit();
+	if (edit) {
+		postToHost({ type: 'edit', ...edit });
+		return;
+	}
+	if (syncClient.hasOutstandingEdits) return;
+	const image = imageQueue.shift();
+	if (image) {
+		imageInFlight = image.requestId;
+		postToHost({ type: 'pasteImage', baseVersion: syncClient.hostVersion, ...image });
+		return;
+	}
+	while (controlQueue.length > 0) postToHost({ type: controlQueue.shift()! });
+}
+
+function queueControl(type: 'undo' | 'redo'): boolean {
+	flushNow();
+	controlQueue.push(type);
+	drainOutbound();
+	return true;
+}
+
+function queueImage(atPos: number, mimeType: string, dataBase64: string, needsOwnParagraph: boolean): void {
+	imageQueue.push({ requestId: nextImageRequestId++, atPos, mimeType, dataBase64, needsOwnParagraph });
+	flushNow();
 }
 
 function applyUserCss(css: string) {
@@ -110,9 +135,7 @@ function createExtensions(dialect: DocumentDialect): Extension[] {
 		dragReleaseRefresh,
 		codeHighlightExtension,
 		createLinkClickHandler((href) => postToHost({ type: 'openLink', href })),
-		createImagePasteHandler((atPos, mimeType, dataBase64, needsOwnParagraph) =>
-			postToHost({ type: 'pasteImage', atPos, mimeType, dataBase64, needsOwnParagraph }),
-		),
+		createImagePasteHandler(queueImage),
 		keymap.of([
 			{ key: 'ArrowUp', run: moveVerticallyAvoidingFootnotes(false) },
 			{ key: 'ArrowDown', run: moveVerticallyAvoidingFootnotes(true) },
@@ -121,9 +144,9 @@ function createExtensions(dialect: DocumentDialect): Extension[] {
 			// otherwise the host's document is missing the latest edits when it acts,
 			// undoing the wrong change and leaving the webview's local text duplicated
 			// relative to what ends up in the file.
-			{ key: 'Mod-z', run: () => { flushNow(); postToHost({ type: 'undo' }); return true; } },
-			{ key: 'Mod-y', run: () => { flushNow(); postToHost({ type: 'redo' }); return true; } },
-			{ key: 'Mod-Shift-z', run: () => { flushNow(); postToHost({ type: 'redo' }); return true; } },
+			{ key: 'Mod-z', run: () => queueControl('undo') },
+			{ key: 'Mod-y', run: () => queueControl('redo') },
+			{ key: 'Mod-Shift-z', run: () => queueControl('redo') },
 			{ key: 'Mod-b', run: toggleEmphasisCommand('**') },
 			{ key: 'Mod-i', run: toggleEmphasisCommand('*') },
 			indentWithTab,
@@ -131,9 +154,10 @@ function createExtensions(dialect: DocumentDialect): Extension[] {
 		]),
 		EditorView.updateListener.of((update) => {
 			if (!update.docChanged) return;
+			for (const image of imageQueue) image.atPos = update.changes.mapPos(image.atPos, 1);
 			const isRemote = update.transactions.some((tr) => tr.annotation(remoteChange));
 			if (isRemote) return;
-			pending = pending ? pending.compose(update.changes) : update.changes;
+			syncClient?.recordLocal(update.changes);
 			scheduleFlush();
 		}),
 		EditorView.domEventHandlers({
@@ -181,7 +205,6 @@ function resetView(text: string, dialect: DocumentDialect) {
 		createView(text, dialect);
 		return;
 	}
-	pending = null;
 	if (flushTimer) {
 		clearTimeout(flushTimer);
 		flushTimer = undefined;
@@ -200,7 +223,11 @@ onHostMessage((message) => {
 	if (handleDrawioFileMessage(message)) return;
 	switch (message.type) {
 		case 'init':
-			baseVersion = message.version;
+			syncClient = new EditorSyncClient(message.text, message.version);
+			imageQueue.length = 0;
+			imageInFlight = undefined;
+			controlQueue.length = 0;
+			lastCodeTokenGeneration = 0;
 			setImageBaseUri(message.baseUri);
 			applyUserCss(message.css);
 			// A re-init means a different document (or the same one reloaded), so
@@ -209,24 +236,40 @@ onHostMessage((message) => {
 			resetView(message.text, message.dialect);
 			break;
 		case 'ackEdit':
-			baseVersion = message.version;
+			if (!syncClient) return;
+			if (syncClient.acknowledge(message.editId, message.version).resyncRequired) {
+				postToHost({ type: 'requestResync' });
+				return;
+			}
+			drainOutbound();
 			break;
 		case 'externalUpdate': {
-			if (!view) return;
-			pending = null;
-			if (flushTimer) {
-				clearTimeout(flushTimer);
-				flushTimer = undefined;
+			if (!view || !syncClient) return;
+			const transition = syncClient.receiveExternal(message);
+			if (transition.resyncRequired) {
+				postToHost({ type: 'requestResync' });
+				return;
 			}
-			view.dispatch({
-				changes: message.changes,
-				annotations: remoteChange.of(true),
-			});
-			baseVersion = message.version;
+			if (!transition.viewChanges.empty) view.dispatch({ changes: transition.viewChanges, annotations: remoteChange.of(true) });
+			drainOutbound();
+			break;
+		}
+		case 'resync': {
+			if (!view || !syncClient) return;
+			const transition = syncClient.receiveResync(message);
+			if (!transition.viewChanges.empty) view.dispatch({ changes: transition.viewChanges, annotations: remoteChange.of(true) });
+			drainOutbound();
 			break;
 		}
 		case 'codeTokens':
-			view?.dispatch({ effects: setCodeTokens.of(message.blocks), annotations: remoteChange.of(true) });
+			if (syncClient && message.version === syncClient.hostVersion && message.generation >= lastCodeTokenGeneration) {
+				lastCodeTokenGeneration = message.generation;
+				view?.dispatch({ effects: setCodeTokens.of(message.blocks), annotations: remoteChange.of(true) });
+			}
+			break;
+		case 'imageResult':
+			if (imageInFlight === message.requestId) imageInFlight = undefined;
+			drainOutbound();
 			break;
 		case 'applyCss':
 			applyUserCss(message.css);
@@ -242,7 +285,8 @@ onHostMessage((message) => {
 		}
 		case 'setCursor': {
 			if (!view) return;
-			const pos = Math.max(0, Math.min(message.pos, view.state.doc.length));
+			const mapped = syncClient?.mapHostPosition(message.pos) ?? message.pos;
+			const pos = Math.max(0, Math.min(mapped, view.state.doc.length));
 			view.dispatch({ selection: { anchor: pos }, scrollIntoView: true });
 			break;
 		}

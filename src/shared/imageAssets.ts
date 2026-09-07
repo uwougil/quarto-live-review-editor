@@ -7,6 +7,14 @@ const MIME_TO_EXTENSION: Record<string, string> = {
 	'image/svg+xml': 'svg',
 };
 
+let lastAllocatedTimestamp = 0;
+
+/** Returns a process-wide monotonic timestamp so concurrent editor panels cannot pick the same image basename. */
+export function allocateImageTimestamp(nowMs = Date.now()): number {
+	lastAllocatedTimestamp = Math.max(nowMs, lastAllocatedTimestamp + 1);
+	return lastAllocatedTimestamp;
+}
+
 /** Maps a known image MIME type to a file extension; `undefined` for anything unrecognized. */
 export function extensionForMimeType(mimeType: string): string | undefined {
 	return MIME_TO_EXTENSION[mimeType.toLowerCase()];

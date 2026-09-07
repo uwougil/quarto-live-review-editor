@@ -2,31 +2,17 @@ import type { EditorState } from '@codemirror/state';
 import { EditorView, WidgetType } from '@codemirror/view';
 import { wrapBlockWidget } from './blockWidgetWrap';
 import { withCodeModeButton } from './codeModeButton';
-
-export interface FrontmatterRange {
-	from: number;
-	to: number;
-	yamlText: string;
-}
+import { findFrontmatterRange, type FrontmatterRange } from '../quarto/frontmatter';
+export type { FrontmatterRange } from '../quarto/frontmatter';
 
 /**
  * Detects a YAML frontmatter block: the document's first line must be exactly
- * `---`, followed later by a line that is also exactly `---`. Unlike every other
+ * `---`, followed later by a standalone `---` or YAML `...` line. Unlike every other
  * block construct in this app, frontmatter has no `@lezer/markdown` node of its
  * own, so this is a plain line scan over `state.doc`, not a syntax-tree match.
  */
 export function detectFrontmatter(state: EditorState): FrontmatterRange | null {
-	const { doc } = state;
-	if (doc.lines < 2 || doc.line(1).text !== '---') return null;
-
-	for (let n = 2; n <= doc.lines; n++) {
-		const line = doc.line(n);
-		if (line.text === '---') {
-			const yamlText = n > 2 ? doc.sliceString(doc.line(2).from, doc.line(n - 1).to) : '';
-			return { from: doc.line(1).from, to: line.to, yamlText };
-		}
-	}
-	return null;
+	return findFrontmatterRange(state.doc.toString());
 }
 
 function isScalar(value: unknown): boolean {

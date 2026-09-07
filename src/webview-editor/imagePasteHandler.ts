@@ -2,6 +2,7 @@ import { EditorView } from '@codemirror/view';
 import { syntaxTree } from '@codemirror/language';
 import type { SyntaxNode } from '@lezer/common';
 import type { EditorState } from '@codemirror/state';
+import type { ChangeDesc, Extension } from '@codemirror/state';
 
 export type ImagePasteCallback = (
 	atPos: number,
@@ -15,6 +16,14 @@ export interface InsertionPoint {
 	/** True when `pos` was moved out of a table — the caller should separate
 	 * the inserted text from surrounding content with a blank line. */
 	needsOwnParagraph: boolean;
+}
+
+/** A paste/drop anchor that follows edits while FileReader is still running. */
+export class TrackedInsertionPoint {
+	constructor(public pos: number) {}
+	map(changes: ChangeDesc): void {
+		this.pos = changes.mapPos(this.pos, 1);
+	}
 }
 
 /**
@@ -77,14 +86,31 @@ function readAsBase64(file: File): Promise<string> {
 }
 
 /** Intercepts pasting/dropping an image, handing its position + MIME type + base64 data to `onImage`. */
-export function createImagePasteHandler(onImage: ImagePasteCallback) {
-	return EditorView.domEventHandlers({
+export function createImagePasteHandler(onImage: ImagePasteCallback): Extension {
+	const pending = new WeakMap<EditorView, Set<TrackedInsertionPoint>>();
+	const beginRead = (view: EditorView, pos: number, file: File, needsOwnParagraph: boolean) => {
+		const tracked = new TrackedInsertionPoint(pos);
+		const points = pending.get(view) ?? new Set<TrackedInsertionPoint>();
+		points.add(tracked);
+		pending.set(view, points);
+		void readAsBase64(file).then((dataBase64) => {
+			points.delete(tracked);
+			onImage(tracked.pos, file.type, dataBase64, needsOwnParagraph);
+		}, () => points.delete(tracked));
+	};
+
+	return [
+		EditorView.updateListener.of((update) => {
+			if (!update.docChanged) return;
+			for (const point of pending.get(update.view) ?? []) point.map(update.changes);
+		}),
+		EditorView.domEventHandlers({
 		paste(event, view) {
 			const file = findImageFile(event.clipboardData?.items);
 			if (!file) return false; // not an image — let normal text paste proceed untouched
 			event.preventDefault();
 			const { pos, needsOwnParagraph } = escapeTable(view.state, view.state.selection.main.from);
-			void readAsBase64(file).then((dataBase64) => onImage(pos, file.type, dataBase64, needsOwnParagraph));
+			beginRead(view, pos, file, needsOwnParagraph);
 			return true;
 		},
 		drop(event, view) {
@@ -93,8 +119,9 @@ export function createImagePasteHandler(onImage: ImagePasteCallback) {
 			event.preventDefault();
 			const dropPos = view.posAtCoords({ x: event.clientX, y: event.clientY }) ?? view.state.selection.main.from;
 			const { pos, needsOwnParagraph } = escapeTable(view.state, dropPos);
-			void readAsBase64(file).then((dataBase64) => onImage(pos, file.type, dataBase64, needsOwnParagraph));
+			beginRead(view, pos, file, needsOwnParagraph);
 			return true;
 		},
-	});
+		}),
+	];
 }

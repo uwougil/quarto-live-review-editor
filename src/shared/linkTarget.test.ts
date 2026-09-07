@@ -19,8 +19,8 @@ describe('resolveLinkTarget', () => {
 			expect(resolveLinkTarget(href)).toEqual({ kind: 'relative', path: href });
 		});
 
-		it('strips a trailing fragment so it cannot land in the filename', () => {
-			expect(resolveLinkTarget('guide.md#installation')).toEqual({ kind: 'relative', path: 'guide.md' });
+		it('keeps a trailing fragment separate from the filename', () => {
+			expect(resolveLinkTarget('guide.md#installation')).toEqual({ kind: 'relative', path: 'guide.md', fragment: 'installation' });
 		});
 
 		it('decodes percent-encoding, since the filesystem wants the real name', () => {
@@ -40,8 +40,12 @@ describe('resolveLinkTarget', () => {
 	});
 
 	describe('links with nothing to open', () => {
-		it('ignores a fragment-only link, which points inside this document', () => {
-			expect(resolveLinkTarget('#heading')).toEqual({ kind: 'ignore' });
+		it('returns a fragment-only link as a local navigation target', () => {
+			expect(resolveLinkTarget('#heading')).toEqual({ kind: 'fragment', fragment: 'heading' });
+		});
+
+		it('decodes a percent-encoded fragment', () => {
+			expect(resolveLinkTarget('#Berry%20curvature')).toEqual({ kind: 'fragment', fragment: 'Berry curvature' });
 		});
 
 		it.each(['', '   '])('ignores the empty href %o', (href) => {

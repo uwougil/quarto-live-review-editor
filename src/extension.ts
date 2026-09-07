@@ -4,6 +4,13 @@ import { StyleManagerViewProvider } from './sidebar/StyleManagerViewProvider';
 import { StyleStore } from './sidebar/styleStore';
 import { OutlineViewProvider } from './sidebar/OutlineViewProvider';
 import { setGrammarRoot } from './editor/shikiHost';
+import {
+	reconcileEditorAssociations,
+	type DefaultEditorMode,
+	type EditorAssociationState,
+} from './shared/editorAssociations';
+
+const EDITOR_ASSOCIATION_STATE_KEY = 'mdLivePreview.managedEditorAssociations.v1';
 
 function getActiveMarkdownUri(): vscode.Uri | undefined {
 	const activeDocument = vscode.window.activeTextEditor?.document;
@@ -123,25 +130,19 @@ async function maybeReopenAsLivePreview(tab: vscode.Tab, attempt = 0): Promise<v
 	reopeningUris.delete(uriKey);
 }
 
-async function syncDefaultEditorAssociation(): Promise<void> {
-	const mode = vscode.workspace.getConfiguration('mdLivePreview').get<string>('defaultEditor', 'prompt');
+async function syncDefaultEditorAssociation(context: vscode.ExtensionContext): Promise<void> {
+	const mode = vscode.workspace.getConfiguration('mdLivePreview').get<DefaultEditorMode>('defaultEditor', 'prompt');
 	const rootConfig = vscode.workspace.getConfiguration();
-	const associations = {
-		...(rootConfig.get<Record<string, string>>('workbench.editorAssociations') ?? {}),
-	};
-
-	if (mode === 'livePreview') {
-		associations['*.md'] = MarkdownLivePreviewProvider.viewType;
-		associations['*.qmd'] = MarkdownLivePreviewProvider.viewType;
-	} else if (mode === 'default') {
-		associations['*.md'] = 'default';
-		associations['*.qmd'] = 'default';
-	} else {
-		delete associations['*.md'];
-		delete associations['*.qmd'];
+	const current = rootConfig.get<Record<string, unknown>>('workbench.editorAssociations') ?? {};
+	const previous = context.globalState.get<EditorAssociationState>(EDITOR_ASSOCIATION_STATE_KEY);
+	const result = reconcileEditorAssociations(current, mode, MarkdownLivePreviewProvider.viewType, previous);
+	if (result.associationsChanged) {
+		await rootConfig.update('workbench.editorAssociations', result.associations, vscode.ConfigurationTarget.Global);
 	}
-
-	await rootConfig.update('workbench.editorAssociations', associations, vscode.ConfigurationTarget.Global);
+	if (result.stateChanged) {
+		const hasManagedEntries = Object.keys(result.state.entries).length > 0;
+		await context.globalState.update(EDITOR_ASSOCIATION_STATE_KEY, hasManagedEntries ? result.state : undefined);
+	}
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -201,11 +202,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration((e) => {
 			if (e.affectsConfiguration('mdLivePreview.defaultEditor')) {
-				void syncDefaultEditorAssociation();
+				void syncDefaultEditorAssociation(context);
 			}
 		}),
 	);
-	await syncDefaultEditorAssociation();
+	await syncDefaultEditorAssociation(context);
 }
 
 export function deactivate(): void {

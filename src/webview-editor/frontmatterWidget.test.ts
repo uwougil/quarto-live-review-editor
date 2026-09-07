@@ -28,6 +28,16 @@ describe('detectFrontmatter', () => {
 		expect(range?.yamlText).toBe('');
 	});
 
+	it('accepts the YAML document-end marker "..." as the closing line', () => {
+		const range = detectFrontmatter(stateFor('---\ntitle: Example\n...\nbody'));
+		expect(range?.yamlText).toBe('title: Example');
+		expect(range && stateFor('---\ntitle: Example\n...\nbody').sliceDoc(range.from, range.to)).toBe('---\ntitle: Example\n...');
+	});
+
+	it('does not treat body horizontal rules or document-end markers as a new front matter block', () => {
+		expect(detectFrontmatter(stateFor('# Body\n\n---\nsection\n...'))).toBeNull();
+	});
+
 	it('extracts the exact YAML text between the markers (PBT-03 invariant)', () => {
 		fc.assert(
 			fc.property(fc.array(bodyLine, { minLength: 0, maxLength: 5 }), fc.string(), (lines, tail) => {

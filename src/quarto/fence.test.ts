@@ -52,4 +52,12 @@ describe('findFenceBlocks', () => {
 		const [block] = findFenceBlocks('```{.python}\nprint(1)\n```');
 		expect(block.info).toMatchObject({ language: 'python', quartoCell: true, attributes: { classes: ['python'] } });
 	});
+
+	it('uses the shared YAML document-end marker when skipping front matter fences', () => {
+		const text = ['---', 'title: "```python"', '...', '```python', 'print(1)', '```'].join('\n');
+		const blocks = findFenceBlocks(text);
+		expect(blocks).toHaveLength(1);
+		expect(blocks[0].info.language).toBe('python');
+		expect(text.slice(blocks[0].contentFrom, blocks[0].contentTo)).toBe('print(1)\n');
+	});
 });

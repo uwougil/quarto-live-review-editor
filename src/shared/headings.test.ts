@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { extractHeadings } from './headings';
+import { extractHeadings, findMarkdownAnchorLine } from './headings';
 
 describe('extractHeadings', () => {
 	it('extracts a simple heading with its level and 1-based line number', () => {
@@ -78,5 +78,24 @@ describe('extractHeadings', () => {
 				expect(extractHeadings(doc)).toEqual([]);
 			}),
 		);
+	});
+});
+
+describe('findMarkdownAnchorLine', () => {
+	it('matches generated heading identifiers and duplicate suffixes', () => {
+		const doc = '# Berry Curvature\n\n## Berry Curvature';
+		expect(findMarkdownAnchorLine(doc, 'berry-curvature')).toBe(1);
+		expect(findMarkdownAnchorLine(doc, 'berry-curvature-1')).toBe(3);
+	});
+
+	it('matches an explicit Pandoc/Quarto heading identifier', () => {
+		expect(findMarkdownAnchorLine('## Result {#fig-result}\n', 'fig-result')).toBe(1);
+	});
+
+	it('ignores heading-looking lines inside fences and returns undefined for a missing anchor', () => {
+		const doc = '```\n# Hidden\n```\n# Visible';
+		expect(findMarkdownAnchorLine(doc, 'hidden')).toBeUndefined();
+		expect(findMarkdownAnchorLine(doc, 'visible')).toBe(4);
+		expect(findMarkdownAnchorLine(doc, 'missing')).toBeUndefined();
 	});
 });

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { DocumentSyncSession } from './documentSync';
 import { extractHeadings } from '../shared/headings';
 import type { HeadingItem } from '../shared/headings';
+import { selectActiveSession } from '../shared/activeSession';
 
 export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvider {
 	static readonly viewType = 'mdLivePreview.editor';
@@ -39,7 +40,7 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 		};
 		webviewPanel.webview.html = this.buildHtml(webviewPanel.webview);
 
-		const session = new DocumentSyncSession(document, webviewPanel, this.getCss);
+		const session = new DocumentSyncSession(document, webviewPanel, this.getCss, (uri, line) => this.openDocumentAtLine(uri, line));
 		this.sessions.add(session);
 
 		webviewPanel.onDidDispose(() => {
@@ -66,11 +67,27 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 		if (!(input instanceof vscode.TabInputCustom) || input.viewType !== MarkdownLivePreviewProvider.viewType) {
 			return undefined;
 		}
-		const uriKey = input.uri.toString();
-		for (const session of this.sessions) {
-			if (session.getDocument().uri.toString() === uriKey) return session;
+		return selectActiveSession(this.sessions, input.uri.toString());
+	}
+
+	private async openDocumentAtLine(uri: vscode.Uri, line?: number): Promise<void> {
+		await vscode.commands.executeCommand('vscode.open', uri);
+		if (line === undefined) return;
+		for (let attempt = 0; attempt < 6; attempt++) {
+			const session = selectActiveSession(this.sessions, uri.toString());
+			if (session?.active) {
+				session.jumpToLine(line);
+				return;
+			}
+			const editor = vscode.window.visibleTextEditors.find((candidate) => candidate.document.uri.toString() === uri.toString());
+			if (editor) {
+				const position = new vscode.Position(Math.max(0, line - 1), 0);
+				editor.selection = new vscode.Selection(position, position);
+				editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+				return;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 20 * (attempt + 1)));
 		}
-		return undefined;
 	}
 
 	/** Headings of the currently active Markdown Live Preview document, or `undefined` if none is active. */

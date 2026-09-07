@@ -9,7 +9,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type { LanguageRegistration } from '@shikijs/types';
 import type { CodeBlockTokens } from '../shared/messages';
-import { findFenceBlocks } from '../quarto/fence';
+import { findFenceBlocks, scanSourceLines } from '../quarto/fence';
 
 // VS Code's own built-in default themes (Dark+ / Light+), so highlighted code
 // matches the colors of the editor next to it out of the box.
@@ -117,14 +117,24 @@ export function pickCodeTheme(): string {
 	return isLight ? DEFAULT_LIGHT_THEME : DEFAULT_DARK_THEME;
 }
 
-export async function tokenizeDocument(document: vscode.TextDocument): Promise<CodeBlockTokens[]> {
-	const fences = findFenceBlocks(document.getText());
+export interface TokenizedDocument {
+	version: number;
+	blocks: CodeBlockTokens[];
+}
+
+export async function tokenizeDocument(document: vscode.TextDocument): Promise<TokenizedDocument> {
+	// Capture every value used for token positions before the first await. A
+	// TextDocument is live and may change while grammars are loading.
+	const text = document.getText();
+	const version = document.version;
+	const theme = pickCodeTheme();
+	const fences = findFenceBlocks(text);
 	if (fences.length === 0) {
-		return [];
+		return { version, blocks: [] };
 	}
 
 	const highlighter = await getHighlighter();
-	const theme = pickCodeTheme();
+	const sourceLines = scanSourceLines(text);
 	const results: CodeBlockTokens[] = [];
 
 	for (const fence of fences) {
@@ -133,10 +143,7 @@ export async function tokenizeDocument(document: vscode.TextDocument): Promise<C
 			continue;
 		}
 
-		const lines: string[] = [];
-		for (let li = fence.openingLine + 1; li < fence.closingLine; li++) {
-			lines.push(document.lineAt(li).text);
-		}
+		const lines = sourceLines.slice(fence.openingLine + 1, fence.closingLine).map((line) => line.text);
 		const code = lines.join('\n');
 
 		let tokenLines;
@@ -151,16 +158,15 @@ export async function tokenizeDocument(document: vscode.TextDocument): Promise<C
 			let col = 0;
 			for (const token of tokenLines[li]) {
 				if (token.content.length > 0) {
-					const startPos = new vscode.Position(fence.openingLine + 1 + li, col);
-					const endPos = new vscode.Position(fence.openingLine + 1 + li, col + token.content.length);
+					const sourceLine = sourceLines[fence.openingLine + 1 + li];
 					const styleParts = [`color:${token.color ?? '#999999'}`];
 					const fontStyle = token.fontStyle ?? 0;
 					if (fontStyle & 1) styleParts.push('font-style:italic');
 					if (fontStyle & 2) styleParts.push('font-weight:bold');
 					if (fontStyle & 4) styleParts.push('text-decoration:underline');
 					tokens.push({
-						from: document.offsetAt(startPos),
-						to: document.offsetAt(endPos),
+						from: sourceLine.from + col,
+						to: sourceLine.from + col + token.content.length,
 						style: styleParts.join(';'),
 					});
 				}
@@ -171,5 +177,5 @@ export async function tokenizeDocument(document: vscode.TextDocument): Promise<C
 		results.push({ from: fence.from, to: fence.to, tokens });
 	}
 
-	return results;
+	return { version, blocks: results };
 }

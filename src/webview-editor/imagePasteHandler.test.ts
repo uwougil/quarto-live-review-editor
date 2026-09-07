@@ -3,7 +3,7 @@ import { EditorState } from '@codemirror/state';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
 import { ensureSyntaxTree } from '@codemirror/language';
-import { escapeTable } from './imagePasteHandler';
+import { TrackedInsertionPoint, escapeTable } from './imagePasteHandler';
 
 function stateFor(text: string): EditorState {
 	const state = EditorState.create({ doc: text, extensions: [markdown({ extensions: GFM })] });
@@ -41,5 +41,13 @@ describe('escapeTable', () => {
 		const state = stateFor(text);
 		const pos = text.indexOf('After');
 		expect(escapeTable(state, pos)).toEqual({ pos, needsOwnParagraph: false });
+	});
+});
+
+describe('TrackedInsertionPoint', () => {
+	it('maps an asynchronous image insertion point through intervening edits', () => {
+		const point = new TrackedInsertionPoint(3);
+		point.map(EditorState.create({ doc: 'abcd' }).update({ changes: { from: 0, insert: 'XY' } }).changes);
+		expect(point.pos).toBe(5);
 	});
 });

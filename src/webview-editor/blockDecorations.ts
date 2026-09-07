@@ -5,10 +5,19 @@ import { parse as parseYaml } from 'yaml';
 import { MermaidWidget } from './mermaidWidget';
 import { DrawioWidget } from './drawioWidget';
 import { isDiagramLang } from './diagramLang';
-import { buildTableWidget, isLineAligned, alignedBlockRange } from './livePreviewPlugin';
+import { buildTableWidget, isLineAligned, alignedBlockRange, selectionDecorationContextChanged } from './livePreviewPlugin';
 import { blockCursorTouchesRange, noteRevealed, onPointerRelease } from './cmUtils';
 import { detectFrontmatter, FrontmatterWidget, FrontmatterEmptyWidget, FrontmatterErrorWidget } from './frontmatterWidget';
 import { parseFenceInfo } from '../quarto/fence';
+import { recordFullDecorationRebuild } from './debug';
+import {
+	decorationsWithin,
+	initialDecorationRanges,
+	replaceDecorationRanges,
+	refreshSyntaxDecorations,
+	selectionDecorationRanges,
+	type DecorationRange,
+} from './decorationRefresh';
 
 /**
  * CodeMirror 6 forbids block decorations (block widgets / block-replacing
@@ -18,9 +27,18 @@ import { parseFenceInfo } from '../quarto/fence';
  * diagrams and tables are block-level, so they are provided here through a
  * StateField instead, which is the sanctioned source for block decorations.
  */
-function buildBlockDecorations(state: EditorState): DecorationSet {
+function buildBlockDecorations(state: EditorState, ranges: readonly DecorationRange[]): DecorationSet {
+	const started = performance.now();
 	const decorations: Range<Decoration>[] = [];
+	const seen = new Set<string>();
 	const tree = syntaxTree(state);
+	const overlaps = (from: number, to: number) => ranges.some((range) => to >= range.from && from <= range.to);
+	const push = (from: number, to: number, decoration: Decoration) => {
+		const key = `${from}:${to}`;
+		if (seen.has(key)) return;
+		seen.add(key);
+		decorations.push(decoration.range(from, to));
+	};
 
 	// Frontmatter has no dedicated `@lezer/markdown` node, so it's detected by a
 	// plain line scan (see frontmatterWidget.ts) rather than via tree.iterate()
@@ -38,7 +56,7 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
 	const fm = detectFrontmatter(state);
 	const fmRevealed = fm ? blockCursorTouchesRange(state, fm.from, fm.to) : false;
 	if (fm) noteRevealed(fm.from, fm.to, fmRevealed);
-	if (fm && !fmRevealed) {
+	if (fm && !fmRevealed && overlaps(fm.from, fm.to)) {
 		let widget: WidgetType;
 		try {
 			const data = parseYaml(fm.yamlText) ?? {};
@@ -47,10 +65,12 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
 		} catch (err) {
 			widget = new FrontmatterErrorWidget(err instanceof Error ? err.message : String(err));
 		}
-		decorations.push(Decoration.replace({ widget, block: true }).range(fm.from, fm.to));
+		push(fm.from, fm.to, Decoration.replace({ widget, block: true }));
 	}
 
-	tree.iterate({
+	for (const buildRange of ranges) tree.iterate({
+		from: buildRange.from,
+		to: buildRange.to,
 		enter: (node) => {
 			if (fm && node.from >= fm.from && node.to <= fm.to) return false;
 			if (node.name === 'FencedCode') {
@@ -67,7 +87,7 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
 				const code = textNode ? state.sliceDoc(textNode.from, textNode.to) : '';
 				if (!code.trim()) return;
 				const widget = diagram === 'mermaid' ? new MermaidWidget(code) : new DrawioWidget(code);
-				decorations.push(Decoration.replace({ widget, block: true }).range(node.from, node.to));
+				push(node.from, node.to, Decoration.replace({ widget, block: true }));
 				return false;
 			}
 			if (node.name === 'Table') {
@@ -76,15 +96,15 @@ function buildBlockDecorations(state: EditorState): DecorationSet {
 				if (tableRevealed) return;
 				const range = alignedBlockRange(state, node.from, node.to);
 				if (!range) return;
-				decorations.push(
-					Decoration.replace({ widget: buildTableWidget(state, node), block: true }).range(range.from, range.to),
-				);
+				push(range.from, range.to, Decoration.replace({ widget: buildTableWidget(state, node), block: true }));
 				return false;
 			}
 		},
 	});
 
-	return Decoration.set(decorations, true);
+	const result = Decoration.set(decorations, true);
+	recordFullDecorationRebuild('block', performance.now() - started);
+	return result;
 }
 
 /** Asks the field below to rebuild even though the editor state is unchanged. */
@@ -126,7 +146,10 @@ export const dragReleaseRefresh = ViewPlugin.fromClass(
 					// refresh re-rendered the very block whose source the user had
 					// just opened — it flashed back to a rendered table for a frame,
 					// until the next keystroke lifted the suppression again.
-					if (sameRanges(buildBlockDecorations(view.state), view.state.field(blockDecorationsField))) return;
+					const ranges = selectionDecorationRanges(view.state);
+					const next = buildBlockDecorations(view.state, ranges);
+					const current = decorationsWithin(view.state.field(blockDecorationsField), ranges);
+					if (sameRanges(next, current)) return;
 					view.dispatch({ effects: refreshBlocks.of(null) });
 				}, 0);
 			});
@@ -139,22 +162,22 @@ export const dragReleaseRefresh = ViewPlugin.fromClass(
 
 export const blockDecorationsField = StateField.define<DecorationSet>({
 	create(state) {
-		return buildBlockDecorations(state);
+		return buildBlockDecorations(state, initialDecorationRanges(state));
 	},
 	update(value, tr) {
-		// Rebuild on edits, on selection moves (a cursor entering a block reveals
-		// its raw source), and when background parsing advances the syntax tree —
-		// the latter matters because blocks near the end of a long document aren't
-		// in the tree yet on the first render.
+		let next = tr.docChanged ? value.map(tr.changes) : value;
+		const ranges = tr.effects
+			.filter((effect) => effect.is(refreshSyntaxDecorations))
+			.flatMap((effect) => effect.value);
+		const selectionChanged = Boolean(tr.selection && !tr.startState.selection.eq(tr.selection));
 		if (
-			tr.docChanged ||
-			tr.selection ||
-			tr.effects.some((e) => e.is(refreshBlocks)) ||
-			syntaxTree(tr.startState) !== syntaxTree(tr.state)
+			tr.effects.some((effect) => effect.is(refreshBlocks)) ||
+			(selectionChanged && selectionDecorationContextChanged(tr.startState, tr.state, 'block'))
 		) {
-			return buildBlockDecorations(tr.state);
+			ranges.push(...selectionDecorationRanges(tr.startState, tr.state));
 		}
-		return value;
+		if (ranges.length > 0) next = replaceDecorationRanges(next, buildBlockDecorations(tr.state, ranges), ranges);
+		return next;
 	},
 	provide: (field) => EditorView.decorations.from(field),
 });

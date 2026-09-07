@@ -18,6 +18,8 @@ export interface LivePreviewDebugSnapshot {
 	syntaxParserRunning: boolean;
 	decorationRebuildCount: number;
 	decorationRebuilds: Array<{ reason: string; durationMs: number; viewportTo: number }>;
+	fullDecorationRebuildCount: number;
+	fullDecorationRebuilds: Array<{ kind: 'line' | 'block'; durationMs: number }>;
 }
 
 interface DebugWindow extends Window {
@@ -28,10 +30,13 @@ interface DebugWindow extends Window {
 	__mlpDebugScrollToPosition?: (pos: number) => void;
 	__mlpDebugSelection?: () => { anchor: number; head: number; from: number; to: number; x: number | null; y: number | null; blockFrom: number; blockLength: number; blockTop: number; blockHeight: number; defaultLineHeight: number; contentHeight: number } | null;
 	__mlpDebugLineBlock?: (pos: number) => { from: number; length: number; top: number; height: number } | null;
+	__mlpDebugSetSelection?: (anchor: number, head?: number) => void;
+	__mlpDebugEdit?: (from: number, to: number, insert: string) => void;
 }
 
 let debugView: EditorView | undefined;
 const rebuilds: LivePreviewDebugSnapshot['decorationRebuilds'] = [];
+const fullRebuilds: LivePreviewDebugSnapshot['fullDecorationRebuilds'] = [];
 
 export function debugHooksEnabled(): boolean {
 	return typeof window !== 'undefined' && (window as DebugWindow).__MLP_ENABLE_TEST_HOOKS__ === true;
@@ -45,6 +50,12 @@ export function recordDecorationRebuild(reason: string, view: EditorView, durati
 	if (!debugHooksEnabled()) return;
 	rebuilds.push({ reason, durationMs, viewportTo: view.viewport.to });
 	if (rebuilds.length > 200) rebuilds.splice(0, rebuilds.length - 200);
+}
+
+export function recordFullDecorationRebuild(kind: 'line' | 'block', durationMs: number): void {
+	if (!debugHooksEnabled()) return;
+	fullRebuilds.push({ kind, durationMs });
+	if (fullRebuilds.length > 200) fullRebuilds.splice(0, fullRebuilds.length - 200);
 }
 
 function snapshot(): LivePreviewDebugSnapshot | null {
@@ -69,6 +80,8 @@ function snapshot(): LivePreviewDebugSnapshot | null {
 		syntaxParserRunning: syntaxParserRunning(view),
 		decorationRebuildCount: rebuilds.length,
 		decorationRebuilds: rebuilds.slice(),
+		fullDecorationRebuildCount: fullRebuilds.length,
+		fullDecorationRebuilds: fullRebuilds.slice(),
 	};
 }
 
@@ -96,5 +109,15 @@ export function installDebugView(view: EditorView): void {
 		if (!debugView) return null;
 		const block = debugView.lineBlockAt(Math.max(0, Math.min(pos, debugView.state.doc.length)));
 		return { from: block.from, length: block.length, top: block.top, height: block.height };
+	};
+	debugWindow.__mlpDebugSetSelection = (anchor, head = anchor) => {
+		if (!debugView) return;
+		const length = debugView.state.doc.length;
+		debugView.dispatch({ selection: { anchor: Math.max(0, Math.min(anchor, length)), head: Math.max(0, Math.min(head, length)) } });
+	};
+	debugWindow.__mlpDebugEdit = (from, to, insert) => {
+		if (!debugView) return;
+		const length = debugView.state.doc.length;
+		debugView.dispatch({ changes: { from: Math.max(0, Math.min(from, length)), to: Math.max(0, Math.min(to, length)), insert } });
 	};
 }

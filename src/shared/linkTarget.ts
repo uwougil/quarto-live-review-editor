@@ -6,12 +6,13 @@
  * unit-tested directly.
  */
 export type LinkTarget =
-	/** Nothing to open — a `#heading` link points inside this document. */
 	| { kind: 'ignore' }
+	/** A fragment-only target inside the current document. */
+	| { kind: 'fragment'; fragment: string }
 	/** Already carries a scheme (`https:`, `mailto:`, …): hand it to the shell. */
 	| { kind: 'external'; href: string }
-	/** A path relative to the document's own folder, with its fragment removed. */
-	| { kind: 'relative'; path: string };
+	/** A path relative to the document's own folder, with an optional fragment. */
+	| { kind: 'relative'; path: string; fragment?: string };
 
 /**
  * A scheme is a letter followed by at least one more letter/digit/`+`/`-`/`.`
@@ -23,21 +24,26 @@ const SCHEME_RE = /^[a-z][a-z0-9+.-]+:/i;
 
 export function resolveLinkTarget(href: string): LinkTarget {
 	const trimmed = href.trim();
-	if (!trimmed || trimmed.startsWith('#')) return { kind: 'ignore' };
+	if (!trimmed) return { kind: 'ignore' };
 	if (SCHEME_RE.test(trimmed)) return { kind: 'external', href: trimmed };
 
-	// Drop a trailing `#fragment` so it cannot end up inside the filename, and
-	// undo percent-encoding — a Markdown link to a file whose name contains a
-	// space is normally written `my%20note.md`, and the filesystem wants the
-	// space back.
 	const hash = trimmed.indexOf('#');
 	const rawPath = hash === -1 ? trimmed : trimmed.slice(0, hash);
-	if (!rawPath) return { kind: 'ignore' };
+	const rawFragment = hash === -1 ? undefined : trimmed.slice(hash + 1);
+	const decode = (value: string): string => {
+		try {
+			return decodeURIComponent(value);
+		} catch {
+			return value;
+		}
+	};
+	const fragment = rawFragment === undefined ? undefined : decode(rawFragment);
+	if (!rawPath) return fragment ? { kind: 'fragment', fragment } : { kind: 'ignore' };
 	let path = rawPath;
 	try {
 		path = decodeURIComponent(rawPath);
 	} catch {
 		// Malformed escapes (a bare `%` in a filename): use the path as written.
 	}
-	return { kind: 'relative', path };
+	return fragment ? { kind: 'relative', path, fragment } : { kind: 'relative', path };
 }

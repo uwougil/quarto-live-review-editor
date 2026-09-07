@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
 import type { EditorToHostMessage, HostToEditorMessage, TextChange } from '../shared/messages';
 import { pickCodeTheme, tokenizeDocument } from './shikiHost';
-import { extensionForMimeType, generateImageFileName } from '../shared/imageAssets';
+import { allocateImageTimestamp, extensionForMimeType, generateImageFileName } from '../shared/imageAssets';
 import { resolveLinkTarget } from '../shared/linkTarget';
 import { isPathInside } from '../shared/pathContainment';
 import { documentDialectForPath } from '../quarto/dialect';
+import { findMarkdownAnchorLine } from '../shared/headings';
+import { TokenizationGate } from './tokenizationGuard';
 
 /**
  * Largest `.drawio` file that will be read and parsed.
@@ -51,11 +53,13 @@ export class DocumentSyncSession {
 	// applyEdit(): without this, its baseVersion check could run before the prior
 	// edit has actually bumped document.version, defeating the staleness guard.
 	private editQueue: Promise<void> = Promise.resolve();
+	private readonly tokenizationGate = new TokenizationGate();
 
 	constructor(
 		private readonly document: vscode.TextDocument,
 		private readonly webviewPanel: vscode.WebviewPanel,
 		private readonly getCss: () => string,
+		private readonly openDocumentAtLine?: (uri: vscode.Uri, line?: number) => Promise<void>,
 	) {
 		this.lastAppliedVersion = document.version;
 
@@ -87,7 +91,10 @@ export class DocumentSyncSession {
 				this.scheduleRehighlight(true);
 				break;
 			case 'edit':
-				this.editQueue = this.editQueue.catch(() => undefined).then(() => this.applyEdit(message.changes, message.baseVersion));
+				this.editQueue = this.editQueue.catch(() => undefined).then(() => this.applyEdit(message.changes, message.baseVersion, message.editId));
+				break;
+			case 'requestResync':
+				this.sendResync();
 				break;
 			case 'undo':
 				// Chained onto editQueue (not fired immediately) so it can't run ahead
@@ -102,7 +109,7 @@ export class DocumentSyncSession {
 				void this.openLink(message.href);
 				break;
 			case 'pasteImage':
-				void this.handlePasteImage(message.atPos, message.mimeType, message.dataBase64, message.needsOwnParagraph);
+				this.editQueue = this.editQueue.catch(() => undefined).then(() => this.handlePasteImage(message));
 				break;
 			case 'readDrawioFile':
 				void this.handleReadDrawioFile(message.requestId, message.src);
@@ -173,6 +180,10 @@ export class DocumentSyncSession {
 	private async openLink(href: string): Promise<void> {
 		const target = resolveLinkTarget(href);
 		if (target.kind === 'ignore') return;
+		if (target.kind === 'fragment') {
+			this.jumpToFragment(target.fragment);
+			return;
+		}
 		if (target.kind === 'external') {
 			await vscode.env.openExternal(vscode.Uri.parse(target.href));
 			return;
@@ -189,8 +200,19 @@ export class DocumentSyncSession {
 			void vscode.window.showWarningMessage(`找不到链接目标：${target.path}`);
 			return;
 		}
+		let targetLine: number | undefined;
+		if (target.fragment) {
+			try {
+				const targetDocument = await vscode.workspace.openTextDocument(uri);
+				targetLine = findMarkdownAnchorLine(targetDocument.getText(), target.fragment);
+				if (targetLine === undefined) void vscode.window.showWarningMessage(`找不到链接锚点：#${target.fragment}`);
+			} catch {
+				void vscode.window.showWarningMessage(`无法读取链接目标：${target.path}`);
+			}
+		}
 		try {
-			await vscode.commands.executeCommand('vscode.open', uri);
+			if (this.openDocumentAtLine) await this.openDocumentAtLine(uri, targetLine);
+			else await vscode.commands.executeCommand('vscode.open', uri);
 		} catch {
 			// Not something the editor can display (a PDF, an archive, an
 			// executable): let the OS decide what to do with it.
@@ -198,28 +220,48 @@ export class DocumentSyncSession {
 		}
 	}
 
+	private jumpToFragment(fragment: string): void {
+		const line = findMarkdownAnchorLine(this.document.getText(), fragment);
+		if (line === undefined) {
+			void vscode.window.showWarningMessage(`找不到链接锚点：#${fragment}`);
+			return;
+		}
+		this.jumpToLine(line);
+	}
+
 	/**
 	 * Saves a pasted/dropped image under an `assets/` folder beside the
 	 * document and inserts a Markdown image link at `atPos`. This edit
 	 * originates on the host (the final relative path is only known after
-	 * writing the file), unlike every other edit in this class — so it is
-	 * applied as a plain `vscode.WorkspaceEdit` (not via `applyEdit()`) and
-	 * deliberately does *not* set `applyingLocalEdit`, letting the existing
+	 * writing the file). It is serialized behind text edits and accepted only
+	 * for the document version that supplied its position. The operation does
+	 * not set `applyingLocalEdit`, letting the existing
 	 * `handleDocumentChanged` → `externalUpdate` path deliver it to the
 	 * webview exactly as if it were an edit from another tab.
 	 */
-	private async handlePasteImage(
-		atPos: number,
-		mimeType: string,
-		dataBase64: string,
-		needsOwnParagraph: boolean,
-	): Promise<void> {
-		const ext = extensionForMimeType(mimeType);
-		if (!ext) return; // unrecognized type — ignore rather than save a file with an unknown format
+	private async handlePasteImage(message: Extract<EditorToHostMessage, { type: 'pasteImage' }>): Promise<void> {
+		const fail = (error: string) => {
+			this.post({ type: 'imageResult', requestId: message.requestId, ok: false, error });
+		};
+		if (message.baseVersion !== this.document.version || message.atPos < 0 || message.atPos > this.document.getText().length) {
+			this.sendResync();
+			fail('文档已变化，请重试图片插入。');
+			return;
+		}
+		const ext = extensionForMimeType(message.mimeType);
+		if (!ext) {
+			fail('不支持的图片格式。');
+			return;
+		}
 
 		const docDir = vscode.Uri.joinPath(this.document.uri, '..');
 		const assetsDir = vscode.Uri.joinPath(docDir, 'assets');
-		await vscode.workspace.fs.createDirectory(assetsDir);
+		try {
+			await vscode.workspace.fs.createDirectory(assetsDir);
+		} catch {
+			fail('无法创建图片资源目录。');
+			return;
+		}
 
 		let existingNames: string[];
 		try {
@@ -227,21 +269,51 @@ export class DocumentSyncSession {
 		} catch {
 			existingNames = [];
 		}
-		const fileName = generateImageFileName(new Set(existingNames), Date.now(), ext);
+		const fileName = generateImageFileName(new Set(existingNames), allocateImageTimestamp(), ext);
 		const fileUri = vscode.Uri.joinPath(assetsDir, fileName);
-		await vscode.workspace.fs.writeFile(fileUri, Buffer.from(dataBase64, 'base64'));
+		try {
+			await vscode.workspace.fs.writeFile(fileUri, Buffer.from(message.dataBase64, 'base64'));
+		} catch {
+			fail('无法保存图片资源。');
+			return;
+		}
+		const cleanup = async () => {
+			try {
+				await vscode.workspace.fs.delete(fileUri, { recursive: false, useTrash: false });
+			} catch {
+				// Best effort: only the exact file created by this request is targeted.
+			}
+		};
+		if (message.baseVersion !== this.document.version) {
+			await cleanup();
+			this.sendResync();
+			fail('文档在图片保存期间发生变化，请重试。');
+			return;
+		}
 
 		// `atPos` was relocated to just after a table (see `escapeTable` in
 		// imagePasteHandler.ts) when the cursor was inside one — a leading
 		// blank line separates the image into its own paragraph instead of
 		// running it straight onto the table's last line.
-		const insertText = needsOwnParagraph ? `\n\n![](assets/${fileName})` : `![](assets/${fileName})`;
-		const position = this.document.positionAt(atPos);
+		const insertText = message.needsOwnParagraph ? `\n\n![](assets/${fileName})` : `![](assets/${fileName})`;
+		const position = this.document.positionAt(message.atPos);
 		const edit = new vscode.WorkspaceEdit();
 		edit.insert(this.document.uri, position, insertText);
-		await vscode.workspace.applyEdit(edit);
+		let applied = false;
+		try {
+			applied = await vscode.workspace.applyEdit(edit);
+		} catch {
+			applied = false;
+		}
+		if (!applied) {
+			await cleanup();
+			this.sendResync();
+			fail('无法把图片引用写入文档。');
+			return;
+		}
 
-		this.post({ type: 'setCursor', pos: atPos + insertText.length });
+		this.post({ type: 'imageResult', requestId: message.requestId, ok: true });
+		this.post({ type: 'setCursor', pos: message.atPos + insertText.length });
 	}
 
 	private sendInit() {
@@ -258,17 +330,22 @@ export class DocumentSyncSession {
 		this.lastAppliedVersion = this.document.version;
 	}
 
-	private async applyEdit(changes: TextChange[], baseVersion: number) {
+	private sendResync(rejectedEditId?: number): void {
+		this.post({ type: 'resync', text: this.document.getText(), version: this.document.version, rejectedEditId });
+		this.lastAppliedVersion = this.document.version;
+	}
+
+	private async applyEdit(changes: TextChange[], baseVersion: number, editId: number) {
 		if (baseVersion !== this.document.version) {
 			// Webview's batch was computed against a document snapshot that has since
 			// moved on (e.g. an external edit landed concurrently). Rather than risk
-			// corrupting the file with stale offsets, discard the batch and force a
-			// full resync; the user may lose only the last, still-unacknowledged burst
-			// of local keystrokes in this rare race.
-			this.sendInit();
+			// corrupting the file with stale offsets, reject the batch and provide the
+			// current snapshot. The webview rebases and retries its unacknowledged edit.
+			this.sendResync(editId);
 			return;
 		}
 		if (changes.length === 0) {
+			this.post({ type: 'ackEdit', editId, version: this.document.version });
 			return;
 		}
 
@@ -282,13 +359,20 @@ export class DocumentSyncSession {
 		}
 
 		this.applyingLocalEdit = true;
+		let applied = false;
 		try {
-			await vscode.workspace.applyEdit(edit);
+			applied = await vscode.workspace.applyEdit(edit);
+		} catch {
+			applied = false;
 		} finally {
 			this.applyingLocalEdit = false;
 		}
+		if (!applied) {
+			this.sendResync(editId);
+			return;
+		}
 		this.lastAppliedVersion = this.document.version;
-		this.post({ type: 'ackEdit', version: this.document.version });
+		this.post({ type: 'ackEdit', editId, version: this.document.version });
 		this.scheduleRehighlight();
 	}
 
@@ -305,6 +389,7 @@ export class DocumentSyncSession {
 			// webview already reflects it locally, so there is nothing to forward.
 			return;
 		}
+		const baseVersion = this.lastAppliedVersion;
 		this.lastAppliedVersion = event.document.version;
 		if (event.contentChanges.length === 0) {
 			return;
@@ -315,7 +400,7 @@ export class DocumentSyncSession {
 			to: c.rangeOffset + c.rangeLength,
 			insert: c.text,
 		}));
-		this.post({ type: 'externalUpdate', changes, version: event.document.version });
+		this.post({ type: 'externalUpdate', changes, baseVersion, version: event.document.version });
 		this.scheduleRehighlight();
 	}
 
@@ -324,10 +409,12 @@ export class DocumentSyncSession {
 			clearTimeout(this.rehighlightTimer);
 			this.rehighlightTimer = undefined;
 		}
+		const ticket = this.tokenizationGate.begin(this.document.version);
 		const run = () => {
 			this.rehighlightTimer = undefined;
-			void tokenizeDocument(this.document).then((blocks) => {
-				this.post({ type: 'codeTokens', blocks });
+			void tokenizeDocument(this.document).then((result) => {
+				if (!this.tokenizationGate.canPublish(ticket, this.document.version) || result.version !== ticket.version) return;
+				this.post({ type: 'codeTokens', version: result.version, generation: ticket.generation, blocks: result.blocks });
 			});
 		};
 		if (immediate) {
@@ -345,6 +432,14 @@ export class DocumentSyncSession {
 		return this.document;
 	}
 
+	get uriKey(): string {
+		return this.document.uri.toString();
+	}
+
+	get active(): boolean {
+		return this.webviewPanel.active;
+	}
+
 	jumpToLine(line: number): void {
 		this.post({ type: 'jumpToLine', line });
 	}
@@ -353,6 +448,7 @@ export class DocumentSyncSession {
 		if (this.rehighlightTimer) {
 			clearTimeout(this.rehighlightTimer);
 		}
+		this.tokenizationGate.invalidate();
 		this.disposables.forEach((d) => d.dispose());
 	}
 }

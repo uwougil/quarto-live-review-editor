@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { extensionForMimeType, generateImageFileName } from './imageAssets';
+import { allocateImageTimestamp, extensionForMimeType, generateImageFileName } from './imageAssets';
+
+describe('allocateImageTimestamp', () => {
+	it('allocates distinct basenames when panels request an image in the same millisecond', () => {
+		const first = allocateImageTimestamp(1700000000000);
+		const second = allocateImageTimestamp(1700000000000);
+		expect(second).toBe(first + 1);
+	});
+});
 
 describe('extensionForMimeType', () => {
 	it('maps known image MIME types to their extension', () => {

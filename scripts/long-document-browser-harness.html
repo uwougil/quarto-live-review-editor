@@ -75,8 +75,10 @@
 
 	function buildBenchmarkFixture(lineCount) {
 		const lines = ['# Browser benchmark', ''];
-		for (let line = 1; line <= lineCount - 3; line++) {
-			lines.push(`benchmark line ${line}: a wrapped paragraph with inline $x_${line}$, [a link](https://example.org/${line}), Unicode 中文、日本語、β, and enough ordinary words to exercise CodeMirror's height map without making one logical line artificially short.`);
+		for (let line = 1; line <= lineCount - 4; line++) {
+			lines.push(line % 100 === 0
+				? `benchmark line ${line}: **bold** $x_${line}$ [link](#browser-benchmark) 中文 β.`
+				: `benchmark line ${line}: ordinary wrapped text 中文 β.`);
 		}
 		lines.push('', 'EOF-MARKER');
 		return { text: lines.join('\n'), markerLines: {} };
@@ -374,6 +376,20 @@
 		return { label, requestedTop: top, parserCaughtUp: Boolean(parsed), elapsedMs: Number((performance.now() - started).toFixed(1)), snapshot: snapshot(), domTextLength: visibleDomText().length };
 	}
 
+	async function captureInteraction(label, action) {
+		const before = snapshot();
+		const started = performance.now();
+		action();
+		await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+		const after = snapshot();
+		return {
+			label,
+			elapsedMs: Number((performance.now() - started).toFixed(1)),
+			inlineRebuildDelta: (after?.decorationRebuildCount || 0) - (before?.decorationRebuildCount || 0),
+			fullRebuildDelta: (after?.fullDecorationRebuildCount || 0) - (before?.fullDecorationRebuildCount || 0),
+		};
+	}
+
 	async function run() {
 		const started = performance.now();
 		const source = await loadSource();
@@ -383,6 +399,12 @@
 		const readyMs = Number((performance.now() - started).toFixed(1));
 		const initial = snapshot();
 		if (!initial) throw new Error('debug snapshot was not installed');
+		const interactionPos = Math.min(Math.max(1, Math.floor(source.text.length * 0.1)), Math.max(1, source.text.length - 32));
+		const interactions = [];
+		interactions.push(await captureInteraction('cursor', () => window.__mlpDebugSetSelection?.(interactionPos)));
+		interactions.push(await captureInteraction('selection', () => window.__mlpDebugSetSelection?.(interactionPos, Math.min(source.text.length, interactionPos + 20))));
+		interactions.push(await captureInteraction('edit-insert', () => window.__mlpDebugEdit?.(interactionPos, interactionPos, 'x')));
+		interactions.push(await captureInteraction('edit-revert', () => window.__mlpDebugEdit?.(interactionPos, interactionPos + 1, '')));
 		const maxScroll = () => Math.max(0, (snapshot()?.scrollHeight ?? 0) - (snapshot()?.clientHeight ?? 0));
 		const samples = [];
 		for (const fraction of [0, 0.25, 0.5, 0.75, 0.9, 0.99]) samples.push(await captureScroll(`scroll-${fraction}`, maxScroll() * fraction));
@@ -406,7 +428,7 @@
 		const ok = final && final.docLength === source.text.length && final.docLines === source.text.split('\n').length && final.scrollTop + final.clientHeight >= final.scrollHeight - 3 && final.viewport.to >= final.docLength - 2 && final.syntaxTreeAvailableToViewport && markerFailures.length === 0;
 		if (longTaskObserver) longTaskObserver.disconnect();
 		const longTaskTotalMs = Number(longTaskEntries.reduce((sum, duration) => sum + duration, 0).toFixed(1));
-		return { ok: Boolean(ok), baseline: window.__MLP_DISABLE_VIEWPORT_PARSE_FOR_TEST__ === true, sourceKind: source.kind, sourceLength: source.text.length, sourceLines: source.text.split('\n').length, readyMs, initial, samples, eof, markers, final, markerFailures, longTaskCount: longTaskEntries.length, longTaskTotalMs };
+		return { ok: Boolean(ok), baseline: window.__MLP_DISABLE_VIEWPORT_PARSE_FOR_TEST__ === true, sourceKind: source.kind, sourceLength: source.text.length, sourceLines: source.text.split('\n').length, readyMs, initial, interactions, samples, eof, markers, final, markerFailures, longTaskCount: longTaskEntries.length, longTaskTotalMs };
 	}
 
 	async function runBugProbe() {
