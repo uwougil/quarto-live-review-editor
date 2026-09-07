@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { reconcileEditorAssociations, type EditorAssociationState } from './editorAssociations';
+import {
+	reconcileEditorAssociations,
+	reconcileInspectedEditorAssociations,
+	type EditorAssociationState,
+} from './editorAssociations';
 
 const VIEW_TYPE = 'mdLivePreview.editor';
 
@@ -35,6 +39,56 @@ describe('reconcileEditorAssociations', () => {
 		expect(plain.associations).toMatchObject({ '*.md': 'default', '*.qmd': 'default' });
 		const liveAgain = step(plain.associations, 'livePreview', plain.state);
 		expect(step(liveAgain.associations, 'prompt', liveAgain.state).associations).toEqual(original);
+	});
+});
+
+describe('reconcileInspectedEditorAssociations', () => {
+	it('does not copy workspace-only associations into the global value', () => {
+		const result = reconcileInspectedEditorAssociations(
+			{
+				globalValue: { '*.txt': 'global-editor' },
+				workspaceValue: { '*.foo': 'workspace-editor' },
+			},
+			'livePreview',
+			VIEW_TYPE,
+		);
+
+		expect(result.associations).toEqual({
+			'*.txt': 'global-editor',
+			'*.md': VIEW_TYPE,
+			'*.qmd': VIEW_TYPE,
+		});
+	});
+
+	it('does not copy workspace-folder or language-specific associations into the global value', () => {
+		const result = reconcileInspectedEditorAssociations(
+			{
+				globalValue: { '*.txt': 'global-editor' },
+				workspaceFolderValue: { '*.foo': 'folder-editor' },
+				globalLanguageValue: { '*.bar': 'language-editor' },
+				workspaceLanguageValue: { '*.baz': 'workspace-language-editor' },
+				workspaceFolderLanguageValue: { '*.qux': 'folder-language-editor' },
+			},
+			'default',
+			VIEW_TYPE,
+		);
+
+		expect(result.associations).toEqual({
+			'*.txt': 'global-editor',
+			'*.md': 'default',
+			'*.qmd': 'default',
+		});
+	});
+
+	it('uses an empty global object when only local associations exist', () => {
+		const result = reconcileInspectedEditorAssociations(
+			{ workspaceValue: { '*.foo': 'workspace-editor' } },
+			'prompt',
+			VIEW_TYPE,
+		);
+
+		expect(result.associations).toEqual({});
+		expect(result.associationsChanged).toBe(false);
 	});
 });
 
