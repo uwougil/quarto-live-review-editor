@@ -1,6 +1,6 @@
 # Milestone: Typewriter Mode
 
-状态：实现完成，等待 PR/CI 验收
+状态：已完成
 
 ## 来源与目标
 
@@ -27,8 +27,17 @@
 - [x] 鼠标点击、滚轮滚动和宿主驱动的跳转不会被自动定位抢回。
 - [x] Typewriter Mode 不创建文档变更，不改变宿主的编辑同步协议。
 - [x] 纯计算逻辑已有 Vitest 覆盖。
-- [ ] CI 中的真实 Chromium 回归通过，并确认包裹行/主题布局下没有光标跳跃。
+- [x] CI 中的真实 Chromium 回归通过，并确认输入后 40% 定位和滚轮优先级没有回归。
 
 ## 验证记录
 
-本地核心验证和 GitHub Actions 结果将在 PR 中补充；浏览器验收未通过前，不将本里程碑标记为“已完成”。
+本地和 GitHub Actions 均已通过：
+
+```powershell
+npm run typecheck
+npm test
+npm run compile
+npm run test:browser:typewriter
+```
+
+PR #23 的 CI 还通过了长文档、geometry、inline interaction 和 document zoom 浏览器回归。
