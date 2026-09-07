@@ -15,6 +15,7 @@ import { parseFenceInfo } from '../quarto/fence';
 import { recordDecorationRebuild, recordFullDecorationRebuild } from './debug';
 import { FootnoteBackWidget, FootnoteReferenceWidget, footnoteIndexField } from './footnotes';
 import {
+	changedDecorationRanges,
 	initialDecorationRanges,
 	replaceDecorationRanges,
 	refreshSyntaxDecorations,
@@ -1348,9 +1349,10 @@ export const lineDecorationsField = StateField.define<DecorationSet>({
 	create: (state) => buildLineDecorations(state, initialDecorationRanges(state)),
 	update(value, transaction) {
 		let next = transaction.docChanged ? value.map(transaction.changes) : value;
-		const ranges = transaction.effects
+		const ranges = changedDecorationRanges(transaction);
+		ranges.push(...transaction.effects
 			.filter((effect) => effect.is(refreshSyntaxDecorations))
-			.flatMap((effect) => effect.value);
+			.flatMap((effect) => effect.value));
 		const selectionChanged = Boolean(transaction.selection && !transaction.startState.selection.eq(transaction.selection));
 		if (selectionChanged && selectionDecorationContextChanged(transaction.startState, transaction.state, 'line')) {
 			ranges.push(...selectionDecorationRanges(transaction.startState, transaction.state));

@@ -9,6 +9,7 @@ import { blockDecorationsField } from './blockDecorations';
 import { footnoteIndexField } from './footnotes';
 import { buildLongDocument } from '../quarto/longDocumentFixture';
 import { findMathRanges, mathRangesField } from '../quarto/math';
+import { changedDecorationRanges } from './decorationRefresh';
 
 function fakeUpdate(
 	startState: EditorState,
@@ -25,6 +26,37 @@ function fakeUpdate(
 }
 
 describe('live preview syntax invalidation', () => {
+	function semanticState(doc: string): EditorState {
+		return EditorState.create({
+			doc,
+			selection: { anchor: doc.length },
+			extensions: [markdown({ extensions: GFM }), footnoteIndexField, lineDecorationsField, blockDecorationsField],
+		});
+	}
+
+	function replaceText(state: EditorState, search: string, insert: string): EditorState {
+		const from = state.doc.toString().indexOf(search);
+		expect(from).toBeGreaterThanOrEqual(0);
+		return state.update({ changes: { from, to: from + search.length, insert } }).state;
+	}
+
+	function lineClasses(state: EditorState, lineNumber: number): string {
+		const lineFrom = state.doc.line(lineNumber).from;
+		const classes: string[] = [];
+		for (let iter = state.field(lineDecorationsField).iter(); iter.value; iter.next()) {
+			if (iter.from === lineFrom) classes.push(String(iter.value.spec.class ?? ''));
+		}
+		return classes.join(' ');
+	}
+
+	function blockWidgetNames(state: EditorState): string[] {
+		const names: string[] = [];
+		for (let iter = state.field(blockDecorationsField).iter(); iter.value; iter.next()) {
+			names.push(iter.value.spec.widget?.constructor.name ?? '');
+		}
+		return names;
+	}
+
 	// Vitest runs in Node here, so it cannot host the real EditorView parseWorker.
 	// The first test models the worker's state-only Language.setState transition;
 	// the production predicate is intentionally small enough to test directly.
@@ -62,6 +94,78 @@ describe('live preview syntax invalidation', () => {
 		const fenceOpen = outside.update({ selection: { anchor: doc.indexOf('```ts') } }).state;
 		const fenceBody = fenceOpen.update({ selection: { anchor: doc.indexOf('const') } }).state;
 		expect(selectionDecorationContextChanged(fenceOpen, fenceBody, 'line')).toBe(true);
+	});
+
+	it.each([
+		['heading to paragraph', '# Heading\n\ntail', '# ', '', 'mlp-line-h1', false, 'mlp-line-paragraph', true],
+		['paragraph to heading', 'Heading\n\ntail', 'Heading', '# Heading', 'mlp-line-paragraph', false, 'mlp-line-h1', true],
+		['paragraph to list', 'item\n\ntail', 'item', '- item', 'mlp-line-paragraph', false, 'mlp-line-list', true],
+		['list to paragraph', '- item\n\ntail', '- ', '', 'mlp-line-list', false, 'mlp-line-paragraph', true],
+		['paragraph to blockquote', 'quote\n\ntail', 'quote', '> quote', 'mlp-line-paragraph', false, 'mlp-line-quote', true],
+		['blockquote to paragraph', '> quote\n\ntail', '> ', '', 'mlp-line-quote', false, 'mlp-line-paragraph', true],
+	])('refreshes line semantics after %s', (_name, doc, search, insert, stale, staleExpected, fresh, freshExpected) => {
+		const after = replaceText(semanticState(doc), search, insert);
+		expect(lineClasses(after, 1).includes(stale)).toBe(staleExpected);
+		expect(lineClasses(after, 1).includes(fresh)).toBe(freshExpected);
+	});
+
+	it('refreshes paragraph-owned separator-line semantics in both directions', () => {
+		const paragraph = replaceText(semanticState('# Heading\n\ntail'), '# ', '');
+		expect(lineClasses(paragraph, 2)).toContain('mlp-line-paragraph');
+
+		const heading = replaceText(semanticState('Heading\n\ntail'), 'Heading', '# Heading');
+		expect(lineClasses(heading, 2)).not.toContain('mlp-line-paragraph');
+	});
+
+	it('refreshes every affected line when a fenced code block is created and removed', () => {
+		const plain = semanticState('intro\nbody\n```\n\ntail');
+		const fenced = replaceText(plain, 'body', '```ts\nbody');
+		// Hidden fence-marker lines deliberately stay undecorated; the body must
+		// acquire code semantics even though the edit itself happened above it.
+		expect(lineClasses(fenced, 3)).toContain('mlp-line-code');
+
+		const reopened = replaceText(fenced, '```ts\n', '');
+		expect(lineClasses(reopened, 2)).not.toContain('mlp-line-code');
+		expect(lineClasses(reopened, 2)).toContain('mlp-line-paragraph');
+	});
+
+	it('refreshes line and block semantics when a code fence changes to and from Mermaid', () => {
+		const code = semanticState('```js\ngraph TD; A-->B\n```\n\ntail');
+		const mermaid = replaceText(code, 'js', 'mermaid');
+		expect(blockWidgetNames(mermaid)).toContain('MermaidWidget');
+		expect(lineClasses(mermaid, 2)).not.toContain('mlp-line-code');
+
+		const restored = replaceText(mermaid, 'mermaid', 'js');
+		expect(blockWidgetNames(restored)).not.toContain('MermaidWidget');
+		expect(lineClasses(restored, 2)).toContain('mlp-line-code');
+	});
+
+	it('refreshes the rendered block after a table structural edit', () => {
+		const plain = semanticState('| a | b |\n| nope | nope |\n| 1 | 2 |\n\ntail');
+		const table = replaceText(plain, '| nope | nope |', '| --- | --- |');
+		expect(blockWidgetNames(table)).toContain('TableWidget');
+
+		const broken = replaceText(table, '| --- | --- |', '| nope | nope |');
+		expect(blockWidgetNames(broken)).not.toContain('TableWidget');
+	});
+
+	it('keeps semantic invalidation local in a long document', () => {
+		const doc = ['# target', ...Array.from({ length: 4_000 }, (_, i) => `line ${i}`), '# tail'].join('\n');
+		const before = semanticState(doc);
+		const transaction = before.update({ changes: { from: 0, to: 1, insert: '' } });
+		const ranges = changedDecorationRanges(transaction);
+		expect(ranges.length).toBeGreaterThan(0);
+		expect(Math.max(...ranges.map((range) => range.to))).toBeLessThan(doc.length - '# tail'.length);
+	});
+
+	it('rebuilds the non-syntax front matter widget after a YAML edit', () => {
+		const before = semanticState('---\ntitle: one\n---\n\nbody');
+		const previousWidget = before.field(blockDecorationsField).iter().value?.spec.widget;
+		const after = replaceText(before, 'one', 'two');
+		const nextWidget = after.field(blockDecorationsField).iter().value?.spec.widget;
+		expect(previousWidget).toBeDefined();
+		expect(nextWidget).toBeDefined();
+		expect(nextWidget).not.toBe(previousWidget);
 	});
 });
 

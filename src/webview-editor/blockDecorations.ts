@@ -11,6 +11,7 @@ import { detectFrontmatter, FrontmatterWidget, FrontmatterEmptyWidget, Frontmatt
 import { parseFenceInfo } from '../quarto/fence';
 import { recordFullDecorationRebuild } from './debug';
 import {
+	changedDecorationRanges,
 	decorationsWithin,
 	initialDecorationRanges,
 	replaceDecorationRanges,
@@ -166,9 +167,10 @@ export const blockDecorationsField = StateField.define<DecorationSet>({
 	},
 	update(value, tr) {
 		let next = tr.docChanged ? value.map(tr.changes) : value;
-		const ranges = tr.effects
+		const ranges = changedDecorationRanges(tr);
+		ranges.push(...tr.effects
 			.filter((effect) => effect.is(refreshSyntaxDecorations))
-			.flatMap((effect) => effect.value);
+			.flatMap((effect) => effect.value));
 		const selectionChanged = Boolean(tr.selection && !tr.startState.selection.eq(tr.selection));
 		if (
 			tr.effects.some((effect) => effect.is(refreshBlocks)) ||
