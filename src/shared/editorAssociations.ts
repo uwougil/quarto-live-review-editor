@@ -18,6 +18,15 @@ export interface EditorAssociationResult {
 	stateChanged: boolean;
 }
 
+export interface EditorAssociationsInspection {
+	globalValue?: EditorAssociations;
+	workspaceValue?: EditorAssociations;
+	workspaceFolderValue?: EditorAssociations;
+	globalLanguageValue?: EditorAssociations;
+	workspaceLanguageValue?: EditorAssociations;
+	workspaceFolderLanguageValue?: EditorAssociations;
+}
+
 const PATTERNS = ['*.md', '*.qmd'] as const;
 
 function hasOwn(value: object, key: string): boolean {
@@ -88,5 +97,19 @@ export function reconcileEditorAssociations(
 		associationsChanged: !sameRecord(current, associations),
 		stateChanged: !sameRecord(previous, state),
 	};
+}
+
+/**
+ * Reconciles only the user-level value from VS Code configuration inspection.
+ * The effective value may also contain workspace, workspace-folder, and
+ * language-specific associations, none of which belong in a Global update.
+ */
+export function reconcileInspectedEditorAssociations(
+	inspection: EditorAssociationsInspection | undefined,
+	mode: DefaultEditorMode,
+	viewType: string,
+	previous?: EditorAssociationState,
+): EditorAssociationResult {
+	return reconcileEditorAssociations(inspection?.globalValue ?? {}, mode, viewType, previous);
 }
 

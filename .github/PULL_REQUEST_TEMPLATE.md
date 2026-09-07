@@ -1,25 +1,35 @@
-## 关联 Issue
+## Linked Issue
 
-<!-- 使用 Closes #123 / Fixes #123 关联对应的 Work Contract。 -->
+<!-- Use `Fixes #<number>` or `Refs #<number>` when applicable. -->
 
-## 变更摘要
+Closes #<!-- issue number -->
 
-<!-- 说明做了什么，以及为什么需要这项变更。保持与 Issue 范围一致。 -->
+## Change summary
 
-## 验证证据
+<!-- What changed, and why is this the smallest coherent change? -->
 
-- [ ] 已运行适用的本地检查，并在下方记录命令与结果。
-- [ ] 已确认对应 CI 运行状态。
+## Acceptance criteria
 
-```text
-# 例如：npm run typecheck && npm test
-```
+<!-- Map the linked Issue's acceptance criteria to the implementation and tests. -->
 
-## PRD / EDD 影响
+- [ ]
 
-- [ ] 不改变 PRD/EDD 语义。
-- [ ] 已更新受影响的 `docs/` canonical 文档，并附上对应的人类决策。
+## Verification
 
-## 交接说明
+<!-- List the exact commands run and their results. Note any unrelated/pre-existing failure. -->
 
-<!-- 记录已知限制、未覆盖场景，或下一个代理需要知道的上下文。 -->
+- [ ] `npm run typecheck`
+- [ ] `npm test`
+- [ ] `npm run compile`
+- [ ] Relevant browser regression(s)
+
+## Contract impact
+
+- PRD/EDD semantics unchanged.
+- PRD/EDD changes, explicitly resolved in: <!-- link or decision reference -->
+- PRD/EDD impact: <!-- none, or link to the updated canonical document and summarize the decision -->
+- Scope or follow-up: <!-- note anything intentionally not included -->
+
+## Handoff notes
+
+<!-- Mention changed surfaces, residual risks, known unrelated failures, and follow-up work. -->

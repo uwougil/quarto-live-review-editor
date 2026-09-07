@@ -23,12 +23,23 @@ export type HostToEditorMessage =
 	// `baseUri` is the webview-loadable URI (with a trailing slash) of the
 	// folder containing the document, used to resolve relative image paths
 	// (e.g. `assets/foo.png`) to something the webview is actually allowed to load.
-	| { type: 'init'; text: string; version: number; css: string; codeTheme: string; baseUri: string; dialect: DocumentDialect }
+	| {
+		type: 'init';
+		text: string;
+		version: number;
+		css: string;
+		codeTheme: string;
+		baseUri: string;
+		dialect: DocumentDialect;
+		typewriterMode: boolean;
+		zoomPercent: number;
+	}
 	| { type: 'externalUpdate'; changes: TextChange[]; baseVersion: number; version: number }
 	| { type: 'ackEdit'; editId: number; version: number }
 	| { type: 'resync'; text: string; version: number; rejectedEditId?: number }
 	| { type: 'codeTokens'; version: number; generation: number; blocks: CodeBlockTokens[] }
 	| { type: 'applyCss'; css: string }
+	| { type: 'typewriterModeChanged'; enabled: boolean }
 	| { type: 'jumpToLine'; line: number }
 	// Reply to `readDrawioFile`. `text` is the file's contents, or `error` says
 	// why it could not be read; exactly one of the two is set. `requestId`
@@ -36,6 +47,7 @@ export type HostToEditorMessage =
 	// document can have requests in flight at the same time.
 	| { type: 'drawioFile'; requestId: number; text?: string; error?: string }
 	| { type: 'imageResult'; requestId: number; ok: boolean; error?: string }
+	| { type: 'setZoom'; percent: number }
 	| { type: 'setCursor'; pos: number };
 
 export type EditorToHostMessage =
@@ -50,7 +62,8 @@ export type EditorToHostMessage =
 	// itself, and an <img> cannot render mxGraph XML, so the host reads the file
 	// and sends its text back for the widget to parse. `src` is the raw, relative
 	// path exactly as written in the Markdown; the host resolves it.
-	| { type: 'readDrawioFile'; requestId: number; src: string };
+	| { type: 'readDrawioFile'; requestId: number; src: string }
+	| { type: 'setZoom'; percent: number };
 
 export interface StyleEntry {
 	id: string;
@@ -64,6 +77,7 @@ export interface StyleEntry {
 export interface SidebarSettings {
 	defaultEditor: string;
 	codeTheme: string;
+	typewriterMode: boolean;
 }
 
 /** Which VS Code theme is active, so previews gate `body.vscode-*` rules correctly. */
@@ -84,7 +98,7 @@ export type SidebarToHostMessage =
 	| { type: 'duplicateStyle'; id: string }
 	| { type: 'renameStyle'; id: string }
 	| { type: 'deleteStyle'; id: string }
-	| { type: 'setSetting'; key: keyof SidebarSettings; value: string };
+	| { type: 'setSetting'; key: keyof SidebarSettings; value: string | boolean };
 
 // Live CSS-theme preview panel (opened beside the CSS file while editing it).
 export type HostToPreviewMessage =

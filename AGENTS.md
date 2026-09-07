@@ -27,14 +27,25 @@ npm run test:browser
 npm run test:browser:geometry
 npm run test:browser:inline
 npm run test:browser:inline-interaction
+npm run test:browser:typewriter
+npm run test:browser:arrow-scroll
+npm run test:browser:zoom
 ```
 
 CI 在 Ubuntu/Node 22 上执行同一组核心检查，并在浏览器回归前编译 `dist/`。
+
+## Issue-backed delivery
+
+- GitHub Issue 是本次工作的 Work Contract；Issue-backed 修改使用隔离分支或 worktree，并通过 Pull Request 交付。
+- PR 描述必须链接 Issue，说明变更范围、验收标准映射、验证命令/结果，以及对 PRD/EDD 的影响；这些信息应足以让另一位 agent 在没有私聊上下文的情况下接手。
+- 必需验证未通过时不得合并。任何 PRD/EDD 语义变化都必须先由人明确决策；普通实现不得静默改写产品或工程意图。
+- 交付前检查 `git status`、最终 diff、忽略文件和 tracked secrets；不要提交 `dist/`、`node_modules/`、VSIX、日志或机器专属文件。
 
 ## Architecture boundaries
 
 - `src/extension.ts`、`src/editor/` 和 `src/sidebar/` 属于 VS Code 扩展宿主侧。
 - `src/webview-editor/` 属于 CodeMirror 编辑器和渲染装饰层；不要把宿主 API 直接引入这里。
+- `src/webview-editor/typewriterMode.ts` 只管理可选的编辑器视口定位；它不得修改文档或绕过宿主同步，且几何行为必须用真实 Chromium 验证。
 - `src/quarto/` 只负责轻量 Quarto 方言识别和源码安全的围栏/数学范围解析，不是完整 Quarto/Pandoc 执行器。
 - `src/shared/` 放置宿主和 webview 都需要的纯逻辑。
 - `dist/`、`node_modules/` 和 `.vsix` 是生成物或本地安装包，不应手工编辑或提交。
@@ -47,3 +58,9 @@ CI 在 Ubuntu/Node 22 上执行同一组核心检查，并在浏览器回归前�
 - 不提交 `.env`、密钥、token、cookie、机器专属路径或生成的私有数据。
 - 不使用强制推送、历史重写或破坏性清理；当前发布远程为 `github`，上游远程为 `origin`。
 - 修改用户意图时先更新 `docs/PRD.md`、`docs/EDD.md` 或相应里程碑，再实现代码。
+
+## Issue and PR handoff
+
+- Issue-backed changes normally use an isolated `codex/<issue>-<short-name>` branch or worktree and are delivered through a Pull Request; do not commit directly to `main`.
+- The PR description must let another agent reconstruct the handoff from the linked Issue, PRD/EDD impact, commits and diff, verification commands/results, and CI status without private conversation state.
+- Required verification must pass before merge. A PRD/EDD semantic change requires explicit human resolution and must be recorded in the canonical document.

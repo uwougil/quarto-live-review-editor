@@ -39,7 +39,8 @@ Webview Editor
 │   ├── 创建 EditorState/EditorView
 │   ├── 安装 Markdown/GFM/Quarto 方言扩展
 │   ├── 组合 inline 和 block decorations
-│   └── 处理光标、鼠标、键盘和主题更新
+│   ├── 处理光标、鼠标、键盘和主题更新
+│   └── 协调可选的 Typewriter Mode 视口定位
 ├── src/webview-editor/livePreviewPlugin.ts
 │   └── 行内标记、链接、图片、脚注和轻量视觉装饰
 ├── src/webview-editor/blockDecorations.ts
@@ -48,6 +49,8 @@ Webview Editor
 │   └── 脚注索引、引用/定义导航和隐藏源码交互保护
 ├── src/webview-editor/frontmatterWidget.ts
 │   └── 文档首部 YAML front matter 检测、解析和 widget
+├── src/webview-editor/documentZoom.ts
+│   └── Live Preview 文档字号事件边界、快捷键和 CSS 缩放状态
 └── src/quarto/
     ├── dialect.ts：按路径区分 Markdown/Quarto
     ├── fence.ts：普通 Markdown 围栏与 Quarto/Pandoc 属性
@@ -61,8 +64,18 @@ Webview Editor
 3. `livePreviewPlugin` 和 `blockDecorationsField` 根据源位置生成 decoration/widget；widget 只改变显示，不改变文档内容。
 4. 用户编辑产生 `ChangeSet`，经过短暂 debounce 后发送回宿主，由 `DocumentSyncSession` 写入 VS Code 文档。
 5. 用户主题通过 `adaptMarkdownCss` 注入到独立 style 元素，并请求 CodeMirror 的测量流程，避免高度图过期。
+6. `mdLivePreview.typewriterMode` 是宿主侧配置，打开 webview 时随 `init` 消息发送；配置变化通过 `typewriterModeChanged` 广播到所有活动会话。webview 只接收布尔状态，不直接读取 VS Code API。
+7. 文档字号由扩展宿主的 `globalState` 共享持久化；webview 在根节点设置 CSS 自定义属性，并在字号变化后的下一帧请求 CodeMirror 重新测量，保持行框、widget 和命中测试几何有效。
 
 源位置是所有交互的身份：点击、脚注回跳、表格编辑、图片和图表操作都必须使用 CodeMirror 文档偏移或 DOM 到文档位置的 API，不使用屏幕像素推断文档位置。
+
+### 3.1 Typewriter Mode
+
+- `src/webview-editor/typewriterMode.ts` 只负责编辑器视口控制，不创建文档变更，也不参与宿主同步。
+- 写作型键盘事件、文本输入、删除、粘贴和拖放会安排一次下一帧定位；控制器使用 `coordsAtPos` 和 `scrollDOM` 的实际几何，把主光标中点尽量放到视口高度的 40%。
+- 目标位置在文档开头或结尾不可达时使用 `scrollTop` 上下界钳制；文档短于视口时保持现有滚动位置。
+- 鼠标/指针点击、滚轮、原生滚动和宿主驱动的 `jumpToLine`/`setCursor` 会暂停自动定位，避免和用户主动浏览或显式导航竞争。
+- 控制器必须只挂在当前 `EditorView`，销毁时移除监听器；不得通过 `scrollIntoView` 事务制造二次编辑更新或同步循环。
 
 ## 4. 装饰与源码回退规则
 
@@ -70,6 +83,7 @@ Webview Editor
 - 块级替换使用 `Decoration.replace({ widget, block: true })`；范围重叠前必须过滤，避免 CodeMirror `RangeSet` 的非重叠约束异常。
 - 长文档只在可见范围创建脚注等 inline widget；视口语法解析使用有界的 `forceParsing`，不主动把整篇文档装入 DOM。
 - 上下键使用 CodeMirror 的行移动/期望列语义；脚注保护只能修正候选文档位置，不能使用屏幕像素猜测。
+- Typewriter Mode 的纯计算逻辑由 Vitest 覆盖；实际滚动、包裹行和主题/布局变化必须由真实 Chromium 回归覆盖，不能只用 jsdom 或 mock 视口证明。
 - 生产 bundle 位于 `dist/`，由 esbuild 生成，不在源码审查中手工编辑。
 
 ## 5. Quarto 与 front matter 设计
@@ -83,6 +97,13 @@ Webview Editor
 - YAML 成功且有顶层键时显示 `mlp-frontmatter` 表格；空 YAML 使用零高度 widget；解析失败显示 `role="alert"` 错误 widget。
 - front matter 范围与表格/代码块范围重叠时，块装饰遍历必须优先跳过重叠节点。
 - front matter 的显示样式属于扩展基底 CSS，使用 VS Code CSS 变量，不纳入用户 Markdown CSS 主题改写。
+
+### 5.1 文档字号缩放
+
+- `documentZoom.ts` 只监听 Live Preview 根节点；只有其后代获得焦点时，Ctrl/Mod+滚轮和 Ctrl/Mod++、Ctrl/Mod+-、Ctrl/Mod+0 才会被处理。
+- 文档字号范围为 70% 至 200%，默认值和步进均为 100%/10%；边界操作仍取消浏览器默认缩放，但不越界。
+- 宿主通过 `mdLivePreview.documentZoomPercent` 保存单一全局值，并向所有已打开的 `DocumentSyncSession` 广播；webview 的本地交互再回传 `setZoom`。
+- 缩放使用 CSS 自定义属性参与字体、间距和核心 widget 布局，不使用 `transform: scale`，不改变 CodeMirror 文档、选区或源文本；变化后调用 `requestMeasure`。
 
 详细的 feature 级验收和历史任务映射见 [`milestones/frontmatter-preview.md`](milestones/frontmatter-preview.md)。
 
@@ -106,9 +127,12 @@ npm run test:browser
 npm run test:browser:geometry
 npm run test:browser:inline
 npm run test:browser:inline-interaction
+npm run test:browser:typewriter
+npm run test:browser:arrow-scroll
+npm run test:browser:zoom
 ```
 
-CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行四个浏览器命令。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。
+CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行七个浏览器命令。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。
 
 ## 8. Issue 与 PR 交付契约
 

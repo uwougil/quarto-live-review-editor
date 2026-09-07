@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { findFenceBlocks } from './fence';
 import { findMathRanges } from './math';
 
-const fixture = readFileSync(new URL('../../examples/quarto-scientific.qmd', import.meta.url), 'utf8');
+const fixture = readFileSync(new URL('../../examples/quarto-scientific.qmd', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
 describe('scientific Quarto regression fixture', () => {
 	it('contains source-safe Quarto constructs and all expected code-cell languages', () => {

@@ -23,11 +23,14 @@ import { EditorSyncClient } from './syncClient';
 import { viewportSyntaxPlugin } from './viewportSyntax';
 import { mathDecorationsField } from './mathDecorations';
 import { createFootnoteMouseHandler, footnoteIndexField, footnoteNavigationField, moveVerticallyAvoidingFootnotes } from './footnotes';
+import { TypewriterModeController } from './typewriterMode';
+import { DocumentZoomController } from './documentZoom';
 
 const remoteChange = Annotation.define<boolean>();
 const FLUSH_DEBOUNCE_MS = 250;
 
 let view: EditorView | undefined;
+let documentZoom: DocumentZoomController | undefined;
 let syncClient: EditorSyncClient | undefined;
 let flushTimer: ReturnType<typeof setTimeout> | undefined;
 let nextImageRequestId = 1;
@@ -35,6 +38,7 @@ let imageInFlight: number | undefined;
 const imageQueue: Array<{ requestId: number; atPos: number; mimeType: string; dataBase64: string; needsOwnParagraph: boolean }> = [];
 const controlQueue: Array<'undo' | 'redo'> = [];
 let lastCodeTokenGeneration = 0;
+let typewriterMode: TypewriterModeController | undefined;
 
 function requestMeasureAfterLayout(): void {
 	const target = view;
@@ -153,10 +157,11 @@ function createExtensions(dialect: DocumentDialect): Extension[] {
 			...defaultKeymap,
 		]),
 		EditorView.updateListener.of((update) => {
-			if (!update.docChanged) return;
-			for (const image of imageQueue) image.atPos = update.changes.mapPos(image.atPos, 1);
 			const isRemote = update.transactions.some((tr) => tr.annotation(remoteChange));
 			if (isRemote) return;
+			typewriterMode?.onUpdate(update);
+			if (!update.docChanged) return;
+			for (const image of imageQueue) image.atPos = update.changes.mapPos(image.atPos, 1);
 			syncClient?.recordLocal(update.changes);
 			scheduleFlush();
 		}),
@@ -185,8 +190,19 @@ function initialStateFor(text: string, dialect: DocumentDialect): EditorState {
 	return state.update({ selection: { anchor } }).state;
 }
 
-function createView(text: string, dialect: DocumentDialect) {
+function createView(text: string, dialect: DocumentDialect, zoomPercent: unknown) {
 	const root = document.getElementById('mlp-root')!;
+	// Install the persisted factor before EditorView's first measurement. This
+	// avoids a one-frame 100% height map when a panel is reopened at another
+	// zoom, while the controller still owns all later event and layout updates.
+	documentZoom = new DocumentZoomController(root, {
+		initialPercent: zoomPercent,
+		onChange: (percent) => postToHost({ type: 'setZoom', percent }),
+		// Font-size changes affect both visible line boxes and replaced widgets.
+		// Wait one animation frame so CodeMirror measures the committed layout,
+		// preserving caret, hit-test and scroll geometry after every step.
+		onApplied: () => view?.requestMeasure(),
+	});
 	view = new EditorView({
 		state: initialStateFor(text, dialect),
 		parent: root,
@@ -198,18 +214,21 @@ function createView(text: string, dialect: DocumentDialect) {
 	// one supported CodeMirror measurement after construction so its height map
 	// and height oracle agree with the final styled `.cm-line` boxes.
 	requestMeasureAfterLayout();
+	typewriterMode = new TypewriterModeController(view);
 }
 
-function resetView(text: string, dialect: DocumentDialect) {
+function resetView(text: string, dialect: DocumentDialect, zoomPercent: unknown) {
 	if (!view) {
-		createView(text, dialect);
+		createView(text, dialect, zoomPercent);
 		return;
 	}
 	if (flushTimer) {
 		clearTimeout(flushTimer);
 		flushTimer = undefined;
 	}
+	documentZoom?.setPercent(zoomPercent);
 	view.setState(initialStateFor(text, dialect));
+	typewriterMode?.suspendForNavigation();
 }
 
 // The drawio file client cannot reach the host on its own (it is imported by
@@ -233,7 +252,8 @@ onHostMessage((message) => {
 			// A re-init means a different document (or the same one reloaded), so
 			// files read for the previous one must not be served from cache.
 			clearDrawioFileCache();
-			resetView(message.text, message.dialect);
+			resetView(message.text, message.dialect, message.zoomPercent);
+			typewriterMode?.setEnabled(message.typewriterMode);
 			break;
 		case 'ackEdit':
 			if (!syncClient) return;
@@ -274,8 +294,15 @@ onHostMessage((message) => {
 		case 'applyCss':
 			applyUserCss(message.css);
 			break;
+		case 'typewriterModeChanged':
+			typewriterMode?.setEnabled(message.enabled);
+			break;
+		case 'setZoom':
+			documentZoom?.setPercent(message.percent);
+			break;
 		case 'jumpToLine': {
 			if (!view) return;
+			typewriterMode?.suspendForNavigation();
 			const { doc } = view.state;
 			if (message.line < 1 || message.line > doc.lines) return;
 			const pos = doc.line(message.line).from;
@@ -285,6 +312,7 @@ onHostMessage((message) => {
 		}
 		case 'setCursor': {
 			if (!view) return;
+			typewriterMode?.suspendForNavigation();
 			const mapped = syncClient?.mapHostPosition(message.pos) ?? message.pos;
 			const pos = Math.max(0, Math.min(mapped, view.state.doc.length));
 			view.dispatch({ selection: { anchor: pos }, scrollIntoView: true });

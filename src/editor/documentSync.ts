@@ -7,6 +7,8 @@ import { isPathInside } from '../shared/pathContainment';
 import { documentDialectForPath } from '../quarto/dialect';
 import { findMarkdownAnchorLine } from '../shared/headings';
 import { TokenizationGate } from './tokenizationGuard';
+import { DocumentSyncCoordinator, type DocumentSyncPeer } from './documentSyncCoordinator';
+import { DOCUMENT_ZOOM_DEFAULT, normalizeDocumentZoom } from '../shared/documentZoom';
 
 /**
  * Largest `.drawio` file that will be read and parsed.
@@ -38,41 +40,29 @@ const REHIGHLIGHT_DEBOUNCE_MS = 150;
  * VS Code's native undo/redo stack stays the single source of truth (CM6's own
  * history extension is intentionally not used in the webview).
  */
-export class DocumentSyncSession {
+export class DocumentSyncSession implements DocumentSyncPeer {
 	private disposables: vscode.Disposable[] = [];
-	private lastAppliedVersion: number;
-	// True for the entire span of an applyEdit() call, including the synchronous
-	// onDidChangeTextDocument dispatch that happens *inside* workspace.applyEdit()
-	// before its promise resolves. Without this, handleDocumentChanged sees that
-	// echo before lastAppliedVersion has been bumped and mistakes our own edit for
-	// an external one, re-sending it to the webview on top of text that already
-	// has it — corrupting later offset math and losing/duplicating characters.
-	private applyingLocalEdit = false;
 	private rehighlightTimer: ReturnType<typeof setTimeout> | undefined;
-	// Serializes 'edit' messages so a fast second edit can't race the first one's
-	// applyEdit(): without this, its baseVersion check could run before the prior
-	// edit has actually bumped document.version, defeating the staleness guard.
-	private editQueue: Promise<void> = Promise.resolve();
 	private readonly tokenizationGate = new TokenizationGate();
+	private readonly ownsCoordinator: boolean;
+	private readonly coordinator: DocumentSyncCoordinator;
 
 	constructor(
 		private readonly document: vscode.TextDocument,
 		private readonly webviewPanel: vscode.WebviewPanel,
 		private readonly getCss: () => string,
 		private readonly openDocumentAtLine?: (uri: vscode.Uri, line?: number) => Promise<void>,
+		private readonly getDocumentZoom: () => number = () => DOCUMENT_ZOOM_DEFAULT,
+		private readonly onDocumentZoomChange: (percent: number) => void = () => undefined,
+		coordinator?: DocumentSyncCoordinator,
+		private readonly getTypewriterMode: () => boolean = () => false,
 	) {
-		this.lastAppliedVersion = document.version;
+		this.ownsCoordinator = !coordinator;
+		this.coordinator = coordinator ?? new DocumentSyncCoordinator(document);
+		this.coordinator.addPeer(this);
 
 		this.disposables.push(
 			webviewPanel.webview.onDidReceiveMessage((message: EditorToHostMessage) => this.handleMessage(message)),
-		);
-
-		this.disposables.push(
-			vscode.workspace.onDidChangeTextDocument((event) => {
-				if (event.document.uri.toString() === document.uri.toString()) {
-					this.handleDocumentChanged(event);
-				}
-			}),
 		);
 
 		this.disposables.push(
@@ -91,30 +81,65 @@ export class DocumentSyncSession {
 				this.scheduleRehighlight(true);
 				break;
 			case 'edit':
-				this.editQueue = this.editQueue.catch(() => undefined).then(() => this.applyEdit(message.changes, message.baseVersion, message.editId));
+				void this.coordinator.enqueueEdit(this, message.changes, message.baseVersion, message.editId);
 				break;
 			case 'requestResync':
 				this.sendResync();
 				break;
 			case 'undo':
-				// Chained onto editQueue (not fired immediately) so it can't run ahead
-				// of an 'edit' message still being applied — otherwise it would undo
-				// the wrong (older) change and desync from the webview's local state.
-				this.editQueue = this.editQueue.catch(() => undefined).then(() => vscode.commands.executeCommand('undo'));
+				// The shared coordinator queues this behind edits from every panel so
+				// undo cannot act on an older document state. The session callback also
+				// restores and verifies this panel before invoking the global command.
+				void this.coordinator.enqueueCommand(this, 'undo');
 				break;
 			case 'redo':
-				this.editQueue = this.editQueue.catch(() => undefined).then(() => vscode.commands.executeCommand('redo'));
+				void this.coordinator.enqueueCommand(this, 'redo');
 				break;
 			case 'openLink':
 				void this.openLink(message.href);
 				break;
 			case 'pasteImage':
-				this.editQueue = this.editQueue.catch(() => undefined).then(() => this.handlePasteImage(message));
+				void this.coordinator.enqueueHostMutation(() => this.handlePasteImage(message));
 				break;
 			case 'readDrawioFile':
 				void this.handleReadDrawioFile(message.requestId, message.src);
 				break;
+			case 'setZoom':
+				this.onDocumentZoomChange(normalizeDocumentZoom(message.percent));
+				break;
 		}
+	}
+
+	/**
+	 * Runs a native history command against the session that originated it.
+	 *
+	 * `undo` and `redo` are global, focus-based VS Code commands. The message
+	 * itself belongs to this session, but the queued callback may run after the
+	 * user has activated another editor. Reveal this panel first, then verify
+	 * that both the panel and its document are still active before invoking the
+	 * command. If VS Code cannot restore that context (for example, the panel
+	 * was disposed while the edit queue was draining), refuse the operation so
+	 * another document is never modified by accident.
+	 */
+	async runHistoryCommand(command: 'undo' | 'redo'): Promise<void> {
+		if (!this.webviewPanel.active) {
+			try {
+				this.webviewPanel.reveal(undefined, false);
+			} catch {
+				return;
+			}
+		}
+
+		if (!this.webviewPanel.active) return;
+		const activeTabGroup = vscode.window.tabGroups?.activeTabGroup;
+		if (activeTabGroup) {
+			const input = activeTabGroup.activeTab?.input;
+			if (!(input instanceof vscode.TabInputCustom) || input.uri.toString() !== this.document.uri.toString()) {
+				return;
+			}
+		}
+
+		await vscode.commands.executeCommand(command);
 	}
 
 	/**
@@ -233,11 +258,8 @@ export class DocumentSyncSession {
 	 * Saves a pasted/dropped image under an `assets/` folder beside the
 	 * document and inserts a Markdown image link at `atPos`. This edit
 	 * originates on the host (the final relative path is only known after
-	 * writing the file). It is serialized behind text edits and accepted only
-	 * for the document version that supplied its position. The operation does
-	 * not set `applyingLocalEdit`, letting the existing
-	 * `handleDocumentChanged` → `externalUpdate` path deliver it to the
-	 * webview exactly as if it were an edit from another tab.
+	 * writing the file). It is serialized behind text edits by the shared
+	 * coordinator, and its resulting document change is broadcast to every panel.
 	 */
 	private async handlePasteImage(message: Extract<EditorToHostMessage, { type: 'pasteImage' }>): Promise<void> {
 		const fail = (error: string) => {
@@ -326,83 +348,26 @@ export class DocumentSyncSession {
 			codeTheme: pickCodeTheme(),
 			dialect: documentDialectForPath(this.document.uri.path),
 			baseUri: `${this.webviewPanel.webview.asWebviewUri(docDir).toString()}/`,
+			typewriterMode: this.getTypewriterMode(),
+			zoomPercent: normalizeDocumentZoom(this.getDocumentZoom()),
 		});
-		this.lastAppliedVersion = this.document.version;
 	}
 
 	private sendResync(rejectedEditId?: number): void {
 		this.post({ type: 'resync', text: this.document.getText(), version: this.document.version, rejectedEditId });
-		this.lastAppliedVersion = this.document.version;
 	}
 
-	private async applyEdit(changes: TextChange[], baseVersion: number, editId: number) {
-		if (baseVersion !== this.document.version) {
-			// Webview's batch was computed against a document snapshot that has since
-			// moved on (e.g. an external edit landed concurrently). Rather than risk
-			// corrupting the file with stale offsets, reject the batch and provide the
-			// current snapshot. The webview rebases and retries its unacknowledged edit.
-			this.sendResync(editId);
-			return;
-		}
-		if (changes.length === 0) {
-			this.post({ type: 'ackEdit', editId, version: this.document.version });
-			return;
-		}
-
-		const edit = new vscode.WorkspaceEdit();
-		for (const change of changes) {
-			edit.replace(
-				this.document.uri,
-				new vscode.Range(this.document.positionAt(change.from), this.document.positionAt(change.to)),
-				change.insert,
-			);
-		}
-
-		this.applyingLocalEdit = true;
-		let applied = false;
-		try {
-			applied = await vscode.workspace.applyEdit(edit);
-		} catch {
-			applied = false;
-		} finally {
-			this.applyingLocalEdit = false;
-		}
-		if (!applied) {
-			this.sendResync(editId);
-			return;
-		}
-		this.lastAppliedVersion = this.document.version;
-		this.post({ type: 'ackEdit', editId, version: this.document.version });
+	receiveDocumentChanges(changes: TextChange[], baseVersion: number, version: number): void {
+		this.post({ type: 'externalUpdate', changes, baseVersion, version });
 		this.scheduleRehighlight();
 	}
 
-	private handleDocumentChanged(event: vscode.TextDocumentChangeEvent) {
-		if (this.applyingLocalEdit) {
-			// Echo of the edit applyEdit() is in the middle of making; the webview
-			// already reflects it locally, so there is nothing to forward. Still
-			// track the version so a later genuine external edit compares correctly.
-			this.lastAppliedVersion = event.document.version;
-			return;
-		}
-		if (event.document.version <= this.lastAppliedVersion) {
-			// This change is the echo of an edit we just applied ourselves; the
-			// webview already reflects it locally, so there is nothing to forward.
-			return;
-		}
-		const baseVersion = this.lastAppliedVersion;
-		this.lastAppliedVersion = event.document.version;
-		if (event.contentChanges.length === 0) {
-			return;
-		}
-
-		const changes: TextChange[] = event.contentChanges.map((c) => ({
-			from: c.rangeOffset,
-			to: c.rangeOffset + c.rangeLength,
-			insert: c.text,
-		}));
-		this.post({ type: 'externalUpdate', changes, baseVersion, version: event.document.version });
+	acknowledgeEdit(editId: number, version: number): void {
+		this.post({ type: 'ackEdit', editId, version });
 		this.scheduleRehighlight();
 	}
+
+	resync(rejectedEditId?: number): void { this.sendResync(rejectedEditId); }
 
 	private scheduleRehighlight(immediate = false) {
 		if (this.rehighlightTimer) {
@@ -428,6 +393,14 @@ export class DocumentSyncSession {
 		this.post({ type: 'applyCss', css: this.getCss() });
 	}
 
+	notifyTypewriterModeChanged() {
+		this.post({ type: 'typewriterModeChanged', enabled: this.getTypewriterMode() });
+	}
+
+	notifyDocumentZoomChanged(percent: number): void {
+		this.post({ type: 'setZoom', percent: normalizeDocumentZoom(percent) });
+	}
+
 	getDocument(): vscode.TextDocument {
 		return this.document;
 	}
@@ -445,6 +418,8 @@ export class DocumentSyncSession {
 	}
 
 	dispose() {
+		this.coordinator.removePeer(this);
+		if (this.ownsCoordinator) this.coordinator.dispose();
 		if (this.rehighlightTimer) {
 			clearTimeout(this.rehighlightTimer);
 		}

@@ -5,7 +5,7 @@ import { StyleStore } from './sidebar/styleStore';
 import { OutlineViewProvider } from './sidebar/OutlineViewProvider';
 import { setGrammarRoot } from './editor/shikiHost';
 import {
-	reconcileEditorAssociations,
+	reconcileInspectedEditorAssociations,
 	type DefaultEditorMode,
 	type EditorAssociationState,
 } from './shared/editorAssociations';
@@ -133,9 +133,14 @@ async function maybeReopenAsLivePreview(tab: vscode.Tab, attempt = 0): Promise<v
 async function syncDefaultEditorAssociation(context: vscode.ExtensionContext): Promise<void> {
 	const mode = vscode.workspace.getConfiguration('mdLivePreview').get<DefaultEditorMode>('defaultEditor', 'prompt');
 	const rootConfig = vscode.workspace.getConfiguration();
-	const current = rootConfig.get<Record<string, unknown>>('workbench.editorAssociations') ?? {};
+	const inspection = rootConfig.inspect<Record<string, unknown>>('workbench.editorAssociations');
 	const previous = context.globalState.get<EditorAssociationState>(EDITOR_ASSOCIATION_STATE_KEY);
-	const result = reconcileEditorAssociations(current, mode, MarkdownLivePreviewProvider.viewType, previous);
+	const result = reconcileInspectedEditorAssociations(
+		inspection,
+		mode,
+		MarkdownLivePreviewProvider.viewType,
+		previous,
+	);
 	if (result.associationsChanged) {
 		await rootConfig.update('workbench.editorAssociations', result.associations, vscode.ConfigurationTarget.Global);
 	}
@@ -154,8 +159,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const styleStore = new StyleStore(context);
 	await styleStore.initialize();
 
-	const { disposable: providerDisposable, provider } = MarkdownLivePreviewProvider.register(context, () =>
-		styleStore.getCombinedCssSync(),
+	const { disposable: providerDisposable, provider } = MarkdownLivePreviewProvider.register(
+		context,
+		() => styleStore.getCombinedCssSync(),
+		() => vscode.workspace.getConfiguration('mdLivePreview').get<boolean>('typewriterMode', false),
 	);
 	context.subscriptions.push(providerDisposable);
 	context.subscriptions.push(styleStore.onDidChange(() => provider.broadcastCssChanged()));
@@ -203,6 +210,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.workspace.onDidChangeConfiguration((e) => {
 			if (e.affectsConfiguration('mdLivePreview.defaultEditor')) {
 				void syncDefaultEditorAssociation(context);
+			}
+			if (e.affectsConfiguration('mdLivePreview.typewriterMode')) {
+				provider.broadcastTypewriterModeChanged();
 			}
 		}),
 	);

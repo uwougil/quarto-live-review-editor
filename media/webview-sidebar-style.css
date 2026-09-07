@@ -185,3 +185,17 @@ body {
 	outline: 1px solid var(--vscode-focusBorder, #007fd4);
 	outline-offset: -1px;
 }
+
+.mlp-checkbox-field {
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+	margin: 2px 0 10px;
+	font-size: 0.9em;
+	cursor: pointer;
+}
+.mlp-checkbox-field input {
+	flex: none;
+	margin: 1px 0 0;
+	accent-color: var(--vscode-focusBorder, #007fd4);
+}

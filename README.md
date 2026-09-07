@@ -13,7 +13,9 @@
 - 表格单元格原地编辑、行列添加和源码安全保存。
 - 代码块语法高亮、图片粘贴、文档大纲和 CSS 主题管理。
 - 内置 CSS 主题：VS Code、Dark、GitHub Light、Claude 和 GitHub Dark；主题之间互相独立，可在侧栏切换。
+- 可选 Typewriter Mode：输入时将主光标保持在编辑器视口约 40% 的位置，鼠标滚动和显式导航仍由用户控制。
 - ` ```{python} `、` ```{r} `、` ```{julia} ` 和 ` ```{.python} ` 使用统一的 Quarto/Pandoc 围栏解析入口，并交给现有 Shiki 高亮体系。
+- Live Preview 支持独立于 VS Code 全局缩放的文档字号缩放：聚焦预览后使用 `Ctrl/Cmd + 滚轮`、`Ctrl/Cmd + +`、`Ctrl/Cmd + -` 调整，`Ctrl/Cmd + 0` 重置。范围为 70%–200%，所有 Live Preview 文档共享并持久化该值。
 
 ## 安装开发版
 
@@ -50,6 +52,10 @@ $$
 
 光标离开公式时显示渲染结果；点击公式或将选区移入公式时显示原始 `$` 语法。编辑和保存不会把公式替换成 HTML、Unicode 或 KaTeX 输出。
 
+### 文档字号缩放
+
+字号缩放只作用于 Live Preview 文档内容，不会修改 VS Code 的全局缩放，也不会修改磁盘中的 Markdown/Quarto 文本。只有 Live Preview 获得焦点时，带有平台对应 Mod 键的滚轮和快捷键才会生效；普通滚轮仍用于滚动。缩放值保存在扩展的全局偏好中，因此切换文档、打开多个预览面板或重启 VS Code 后仍保持一致。
+
 Quarto 特有的 callout、shortcode、citation、cross-reference 和代码单元目前保持源码安全，不会被错误改写；代码单元只负责识别和高亮，暂不执行。
 
 ## 语法架构
@@ -73,13 +79,15 @@ Quarto 特有的 callout、shortcode、citation、cross-reference 和代码单�
 | `mdLivePreview.codeTheme` | 代码高亮主题：`auto`、`dark-plus`、`light-plus`、`github-dark`、`github-light`。 |
 | `mdLivePreview.enabledStyles` | 当前启用的 CSS 主题。 |
 | `mdLivePreview.defaultEditor` | `prompt` 使用普通编辑器，`livePreview` 默认使用实时预览，`default` 使用普通编辑器。 |
+| `mdLivePreview.typewriterMode` | 输入时将主光标保持在编辑器视口约 40% 的位置。默认关闭，也可从侧边栏切换。 |
 
 ## 项目规范文档
 
 - [产品需求文档（PRD）](docs/PRD.md)：产品目标、范围、非目标和用户验收行为。
 - [工程设计文档（EDD）](docs/EDD.md)：架构边界、数据流、安全约束、测试和 CI 契约。
-- [执行里程碑](docs/milestones/)：当前已完成的 front matter 功能和仓库再整理记录。
+- [执行里程碑](docs/milestones/)：当前已完成的 front matter 功能、Typewriter Mode 和仓库再整理记录。
 - [代理维护指南](AGENTS.md)：安装、验证、生成文件和安全规则。
+- [Pull Request 模板](.github/PULL_REQUEST_TEMPLATE.md)：Issue 关联、验收映射、验证证据和 PRD/EDD 影响。
 
 原有 `specs/` 与 `doc/` 目录保留为历史设计资料；新的产品和工程决策以 `docs/` 中的文档为准。
 
@@ -104,15 +112,20 @@ npm run test:browser
 npm run test:browser:geometry
 npm run test:browser:inline
 npm run test:browser:inline-interaction
+npm run test:browser:typewriter
+npm run test:browser:arrow-scroll
+npm run test:browser:zoom
 ```
 
 Quarto 示例位于 [examples/quarto-live-preview.qmd](examples/quarto-live-preview.qmd)，科研回归 fixture 位于 [examples/quarto-scientific.qmd](examples/quarto-scientific.qmd)。
+
+`npm run test:browser:zoom` 会在真实 Chromium 中验证字号增减、70%/200% 边界、重置、普通滚轮、编辑器焦点边界、长文档几何以及重新初始化文档时的共享 zoom 值。
 
 `npm run test:browser` 会启动真实 Chromium 和真实 CodeMirror `EditorView`，默认使用仓库内确定性的 realistic fixture，不依赖其他仓库或本机目录。fixture 覆盖前置元数据、标题、长段落、Unicode/CJK、行内/多行块公式、围栏代码、Quarto 代码单元、表格、Mermaid、链接、图片、引用和脚注。测试会滚动到 0%、25%、50%、75%、90%、99% 和 EOF，并检查文档长度、视口、滚动高度、语法树覆盖范围及实际 DOM 内容；`--source path/to/file.qmd` 可显式指定仓库内的其他夹具。首次运行前执行 `npm install` 和 `npx playwright install chromium`；之后使用 `npm run test:browser -- --benchmark` 可记录 5k、10k、25k、50k 行文档的就绪、滚动和 EOF 耗时、DOM 行数、装饰重建数、长任务及页面错误。
 
 ## 当前限制
 
-交互几何回归命令为 `npm run test:browser -- --interaction --theme github-light.css`。它会在真实 Chromium 中点击长段落的首行、中间行、倒数第二行和末行，随后用真实 ArrowDown/ArrowUp 穿过包裹行，并在运行时切换主题；回归同时比较 `.cm-line` 的实际高度和 CodeMirror 的 `lineBlockAt` 高度图。脚注交互回归由 `npm run test:browser:inline-interaction` 覆盖鼠标落点、左右键逐个进入脚注、上下键避开隐藏源码、重复脚注定位和共享边界。
+交互几何回归命令为 `npm run test:browser -- --interaction --theme github-light.css`。它会在真实 Chromium 中点击长段落的首行、中间行、倒数第二行和末行，随后用真实 ArrowDown/ArrowUp 穿过包裹行，并在运行时切换主题；回归同时比较 `.cm-line` 的实际高度和 CodeMirror 的 `lineBlockAt` 高度图。脚注交互回归由 `npm run test:browser:inline-interaction` 覆盖鼠标落点、左右键逐个进入脚注、上下键避开隐藏源码、重复脚注定位和共享边界。`npm run test:browser:arrow-scroll` 额外覆盖上下边界、长行换行、blockquote/list、围栏代码、脚注 cluster 和多脚注，并验证 caret 可见性与最小必要滚动。
 
 尚未实现 Quarto 代码执行、Jupyter/kernel、citation 渲染、cross-reference 解析、callout 渲染、shortcode 展开、Typst、Pandoc 子进程和 Quarto CLI 渲染；这些语法会保留为源码安全回退。
 

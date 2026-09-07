@@ -11,7 +11,7 @@ import { chromium } from 'playwright';
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function parseArgs(argv) {
-	const args = { baseline: false, synthetic: false, full: false, benchmark: false, probe: false, inlineGeometry: false, footnoteInteraction: false };
+	const args = { baseline: false, synthetic: false, full: false, benchmark: false, probe: false, inlineGeometry: false, footnoteInteraction: false, typewriter: false, arrowScroll: false };
 	for (let i = 0; i < argv.length; i += 1) {
 		const arg = argv[i];
 		if (arg === '--baseline') args.baseline = true;
@@ -21,6 +21,8 @@ function parseArgs(argv) {
 		else if (arg === '--probe') args.probe = true;
 		else if (arg === '--inline-geometry') args.inlineGeometry = true;
 		else if (arg === '--inline-interaction') args.footnoteInteraction = true;
+		else if (arg === '--typewriter') args.typewriter = true;
+		else if (arg === '--arrow-scroll') args.arrowScroll = true;
 		else if (arg === '--interaction') args.interaction = true;
 		else if (['--source', '--theme', '--bundle'].includes(arg)) {
 			const value = argv[++i];
@@ -72,7 +74,9 @@ function queryFor(baseUrl, args, benchmarkLines, sourcePath) {
 	if (args.probe) query.set('probe', '1');
 	if (args.inlineGeometry) query.set('inline', '1');
 	if (args.footnoteInteraction) query.set('footnoteInteraction', '1');
+	if (args.arrowScroll) query.set('arrowScroll', '1');
 	if (args.interaction) query.set('interaction', '1');
+	if (args.typewriter) query.set('typewriter', '1');
 	return `${baseUrl}?${query}`;
 }
 
@@ -92,6 +96,8 @@ function compactResult(item) {
 		final: compactSnapshot(item.final), interactions: item.interactions, markerFailures: item.markerFailures, pageErrors: item.pageErrors, error: item.error,
 		interaction: item.interaction ? { checks: item.interaction.checks, initialDiagnostics: item.interaction.initialDiagnostics } : undefined,
 		footnoteInteraction: item.footnoteInteraction ? { checks: item.footnoteInteraction.checks, traceCount: item.footnoteInteraction.traceCount } : undefined,
+		typewriter: item.typewriter ? { checks: item.typewriter.checks, targetCenter: item.typewriter.targetCenter } : undefined,
+		arrowScroll: item.arrowScroll,
 	};
 }
 
@@ -344,6 +350,155 @@ async function runFootnoteInteraction(page, text) {
 	};
 }
 
+async function runTypewriterInteraction(page, sourceLength, marker) {
+	const target = await page.evaluate((needle) => {
+		const source = window.__mlpTestSourceText || '';
+		const pos = source.indexOf(needle);
+		if (pos < 0) return null;
+		window.__mlpDebugSetSelection?.(pos);
+		window.__mlpDebugScrollToPosition?.(pos);
+		return { sourceLength: source.length };
+	}, marker);
+	if (!target) throw new Error('typewriter target line is not mounted');
+	await page.waitForTimeout(80);
+	await page.evaluate(() => {
+		const scroller = document.querySelector('.cm-scroller');
+		if (!(scroller instanceof HTMLElement)) throw new Error('editor scroller not found');
+		scroller.scrollTop = Math.min(scroller.scrollTop + 320, scroller.scrollHeight - scroller.clientHeight);
+	});
+	await page.waitForTimeout(80);
+	const beforeClick = await page.evaluate((needle) => {
+		const line = [...document.querySelectorAll('.cm-line')].find((candidate) => candidate.textContent?.includes(needle));
+		if (!line) return null;
+		const rect = line.getBoundingClientRect();
+		return { x: Math.min(rect.right - 3, rect.left + 30), y: (rect.top + rect.bottom) / 2 };
+	}, marker);
+	if (!beforeClick) throw new Error('typewriter target line is not visible');
+	await page.mouse.click(beforeClick.x, beforeClick.y);
+	await page.waitForTimeout(50);
+	const before = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+	await page.keyboard.type('x');
+	await page.waitForTimeout(120);
+	const after = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+	const targetCenter = (after.snapshot?.clientHeight || 0) * 0.4;
+	const beforeCenter = before.selection?.y === null || before.selection?.y === undefined ? null : before.selection.y + before.selection.defaultLineHeight / 2;
+	const afterCenter = after.selection?.y === null || after.selection?.y === undefined ? null : after.selection.y + after.selection.defaultLineHeight / 2;
+	const scrollBeforeWheel = after.snapshot?.scrollTop ?? 0;
+	await page.mouse.wheel(0, 200);
+	await page.waitForTimeout(80);
+	const afterWheel = await page.evaluate(() => window.__mlpDebugSnapshot?.());
+	const checks = {
+		typingChangedDocument: after.snapshot?.docLength === sourceLength + 1,
+		caretStayedVisible: afterCenter !== null && afterCenter > 0 && afterCenter < (after.snapshot?.clientHeight || 0),
+		caretMovedTowardTarget: beforeCenter !== null && afterCenter !== null && Math.abs(afterCenter - targetCenter) < Math.abs(beforeCenter - targetCenter),
+		caretNearTarget: afterCenter !== null && Math.abs(afterCenter - targetCenter) <= Math.max(24, (after.selection?.defaultLineHeight || 20) * 2),
+		wheelRemainsUserOwned: afterWheel?.scrollTop !== undefined && Math.abs(afterWheel.scrollTop - scrollBeforeWheel) > 1,
+	};
+	return { ok: Object.values(checks).every(Boolean), checks, before, after, afterWheel, targetCenter };
+}
+
+async function runArrowScroll(page, text) {
+	const settle = () => page.waitForTimeout(80);
+	const metrics = () => page.evaluate(() => {
+		const scroller = document.querySelector('.cm-scroller');
+		const selection = window.__mlpDebugSelection?.();
+		if (!(scroller instanceof HTMLElement) || !selection) return null;
+		const rect = scroller.getBoundingClientRect();
+		return {
+			selection,
+			scrollTop: scroller.scrollTop,
+			maxScrollTop: Math.max(0, scroller.scrollHeight - scroller.clientHeight),
+			clientHeight: scroller.clientHeight,
+			viewportTop: rect.top,
+			viewportBottom: rect.bottom,
+		};
+	});
+	const prepare = async (pos, edge) => {
+		await page.evaluate((value) => {
+			window.__mlpDebugScrollToPosition?.(value);
+			window.__mlpDebugSetSelection?.(value);
+			(document.querySelector('.cm-content') instanceof HTMLElement) && document.querySelector('.cm-content').focus();
+		}, pos);
+		await settle();
+		const centered = await metrics();
+		if (!centered) throw new Error(`selection metrics unavailable before ${edge} edge case`);
+		await page.evaluate((direction) => {
+			const scroller = document.querySelector('.cm-scroller');
+			const selection = window.__mlpDebugSelection?.();
+			if (!(scroller instanceof HTMLElement) || !selection?.y || !selection.defaultLineHeight) throw new Error('caret is not measurable before edge placement');
+			const rect = scroller.getBoundingClientRect();
+			const target = direction === 'bottom'
+				? rect.bottom - selection.defaultLineHeight * 1.25
+				: rect.top + selection.defaultLineHeight * 0.25;
+			scroller.scrollTop += selection.y - target;
+		}, edge);
+		await settle();
+		return metrics();
+	};
+	const visible = (state) => Boolean(
+		state?.selection && state.selection.y !== null &&
+		state.selection.y >= state.viewportTop - 1 &&
+		state.selection.y <= state.viewportBottom - Math.min(20, state.selection.defaultLineHeight * 0.75) + 1,
+	);
+	const cases = [
+		{ label: 'wrapped-down', marker: 'ARROW-WRAPPED-END', key: 'ArrowDown', edge: 'bottom' },
+		{ label: 'wrapped-up', marker: 'ARROW-WRAPPED-START', key: 'ArrowUp', edge: 'top' },
+		{ label: 'blockquote-down', marker: 'ARROW-BLOCKQUOTE-START', key: 'ArrowDown', edge: 'bottom' },
+		{ label: 'list-up', marker: 'ARROW-LIST-START', key: 'ArrowUp', edge: 'top' },
+		{ label: 'fenced-code-down', marker: 'ARROW-CODE-START', key: 'ArrowDown', edge: 'bottom' },
+		{ label: 'footnote-cluster-down', marker: 'ARROW-FOOTNOTE-START', key: 'ArrowDown', edge: 'bottom' },
+	];
+	const edgeCases = [];
+	for (const item of cases) {
+		const pos = text.indexOf(item.marker);
+		if (pos < 0) throw new Error(`arrow-scroll marker not found: ${item.marker}`);
+		const before = await prepare(pos, item.edge);
+		await page.keyboard.press(item.key);
+		await settle();
+		const after = await metrics();
+		if (!before || !after) throw new Error(`selection metrics unavailable after ${item.label}`);
+		const scrollDelta = after.scrollTop - before.scrollTop;
+		edgeCases.push({
+			label: item.label,
+			key: item.key,
+			before,
+			after,
+			visibleBefore: visible(before),
+			visibleAfter: visible(after),
+			scrolledTowardCaret: item.edge === 'bottom' ? scrollDelta > 0.5 : scrollDelta < -0.5,
+			minimalScroll: Math.abs(scrollDelta) <= Math.max(40, before.selection.defaultLineHeight * 1.5),
+			footnoteWidgets: await page.locator('.mlp-footnote-ref').count(),
+		});
+	}
+
+	const boundary = {};
+	await page.evaluate(() => {
+		window.__mlpDebugScrollTo?.(0);
+		window.__mlpDebugSetSelection?.(0);
+		(document.querySelector('.cm-content') instanceof HTMLElement) && document.querySelector('.cm-content').focus();
+	});
+	await settle();
+	await page.keyboard.press('ArrowUp');
+	await settle();
+	boundary.top = await metrics();
+	await page.evaluate((length) => {
+		window.__mlpDebugScrollTo?.(Number.MAX_SAFE_INTEGER);
+		window.__mlpDebugSetSelection?.(length);
+	}, text.length);
+	await settle();
+	await page.keyboard.press('ArrowDown');
+	await settle();
+	boundary.bottom = await metrics();
+	const checks = {
+		allCaretPositionsVisible: edgeCases.every((item) => item.visibleBefore && item.visibleAfter),
+		allEdgeMovesScrollMinimally: edgeCases.every((item) => item.scrolledTowardCaret && item.minimalScroll),
+		topBoundaryVisible: visible(boundary.top) && boundary.top.scrollTop <= 1,
+		bottomBoundaryVisible: visible(boundary.bottom) && boundary.bottom.maxScrollTop - boundary.bottom.scrollTop <= 1,
+		footnoteClusterPreserved: edgeCases.find((item) => item.label === 'footnote-cluster-down')?.footnoteWidgets === 3,
+	};
+	return { ok: Object.values(checks).every(Boolean), checks, edgeCases, boundary };
+}
+
 async function main() {
 	const args = parseArgs(process.argv.slice(2));
 	let sourcePath = null;
@@ -386,6 +541,32 @@ async function main() {
 					const sourceText = await page.evaluate(() => window.__mlpTestSourceText || '');
 					result.footnoteInteraction = await runFootnoteInteraction(page, sourceText);
 					result.ok = result.ok && result.footnoteInteraction.ok;
+				} catch (error) {
+					result.ok = false;
+					result.error = String(error?.stack || error);
+				}
+				await page.close();
+				allResults.push(result);
+				continue;
+			}
+			if (args.typewriter) {
+				try {
+					const sourceText = await page.evaluate(() => window.__mlpTestSourceText || '');
+					result.typewriter = await runTypewriterInteraction(page, sourceText.length, result.targetMarker || 'TYPEWRITER-120');
+					result.ok = result.ok && result.typewriter.ok;
+				} catch (error) {
+					result.ok = false;
+					result.error = String(error?.stack || error);
+				}
+				await page.close();
+				allResults.push(result);
+				continue;
+			}
+			if (args.arrowScroll) {
+				try {
+					const sourceText = await page.evaluate(() => window.__mlpTestSourceText || '');
+					result.arrowScroll = await runArrowScroll(page, sourceText);
+					result.ok = result.ok && result.arrowScroll.ok;
 				} catch (error) {
 					result.ok = false;
 					result.error = String(error?.stack || error);
