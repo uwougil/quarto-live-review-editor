@@ -60,6 +60,7 @@ export class DocumentSyncSession {
 		private readonly webviewPanel: vscode.WebviewPanel,
 		private readonly getCss: () => string,
 		private readonly openDocumentAtLine?: (uri: vscode.Uri, line?: number) => Promise<void>,
+		private readonly getTypewriterMode: () => boolean = () => false,
 	) {
 		this.lastAppliedVersion = document.version;
 
@@ -326,6 +327,7 @@ export class DocumentSyncSession {
 			codeTheme: pickCodeTheme(),
 			dialect: documentDialectForPath(this.document.uri.path),
 			baseUri: `${this.webviewPanel.webview.asWebviewUri(docDir).toString()}/`,
+			typewriterMode: this.getTypewriterMode(),
 		});
 		this.lastAppliedVersion = this.document.version;
 	}
@@ -426,6 +428,10 @@ export class DocumentSyncSession {
 
 	notifyCssChanged() {
 		this.post({ type: 'applyCss', css: this.getCss() });
+	}
+
+	notifyTypewriterModeChanged() {
+		this.post({ type: 'typewriterModeChanged', enabled: this.getTypewriterMode() });
 	}
 
 	getDocument(): vscode.TextDocument {

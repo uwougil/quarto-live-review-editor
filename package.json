@@ -175,6 +175,11 @@
           ],
           "default": "prompt",
           "description": "控制 .md/.qmd 文件是否默认使用 Quarto Live Review。"
+        },
+        "mdLivePreview.typewriterMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "输入中将主光标保持在编辑器视口约 40% 的位置；默认关闭，也可从侧边栏切换。"
         }
       }
     }
@@ -186,6 +191,7 @@
     "test:browser": "node scripts/run-long-document-browser-test.mjs",
     "test:browser:inline": "node scripts/run-long-document-browser-test.mjs --inline-geometry",
     "test:browser:inline-interaction": "node scripts/run-long-document-browser-test.mjs --inline-interaction",
+    "test:browser:typewriter": "node scripts/run-long-document-browser-test.mjs --typewriter",
     "test:browser:geometry": "node scripts/run-geometry-regression.mjs",
     "test:watch": "vitest",
     "generate:long-fixtures": "node scripts/generate-long-fixtures.mjs",

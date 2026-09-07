@@ -12,13 +12,15 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 	private constructor(
 		private readonly context: vscode.ExtensionContext,
 		private readonly getCss: () => string,
+		private readonly getTypewriterMode: () => boolean,
 	) {}
 
 	static register(
 		context: vscode.ExtensionContext,
 		getCss: () => string,
+		getTypewriterMode: () => boolean = () => false,
 	): { disposable: vscode.Disposable; provider: MarkdownLivePreviewProvider } {
-		const provider = new MarkdownLivePreviewProvider(context, getCss);
+		const provider = new MarkdownLivePreviewProvider(context, getCss, getTypewriterMode);
 		const disposable = vscode.window.registerCustomEditorProvider(MarkdownLivePreviewProvider.viewType, provider, {
 			webviewOptions: { retainContextWhenHidden: true },
 			supportsMultipleEditorsPerDocument: true,
@@ -40,7 +42,13 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 		};
 		webviewPanel.webview.html = this.buildHtml(webviewPanel.webview);
 
-		const session = new DocumentSyncSession(document, webviewPanel, this.getCss, (uri, line) => this.openDocumentAtLine(uri, line));
+		const session = new DocumentSyncSession(
+			document,
+			webviewPanel,
+			this.getCss,
+			(uri, line) => this.openDocumentAtLine(uri, line),
+			this.getTypewriterMode,
+		);
 		this.sessions.add(session);
 
 		webviewPanel.onDidDispose(() => {
@@ -53,6 +61,13 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 	broadcastCssChanged(): void {
 		for (const session of this.sessions) {
 			session.notifyCssChanged();
+		}
+	}
+
+	/** Called when the global Typewriter Mode setting changes. */
+	broadcastTypewriterModeChanged(): void {
+		for (const session of this.sessions) {
+			session.notifyTypewriterModeChanged();
 		}
 	}
 

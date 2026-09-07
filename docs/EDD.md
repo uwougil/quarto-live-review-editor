@@ -39,7 +39,8 @@ Webview Editor
 │   ├── 创建 EditorState/EditorView
 │   ├── 安装 Markdown/GFM/Quarto 方言扩展
 │   ├── 组合 inline 和 block decorations
-│   └── 处理光标、鼠标、键盘和主题更新
+│   ├── 处理光标、鼠标、键盘和主题更新
+│   └── 协调可选的 Typewriter Mode 视口定位
 ├── src/webview-editor/livePreviewPlugin.ts
 │   └── 行内标记、链接、图片、脚注和轻量视觉装饰
 ├── src/webview-editor/blockDecorations.ts
@@ -61,8 +62,17 @@ Webview Editor
 3. `livePreviewPlugin` 和 `blockDecorationsField` 根据源位置生成 decoration/widget；widget 只改变显示，不改变文档内容。
 4. 用户编辑产生 `ChangeSet`，经过短暂 debounce 后发送回宿主，由 `DocumentSyncSession` 写入 VS Code 文档。
 5. 用户主题通过 `adaptMarkdownCss` 注入到独立 style 元素，并请求 CodeMirror 的测量流程，避免高度图过期。
+6. `mdLivePreview.typewriterMode` 是宿主侧配置，打开 webview 时随 `init` 消息发送；配置变化通过 `typewriterModeChanged` 广播到所有活动会话。webview 只接收布尔状态，不直接读取 VS Code API。
 
 源位置是所有交互的身份：点击、脚注回跳、表格编辑、图片和图表操作都必须使用 CodeMirror 文档偏移或 DOM 到文档位置的 API，不使用屏幕像素推断文档位置。
+
+### 3.1 Typewriter Mode
+
+- `src/webview-editor/typewriterMode.ts` 只负责编辑器视口控制，不创建文档变更，也不参与宿主同步。
+- 写作型键盘事件、文本输入、删除、粘贴和拖放会安排一次下一帧定位；控制器使用 `coordsAtPos` 和 `scrollDOM` 的实际几何，把主光标中点尽量放到视口高度的 40%。
+- 目标位置在文档开头或结尾不可达时使用 `scrollTop` 上下界钳制；文档短于视口时保持现有滚动位置。
+- 鼠标/指针点击、滚轮、原生滚动和宿主驱动的 `jumpToLine`/`setCursor` 会暂停自动定位，避免和用户主动浏览或显式导航竞争。
+- 控制器必须只挂在当前 `EditorView`，销毁时移除监听器；不得通过 `scrollIntoView` 事务制造二次编辑更新或同步循环。
 
 ## 4. 装饰与源码回退规则
 
@@ -70,6 +80,7 @@ Webview Editor
 - 块级替换使用 `Decoration.replace({ widget, block: true })`；范围重叠前必须过滤，避免 CodeMirror `RangeSet` 的非重叠约束异常。
 - 长文档只在可见范围创建脚注等 inline widget；视口语法解析使用有界的 `forceParsing`，不主动把整篇文档装入 DOM。
 - 上下键使用 CodeMirror 的行移动/期望列语义；脚注保护只能修正候选文档位置，不能使用屏幕像素猜测。
+- Typewriter Mode 的纯计算逻辑由 Vitest 覆盖；实际滚动、包裹行和主题/布局变化必须由真实 Chromium 回归覆盖，不能只用 jsdom 或 mock 视口证明。
 - 生产 bundle 位于 `dist/`，由 esbuild 生成，不在源码审查中手工编辑。
 
 ## 5. Quarto 与 front matter 设计
@@ -106,9 +117,10 @@ npm run test:browser
 npm run test:browser:geometry
 npm run test:browser:inline
 npm run test:browser:inline-interaction
+npm run test:browser:typewriter
 ```
 
-CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行四个浏览器命令。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。
+CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行五个浏览器命令。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。
 
 ## 8. 研究依据
 

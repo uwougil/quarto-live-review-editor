@@ -154,8 +154,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const styleStore = new StyleStore(context);
 	await styleStore.initialize();
 
-	const { disposable: providerDisposable, provider } = MarkdownLivePreviewProvider.register(context, () =>
-		styleStore.getCombinedCssSync(),
+	const { disposable: providerDisposable, provider } = MarkdownLivePreviewProvider.register(
+		context,
+		() => styleStore.getCombinedCssSync(),
+		() => vscode.workspace.getConfiguration('mdLivePreview').get<boolean>('typewriterMode', false),
 	);
 	context.subscriptions.push(providerDisposable);
 	context.subscriptions.push(styleStore.onDidChange(() => provider.broadcastCssChanged()));
@@ -203,6 +205,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		vscode.workspace.onDidChangeConfiguration((e) => {
 			if (e.affectsConfiguration('mdLivePreview.defaultEditor')) {
 				void syncDefaultEditorAssociation(context);
+			}
+			if (e.affectsConfiguration('mdLivePreview.typewriterMode')) {
+				provider.broadcastTypewriterModeChanged();
 			}
 		}),
 	);

@@ -19,6 +19,7 @@ npm run test:browser
 npm run test:browser:geometry
 npm run test:browser:inline
 npm run test:browser:inline-interaction
+npm run test:browser:typewriter
 ```
 
 CI 在 Ubuntu/Node 22 上执行同一组核心检查，并在浏览器回归前编译 `dist/`。
@@ -27,6 +28,7 @@ CI 在 Ubuntu/Node 22 上执行同一组核心检查，并在浏览器回归前�
 
 - `src/extension.ts`、`src/editor/` 和 `src/sidebar/` 属于 VS Code 扩展宿主侧。
 - `src/webview-editor/` 属于 CodeMirror 编辑器和渲染装饰层；不要把宿主 API 直接引入这里。
+- `src/webview-editor/typewriterMode.ts` 只管理可选的编辑器视口定位；它不得修改文档或绕过宿主同步，且几何行为必须用真实 Chromium 验证。
 - `src/quarto/` 只负责轻量 Quarto 方言识别和源码安全的围栏/数学范围解析，不是完整 Quarto/Pandoc 执行器。
 - `src/shared/` 放置宿主和 webview 都需要的纯逻辑。
 - `dist/`、`node_modules/` 和 `.vsix` 是生成物或本地安装包，不应手工编辑或提交。

@@ -13,6 +13,7 @@
 - 表格单元格原地编辑、行列添加和源码安全保存。
 - 代码块语法高亮、图片粘贴、文档大纲和 CSS 主题管理。
 - 内置 CSS 主题：VS Code、Dark、GitHub Light、Claude 和 GitHub Dark；主题之间互相独立，可在侧栏切换。
+- 可选 Typewriter Mode：输入时将主光标保持在编辑器视口约 40% 的位置，鼠标滚动和显式导航仍由用户控制。
 - ` ```{python} `、` ```{r} `、` ```{julia} ` 和 ` ```{.python} ` 使用统一的 Quarto/Pandoc 围栏解析入口，并交给现有 Shiki 高亮体系。
 
 ## 安装开发版
@@ -73,12 +74,13 @@ Quarto 特有的 callout、shortcode、citation、cross-reference 和代码单�
 | `mdLivePreview.codeTheme` | 代码高亮主题：`auto`、`dark-plus`、`light-plus`、`github-dark`、`github-light`。 |
 | `mdLivePreview.enabledStyles` | 当前启用的 CSS 主题。 |
 | `mdLivePreview.defaultEditor` | `prompt` 使用普通编辑器，`livePreview` 默认使用实时预览，`default` 使用普通编辑器。 |
+| `mdLivePreview.typewriterMode` | 输入时将主光标保持在编辑器视口约 40% 的位置。默认关闭，也可从侧边栏切换。 |
 
 ## 项目规范文档
 
 - [产品需求文档（PRD）](docs/PRD.md)：产品目标、范围、非目标和用户验收行为。
 - [工程设计文档（EDD）](docs/EDD.md)：架构边界、数据流、安全约束、测试和 CI 契约。
-- [执行里程碑](docs/milestones/)：当前已完成的 front matter 功能和仓库再整理记录。
+- [执行里程碑](docs/milestones/)：当前已完成的 front matter 功能、Typewriter Mode 和仓库再整理记录。
 - [代理维护指南](AGENTS.md)：安装、验证、生成文件和安全规则。
 
 原有 `specs/` 与 `doc/` 目录保留为历史设计资料；新的产品和工程决策以 `docs/` 中的文档为准。
@@ -93,6 +95,7 @@ npm run test:browser
 npm run test:browser:geometry
 npm run test:browser:inline
 npm run test:browser:inline-interaction
+npm run test:browser:typewriter
 ```
 
 Quarto 示例位于 [examples/quarto-live-preview.qmd](examples/quarto-live-preview.qmd)，科研回归 fixture 位于 [examples/quarto-scientific.qmd](examples/quarto-scientific.qmd)。
