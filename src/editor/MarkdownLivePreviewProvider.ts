@@ -3,6 +3,7 @@ import { DocumentSyncSession } from './documentSync';
 import { extractHeadings } from '../shared/headings';
 import type { HeadingItem } from '../shared/headings';
 import { selectActiveSession } from '../shared/activeSession';
+import { DocumentSyncCoordinator } from './documentSyncCoordinator';
 import { DOCUMENT_ZOOM_DEFAULT, normalizeDocumentZoom } from '../shared/documentZoom';
 
 export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvider {
@@ -10,6 +11,7 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 	private static readonly DOCUMENT_ZOOM_STATE_KEY = 'mdLivePreview.documentZoomPercent';
 
 	private readonly sessions = new Set<DocumentSyncSession>();
+	private readonly coordinators = new Map<string, DocumentSyncCoordinator>();
 	private documentZoomPercent: number;
 
 	private constructor(
@@ -47,6 +49,12 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 		};
 		webviewPanel.webview.html = this.buildHtml(webviewPanel.webview);
 
+		const uriKey = document.uri.toString();
+		let coordinator = this.coordinators.get(uriKey);
+		if (!coordinator) {
+			coordinator = new DocumentSyncCoordinator(document);
+			this.coordinators.set(uriKey, coordinator);
+		}
 		const session = new DocumentSyncSession(
 			document,
 			webviewPanel,
@@ -54,12 +62,17 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 			(uri, line) => this.openDocumentAtLine(uri, line),
 			() => this.documentZoomPercent,
 			(percent) => this.setDocumentZoom(percent),
+			coordinator,
 		);
 		this.sessions.add(session);
 
 		webviewPanel.onDidDispose(() => {
 			session.dispose();
 			this.sessions.delete(session);
+			if (coordinator.peerCount === 0) {
+				coordinator.dispose();
+				this.coordinators.delete(uriKey);
+			}
 		});
 	}
 

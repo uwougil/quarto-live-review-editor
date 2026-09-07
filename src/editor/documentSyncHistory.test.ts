@@ -53,6 +53,7 @@ function makeSession(uri = 'file:///a.md') {
 	const document = {
 		uri: { toString: () => uri },
 		version: 1,
+		getText: () => '',
 		positionAt: (offset: number) => offset,
 	} as unknown as vscode.TextDocument;
 	const panel = {
@@ -77,7 +78,7 @@ function makeSession(uri = 'file:///a.md') {
 }
 
 async function waitForQueue(session: DocumentSyncSession): Promise<void> {
-	await (session as unknown as { editQueue: Promise<void> }).editQueue;
+	await (session as unknown as { coordinator: { queue: Promise<void> } }).coordinator.queue;
 }
 
 describe('DocumentSyncSession native history commands', () => {
@@ -116,8 +117,7 @@ describe('DocumentSyncSession native history commands', () => {
 
 		host.messageHandler?.({ type: 'edit', baseVersion: 1, editId: 1, changes: [{ from: 0, to: 0, insert: 'x' }] });
 		host.messageHandler?.({ type: 'undo' });
-		await Promise.resolve();
-		await Promise.resolve();
+		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(host.commands).toEqual([]);
 		expect(host.applyEdits).toHaveLength(1);
 
