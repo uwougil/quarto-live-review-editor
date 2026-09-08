@@ -200,6 +200,13 @@
 		].join('\n');
 	}
 
+	function buildFootnoteCaretFixture() {
+		const references = Array.from({ length: 36 }, (_, index) => `[^r${index}]`).join('');
+		const body = `FOOTNOTE-CARET-START ${'ordinary words '.repeat(18)}before ${references} after ${'ordinary words '.repeat(30)}FOOTNOTE-CARET-END.`;
+		const definitions = Array.from({ length: 36 }, (_, index) => `[^r${index}]: Caret geometry definition ${index}.`);
+		return [body, '', ...definitions].join('\n');
+	}
+
 	function buildTypewriterFixture() {
 		const sentence = 'This long writing line keeps enough ordinary prose to make the caret position and viewport movement measurable in a real CodeMirror editor. ';
 		return Array.from({ length: 180 }, (_, index) => `TYPEWRITER-${String(index + 1).padStart(3, '0')} ${sentence.repeat(2)}`).join('\n');
@@ -247,6 +254,7 @@
 		if (testParams.get('inline') === '1') return { text: buildInlineFixture(), kind: 'inline-geometry' };
 		if (testParams.get('interaction') === '1') return { text: buildInteractionFixture(), kind: 'interaction-geometry' };
 		if (testParams.get('footnoteInteraction') === '1') return { text: buildFootnoteInteractionFixture(), kind: 'footnote-interaction' };
+		if (testParams.get('footnoteCaret') === '1') return { text: buildFootnoteCaretFixture(), kind: 'footnote-caret' };
 		if (testParams.get('typewriter') === '1') return { text: buildTypewriterFixture(), kind: 'typewriter' };
 		if (testParams.get('arrowScroll') === '1') return { text: buildArrowScrollFixture(), kind: 'arrow-scroll' };
 		const benchmarkLines = Number(testParams.get('lines'));
@@ -404,7 +412,8 @@
 	function dispatchInit(text, css = '', typewriterMode = false) {
 		window.__mlpTestSourceText = text;
 		window.dispatchEvent(new MessageEvent('message', { data: {
-			type: 'init', text, version: 1, css, codeTheme: 'light-plus', baseUri: location.origin + '/', dialect: 'markdown', typewriterMode, zoomPercent: 100,
+			type: 'init', text, version: 1, css, codeTheme: 'light-plus', baseUri: location.origin + '/', dialect: 'markdown', typewriterMode,
+			zoomPercent: Number(testParams.get('zoom') || 100),
 		} }));
 	}
 
