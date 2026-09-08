@@ -151,10 +151,12 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		// A delayed event can arrive after a newer event has already been observed.
 		// Never move an unmatched mutation's expected version: its resulting version
 		// is part of the operation identity and must remain stable until that exact
-		// event arrives. For an out-of-order event, derive its own base from the
-		// event version without regressing the coordinator's latest observed value.
-		const baseVersion = mutation?.baseVersion ?? (
-			eventVersion > previousVersion ? previousVersion : Math.max(0, eventVersion - 1)
+		// event arrives. Derive an unmatched event's base from its version when it
+		// has skipped an event that has not reached this listener yet, while retaining
+		// the last observed value as a floor for normal in-order delivery.
+		const baseVersion = mutation?.baseVersion ?? Math.max(
+			0,
+			eventVersion > previousVersion ? Math.max(previousVersion, eventVersion - 1) : eventVersion - 1,
 		);
 		if (eventVersion > previousVersion) this.lastObservedVersion = eventVersion;
 		for (const peer of this.peers) {

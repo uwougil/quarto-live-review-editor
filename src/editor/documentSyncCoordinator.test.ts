@@ -203,9 +203,9 @@ describe('DocumentSyncCoordinator', () => {
 		await operation;
 
 		expect(a.acks).toEqual([{ editId: 13, version: 2 }]);
-		expect(a.updates).toEqual([{ changes: external, baseVersion: 1, version: 3 }]);
+		expect(a.updates).toEqual([{ changes: external, baseVersion: 2, version: 3 }]);
 		expect(b.updates).toEqual([
-			{ changes: external, baseVersion: 1, version: 3 },
+			{ changes: external, baseVersion: 2, version: 3 },
 			{ changes: localChanges, baseVersion: 1, version: 2 },
 		]);
 		coordinator.dispose();
