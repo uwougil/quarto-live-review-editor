@@ -199,6 +199,16 @@ function renderedFootnoteClusterContaining(state: EditorState, position: number)
 	return renderedFootnoteClusters(state).find((cluster) => position >= cluster.from && position <= cluster.to) ?? null;
 }
 
+function renderedFootnoteClusterAtPosition(state: EditorState, position: number): { from: number; to: number } | null {
+	const clusters = renderedFootnoteClusters(state);
+	return clusters.find((cluster) => position >= cluster.from && position <= cluster.to)
+		// CodeMirror can resolve a visual-row target immediately before a
+		// replacement widget on one platform and at its first source boundary
+		// on another. Both positions represent the same rendered row here.
+		?? clusters.find((cluster) => position === cluster.from - 1)
+		?? null;
+}
+
 interface RenderedFootnoteRect {
 	from: number;
 	to: number;
@@ -266,7 +276,7 @@ export function moveVerticallyAvoidingFootnotes(forward: boolean): Command {
 			let moved = view.moveVertically(range, forward);
 			if (moved.head === range.head) moved = view.moveToLineBoundary(range, forward);
 			const goalColumn = moved.goalColumn ?? startGoal;
-			const cluster = renderedFootnoteClusterContaining(state, moved.head);
+			const cluster = renderedFootnoteClusterAtPosition(state, moved.head);
 			if (!cluster || goalColumn === undefined || !startCoords) return moved;
 			const targetY = (forward ? startCoords.bottom : startCoords.top) + (forward ? 1 : -1) * (view.defaultLineHeight / 2);
 			const rowEntries = renderedFootnotesOnVisualRow(view, targetY)
