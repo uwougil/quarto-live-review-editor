@@ -144,6 +144,10 @@ html, body {
    box and would desynchronise caret/mouse geometry after repeated formulas. */
 .mlp-math {
 	color: inherit;
+	/* KaTeX's root rule is intentionally `1.21em`. Counter-scale only this
+	   project wrapper so its normal math body lands on the surrounding prose
+	   baseline while KaTeX keeps its own internal sizing hierarchy intact. */
+	font-size: calc(1em / 1.21);
 }
 
 .mlp-math-inline {
