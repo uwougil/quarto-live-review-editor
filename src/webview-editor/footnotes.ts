@@ -205,6 +205,7 @@ function renderedFootnoteClusterAtGoal(
 	position: number,
 	goalColumn: number | undefined,
 ): { from: number; to: number } | null {
+	const boundarySlop = 1;
 	const inside = renderedFootnoteClusterAt(state, position);
 	if (inside || goalColumn === undefined) return inside;
 	const desiredX = view.contentDOM.getBoundingClientRect().left + goalColumn;
@@ -215,7 +216,11 @@ function renderedFootnoteClusterAtGoal(
 		if (!fromCoords || !toCoords) return false;
 		const left = Math.min(fromCoords.left, toCoords.left);
 		const right = Math.max(fromCoords.right, toCoords.right);
-		return desiredX >= left && desiredX <= right;
+		// Font metrics can put the caret and widget edge on opposite sides of a
+		// fractional CSS-pixel boundary (for example 813.609px vs 813.625px on
+		// Linux Chromium). The candidate is already exactly at a cluster source
+		// boundary, so one pixel of visual slop only absorbs that rounding error.
+		return desiredX >= left - boundarySlop && desiredX <= right + boundarySlop;
 	}) ?? null;
 }
 
