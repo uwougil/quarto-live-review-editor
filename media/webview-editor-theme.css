@@ -137,6 +137,34 @@ html, body {
 	padding: 0.05em 0.35em;
 }
 
+/* ── Math ──────────────────────────────────────────────────────────────────
+   KaTeX owns glyph choice, TeX spacing and delimiter geometry. This wrapper
+   only supplies measured block spacing, theme inheritance and overflow. Keep
+   vertical space as padding: margins are outside CodeMirror's measured widget
+   box and would desynchronise caret/mouse geometry after repeated formulas. */
+.mlp-math {
+	color: inherit;
+}
+
+.mlp-math-inline {
+	display: inline;
+}
+
+.mlp-math-display {
+	display: block;
+	max-width: 100%;
+	box-sizing: border-box;
+	padding: 0.75em 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+	text-align: center;
+}
+
+.mlp-math-display > .katex-display {
+	margin: 0;
+	min-width: max-content;
+}
+
 /* ── Fenced code blocks ──────────────────────────────────────────────────────
    Each code line carries a line decoration. Line decorations sit on the
    `.cm-line` block, so (unlike a mark) their padding and background never leak

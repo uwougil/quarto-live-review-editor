@@ -11,7 +11,10 @@ class MathWidget extends WidgetType {
 	}
 
 	eq(other: MathWidget): boolean {
-		return this.range.from === other.range.from && this.range.to === other.range.to && this.range.tex === other.range.tex;
+		// Source offsets are placement metadata, not rendered identity. An edit
+		// before this formula may move it without changing its DOM; keeping the
+		// existing node avoids rerendering every later formula in the document.
+		return this.range.display === other.range.display && this.range.tex === other.range.tex;
 	}
 
 	toDOM(view: EditorView): HTMLElement {
@@ -40,7 +43,11 @@ class MathWidget extends WidgetType {
 			if (!click || !view.state.selection.main.empty) return;
 			event.preventDefault();
 			event.stopPropagation();
-			view.dispatch({ selection: { anchor: this.range.from + 1 }, scrollIntoView: true });
+			// The widget DOM may be reused after edits shifted its source range. Ask
+			// CodeMirror for the node's current position instead of using the range
+			// captured when this MathWidget instance was first constructed.
+			const currentFrom = view.posAtDOM(element);
+			view.dispatch({ selection: { anchor: currentFrom + 1 }, scrollIntoView: true });
 			view.focus();
 			swallowClick = true;
 		});

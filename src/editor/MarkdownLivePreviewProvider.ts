@@ -5,6 +5,7 @@ import type { HeadingItem } from '../shared/headings';
 import { selectActiveSession } from '../shared/activeSession';
 import { DocumentSyncCoordinator } from './documentSyncCoordinator';
 import { DOCUMENT_ZOOM_DEFAULT, normalizeDocumentZoom } from '../shared/documentZoom';
+import { buildEditorWebviewCsp } from './webviewCsp';
 
 export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvider {
 	static readonly viewType = 'mdLivePreview.editor';
@@ -170,12 +171,13 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 			vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'aws4-shapes.json'),
 		);
 		const nonce = getNonce();
+		const csp = buildEditorWebviewCsp(webview.cspSource, nonce);
 
 		return `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8" />
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src ${webview.cspSource};" />
+	<meta http-equiv="Content-Security-Policy" content="${csp}" />
 	<link rel="stylesheet" href="${styleUri}" />
 	<link rel="stylesheet" href="${katexStyleUri}" />
 	<title>Quarto Live Review</title>
