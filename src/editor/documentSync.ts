@@ -86,6 +86,9 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 			case 'requestResync':
 				this.sendResync();
 				break;
+			case 'save':
+				void this.coordinator.requestSave();
+				break;
 			case 'undo':
 				// The shared coordinator queues this behind edits from every panel so
 				// undo cannot act on an older document state. The session callback also
@@ -359,6 +362,11 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 
 	receiveDocumentChanges(changes: TextChange[], baseVersion: number, version: number): void {
 		this.post({ type: 'externalUpdate', changes, baseVersion, version });
+		this.scheduleRehighlight();
+	}
+
+	receiveSavedSnapshot(text: string, version: number): void {
+		this.post({ type: 'savedSnapshot', text, version });
 		this.scheduleRehighlight();
 	}
 

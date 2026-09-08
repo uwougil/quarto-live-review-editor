@@ -4,6 +4,7 @@ import { StyleManagerViewProvider } from './sidebar/StyleManagerViewProvider';
 import { StyleStore } from './sidebar/styleStore';
 import { OutlineViewProvider } from './sidebar/OutlineViewProvider';
 import { setGrammarRoot } from './editor/shikiHost';
+import { runDocumentSyncIntegration } from './editor/documentSyncIntegration';
 import {
 	reconcileInspectedEditorAssociations,
 	type DefaultEditorMode,
@@ -171,6 +172,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(StyleManagerViewProvider.viewType, styleManagerProvider),
 	);
+	if (context.extensionMode === vscode.ExtensionMode.Test) {
+		context.subscriptions.push(
+			vscode.commands.registerCommand('mdLivePreview.__testDocumentSync', runDocumentSyncIntegration),
+		);
+	}
 
 	const outlineProvider = new OutlineViewProvider(context, provider);
 	context.subscriptions.push(vscode.window.registerWebviewViewProvider(OutlineViewProvider.viewType, outlineProvider));

@@ -80,6 +80,17 @@ describe('EditorSyncClient', () => {
 		expect(client.hasOutstandingEdits).toBe(true);
 	});
 
+	it('accepts a saved snapshot and ignores a delayed older snapshot', () => {
+		const client = new EditorSyncClient('abc', 4);
+		const current = client.receiveSavedSnapshot({ text: 'abcX', version: 5 });
+		expect(current.viewChanges.apply(text('abc')).toString()).toBe('abcX');
+		expect(client.hostVersion).toBe(5);
+
+		const stale = client.receiveSavedSnapshot({ text: 'abc', version: 4 });
+		expect(stale.viewChanges.empty).toBe(true);
+		expect(client.hostVersion).toBe(5);
+	});
+
 	it('rejects an external update based on an unexpected version without mutating local state', () => {
 		const client = new EditorSyncClient('abc', 4);
 		client.recordLocal(ChangeSet.of({ from: 1, insert: 'X' }, 3));

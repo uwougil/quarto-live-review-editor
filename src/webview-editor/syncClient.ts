@@ -152,6 +152,16 @@ export class EditorSyncClient {
 		return { viewChanges, resyncRequired: false };
 	}
 
+	receiveSavedSnapshot(message: ResyncInput): SyncTransition {
+		// A delayed save event must never roll a panel back over a newer host
+		// version. Otherwise a later save notification could create a stale loop.
+		if (message.version < this.version) {
+			const length = this.outstandingChanges()?.newLength ?? this.confirmed.length;
+			return { viewChanges: ChangeSet.of([], length), resyncRequired: false };
+		}
+		return this.receiveResync(message);
+	}
+
 	private outstandingChanges(): ChangeSet | null {
 		if (this.inFlight && this.pending) return this.inFlight.changes.compose(this.pending);
 		return this.inFlight?.changes ?? this.pending;

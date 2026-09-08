@@ -1,12 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const listeners = new Set<(event: any) => void>();
+const willSaveListeners = new Set<(event: any) => void>();
+const saveListeners = new Set<(document: any) => void>();
 
 vi.mock('vscode', () => ({
 	workspace: {
 		onDidChangeTextDocument: (listener: (event: any) => void) => {
 			listeners.add(listener);
 			return { dispose: () => listeners.delete(listener) };
+		},
+		onWillSaveTextDocument: (listener: (event: any) => void) => {
+			willSaveListeners.add(listener);
+			return { dispose: () => willSaveListeners.delete(listener) };
+		},
+		onDidSaveTextDocument: (listener: (document: any) => void) => {
+			saveListeners.add(listener);
+			return { dispose: () => saveListeners.delete(listener) };
 		},
 		applyEdit: vi.fn(),
 	},
@@ -44,6 +54,7 @@ function document(initial = '') {
 			}
 			this.version++;
 		},
+		save: vi.fn(async () => true),
 	};
 }
 
@@ -74,6 +85,18 @@ function applyAndEmit(doc: ReturnType<typeof document>, edit: any): void {
 	emitChanges(doc, changes);
 }
 
+function emitSave(doc: ReturnType<typeof document>): void {
+	for (const listener of saveListeners) listener(doc);
+}
+
+function emitWillSave(doc: ReturnType<typeof document>): Promise<unknown[]> {
+	const waits: Promise<unknown>[] = [];
+	for (const listener of willSaveListeners) {
+		listener({ document: doc, waitUntil: (promise: Thenable<unknown>) => waits.push(Promise.resolve(promise)) });
+	}
+	return Promise.all(waits);
+}
+
 function applyToText(text: string, changes: TextChange[]): string {
 	for (const change of changes.slice().sort((a, b) => b.from - a.from)) {
 		text = text.slice(0, change.from) + change.insert + text.slice(change.to);
@@ -87,10 +110,11 @@ function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {
 	return { promise, resolve };
 }
 
-function peer(): DocumentSyncPeer & { updates: any[]; acks: any[]; resyncs: number[]; commands: string[] } {
+function peer(): DocumentSyncPeer & { updates: any[]; snapshots: any[]; acks: any[]; resyncs: number[]; commands: string[] } {
 	return {
-		updates: [], acks: [], resyncs: [], commands: [],
+		updates: [], snapshots: [], acks: [], resyncs: [], commands: [],
 		receiveDocumentChanges(changes, baseVersion, version) { this.updates.push({ changes, baseVersion, version }); },
+		receiveSavedSnapshot(text, version) { this.snapshots.push({ text, version }); },
 		acknowledgeEdit(editId, version) { this.acks.push({ editId, version }); },
 		resync(editId) { this.resyncs.push(editId ?? -1); },
 		async runHistoryCommand(command) { this.commands.push(command); },
@@ -100,11 +124,13 @@ function peer(): DocumentSyncPeer & { updates: any[]; acks: any[]; resyncs: numb
 describe('DocumentSyncCoordinator', () => {
 	beforeEach(() => {
 		listeners.clear();
+		willSaveListeners.clear();
+		saveListeners.clear();
 		vi.clearAllMocks();
 		vi.mocked(vscode.workspace.applyEdit).mockReset();
 	});
 
-	it('serializes same-document edits and broadcasts each committed change to the other peer', async () => {
+	it('serializes same-document edits without broadcasting an unsaved webview change', async () => {
 		const doc = document('ab');
 		vi.mocked(vscode.workspace.applyEdit).mockImplementation(async (edit: any) => {
 			applyAndEmit(doc, edit);
@@ -115,7 +141,7 @@ describe('DocumentSyncCoordinator', () => {
 		coordinator.addPeer(a); coordinator.addPeer(b);
 
 		await coordinator.enqueueEdit(a, [{ from: 1, to: 1, insert: 'A' }], 1, 1);
-		expect(b.updates).toEqual([{ changes: [{ from: 1, to: 1, insert: 'A' }], baseVersion: 1, version: 2 }]);
+		expect(b.updates).toEqual([]);
 
 		// A stale queued edit is rejected with its edit id; the webview's
 		// EditorSyncClient preserves it and retries against the resync snapshot.
@@ -124,9 +150,12 @@ describe('DocumentSyncCoordinator', () => {
 		await coordinator.enqueueEdit(b, [{ from: 3, to: 3, insert: 'B' }], 2, 2);
 
 		expect(doc.getText()).toBe('aAbB');
-		expect(a.updates).toEqual([{ changes: [{ from: 3, to: 3, insert: 'B' }], baseVersion: 2, version: 3 }]);
+		expect(a.updates).toEqual([]);
 		expect(a.acks).toEqual([{ editId: 1, version: 2 }]);
 		expect(b.acks).toEqual([{ editId: 2, version: 3 }]);
+		emitSave(doc);
+		expect(a.snapshots).toEqual([{ text: 'aAbB', version: 3 }]);
+		expect(b.snapshots).toEqual([{ text: 'aAbB', version: 3 }]);
 		coordinator.dispose();
 	});
 
@@ -146,7 +175,7 @@ describe('DocumentSyncCoordinator', () => {
 
 		expect(a.updates).toEqual([]);
 		expect(a.acks).toEqual([{ editId: 11, version: 2 }]);
-		expect(b.updates).toEqual([{ changes: [{ from: 1, to: 1, insert: 'X' }], baseVersion: 1, version: 2 }]);
+		expect(b.updates).toEqual([]);
 		coordinator.dispose();
 	});
 
@@ -172,10 +201,7 @@ describe('DocumentSyncCoordinator', () => {
 
 		expect(a.acks).toEqual([{ editId: 12, version: 2 }]);
 		expect(a.updates).toEqual([{ changes: external, baseVersion: 2, version: 3 }]);
-		expect(b.updates).toEqual([
-			{ changes: [{ from: 1, to: 1, insert: 'A' }], baseVersion: 1, version: 2 },
-			{ changes: external, baseVersion: 2, version: 3 },
-		]);
+		expect(b.updates).toEqual([{ changes: external, baseVersion: 2, version: 3 }]);
 		coordinator.dispose();
 	});
 
@@ -204,10 +230,7 @@ describe('DocumentSyncCoordinator', () => {
 
 		expect(a.acks).toEqual([{ editId: 13, version: 2 }]);
 		expect(a.updates).toEqual([{ changes: external, baseVersion: 2, version: 3 }]);
-		expect(b.updates).toEqual([
-			{ changes: external, baseVersion: 2, version: 3 },
-			{ changes: localChanges, baseVersion: 1, version: 2 },
-		]);
+		expect(b.updates).toEqual([{ changes: external, baseVersion: 2, version: 3 }]);
 		coordinator.dispose();
 	});
 
@@ -267,8 +290,8 @@ describe('DocumentSyncCoordinator', () => {
 		expect(doc.getText()).toBe('abAB');
 		expect(a.acks).toEqual([{ editId: 31, version: 2 }]);
 		expect(b.acks).toEqual([{ editId: 32, version: 3 }]);
-		expect(a.updates).toHaveLength(1);
-		expect(b.updates).toHaveLength(1);
+		expect(a.updates).toHaveLength(0);
+		expect(b.updates).toHaveLength(0);
 		coordinator.dispose();
 	});
 
@@ -303,10 +326,10 @@ describe('DocumentSyncCoordinator', () => {
 
 		expect(doc.getText()).toBe(expected);
 		expect(aText).toBe(expected);
-		expect(bText).toBe(expected);
+		expect(bText).toBe('');
 		expect(a.updates).toEqual([]);
 		expect(a.acks).toHaveLength(128);
-		expect(b.updates).toHaveLength(128);
+		expect(b.updates).toHaveLength(0);
 		coordinator.dispose();
 	});
 
@@ -334,7 +357,7 @@ describe('DocumentSyncCoordinator', () => {
 		coordinator.dispose();
 	});
 
-	it('converges after edits alternate between two panels', async () => {
+	it('converges after alternating panel edits cross the save barrier', async () => {
 		const doc = document('');
 		vi.mocked(vscode.workspace.applyEdit).mockImplementation(async (edit: any) => {
 			applyAndEmit(doc, edit);
@@ -357,9 +380,17 @@ describe('DocumentSyncCoordinator', () => {
 		const aChange = [{ from: 0, to: 0, insert: 'A' }];
 		aText = applyToText(aText, aChange);
 		await coordinator.enqueueEdit(a, aChange, 1, 40);
+		expect(bText).toBe('');
+		emitSave(doc);
+		aText = 'A';
+		bText = 'A';
 		const bChange = [{ from: 1, to: 1, insert: 'B' }];
 		bText = applyToText(bText, bChange);
 		await coordinator.enqueueEdit(b, bChange, 2, 41);
+		expect(aText).toBe('A');
+		emitSave(doc);
+		aText = 'AB';
+		bText = 'AB';
 
 		expect(doc.getText()).toBe('AB');
 		expect(aText).toBe('AB');
@@ -440,6 +471,78 @@ describe('DocumentSyncCoordinator', () => {
 
 		expect(a.commands).toEqual(['undo']);
 		expect(b.commands).toEqual(['redo']);
+		coordinator.dispose();
+	});
+
+	it('waits for a delayed local change acknowledgement before saving', async () => {
+		const doc = document('ab');
+		const applyResult = deferred<boolean>();
+		let localChanges: TextChange[] = [];
+		vi.mocked(vscode.workspace.applyEdit).mockImplementation((edit: any) => {
+			localChanges = doc.apply(edit);
+			return applyResult.promise;
+		});
+		const coordinator = new DocumentSyncCoordinator(doc as any);
+		const a = peer();
+		coordinator.addPeer(a);
+
+		const edit = coordinator.enqueueEdit(a, [{ from: 2, to: 2, insert: 'X' }], 1, 60);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const save = coordinator.requestSave();
+		applyResult.resolve(true);
+		await edit;
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(doc.save).not.toHaveBeenCalled();
+
+		emitChanges(doc, localChanges);
+		await save;
+		expect(doc.save).toHaveBeenCalledTimes(1);
+		coordinator.dispose();
+	});
+
+	it('makes source-editor save participants wait for a delayed local acknowledgement', async () => {
+		const doc = document('ab');
+		const applyResult = deferred<boolean>();
+		let localChanges: TextChange[] = [];
+		vi.mocked(vscode.workspace.applyEdit).mockImplementation((edit: any) => {
+			localChanges = doc.apply(edit);
+			return applyResult.promise;
+		});
+		const coordinator = new DocumentSyncCoordinator(doc as any);
+		const a = peer();
+		coordinator.addPeer(a);
+
+		const edit = coordinator.enqueueEdit(a, [{ from: 2, to: 2, insert: 'X' }], 1, 62);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		let barrierSettled = false;
+		const barrier = emitWillSave(doc).then(() => { barrierSettled = true; });
+		applyResult.resolve(true);
+		await edit;
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(barrierSettled).toBe(false);
+
+		emitChanges(doc, localChanges);
+		await barrier;
+		expect(barrierSettled).toBe(true);
+		coordinator.dispose();
+	});
+
+	it('does not broadcast a saved snapshot when the save fails', async () => {
+		const doc = document('ab');
+		vi.mocked(vscode.workspace.applyEdit).mockImplementation(async (edit: any) => {
+			applyAndEmit(doc, edit);
+			return true;
+		});
+		vi.mocked(doc.save).mockResolvedValue(false);
+		const coordinator = new DocumentSyncCoordinator(doc as any);
+		const a = peer(); const b = peer();
+		coordinator.addPeer(a); coordinator.addPeer(b);
+
+		await coordinator.enqueueEdit(a, [{ from: 2, to: 2, insert: 'X' }], 1, 61);
+		await coordinator.requestSave();
+		expect(b.snapshots).toEqual([]);
+		emitSave(doc);
+		expect(b.snapshots).toEqual([{ text: 'abX', version: 2 }]);
 		coordinator.dispose();
 	});
 });
