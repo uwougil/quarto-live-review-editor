@@ -39,6 +39,7 @@ const imageQueue: Array<{ requestId: number; atPos: number; mimeType: string; da
 const controlQueue: Array<'undo' | 'redo'> = [];
 let lastCodeTokenGeneration = 0;
 let typewriterMode: TypewriterModeController | undefined;
+let disposeFontMeasurement: (() => void) | undefined;
 
 function requestMeasureAfterLayout(): void {
 	const target = view;
@@ -49,6 +50,46 @@ function requestMeasureAfterLayout(): void {
 	requestAnimationFrame(() => {
 		if (target.dom.isConnected) target.requestMeasure();
 	});
+}
+
+/**
+ * Web fonts can finish after CodeMirror's first height-map pass. Re-measure on
+ * every KaTeX face completion, and make a load failure observable instead of
+ * silently accepting a browser-dependent serif fallback.
+ */
+function watchKatexFontMeasurements(root: HTMLElement): () => void {
+	const fonts = document.fonts;
+	let disposed = false;
+	const isKatexEvent = (event: Event) => {
+		const faces = (event as FontFaceSetLoadEvent).fontfaces ?? [];
+		return [...faces].some((face) => face.family.replace(/["']/g, '').startsWith('KaTeX_'));
+	};
+	const remeasure = () => {
+		if (!disposed) requestMeasureAfterLayout();
+	};
+	const loaded = (event: Event) => {
+		if (!isKatexEvent(event)) return;
+		root.dataset.mlpKatexFonts = 'ready';
+		remeasure();
+	};
+	const failed = (event: Event) => {
+		if (!isKatexEvent(event)) return;
+		root.dataset.mlpKatexFonts = 'error';
+		console.error('[Quarto Live Review] A bundled KaTeX font failed to load.');
+		remeasure();
+	};
+	fonts.addEventListener('loadingdone', loaded);
+	fonts.addEventListener('loadingerror', failed);
+	fonts.ready.then(() => {
+		if (disposed) return;
+		if (!root.dataset.mlpKatexFonts) root.dataset.mlpKatexFonts = 'ready';
+		remeasure();
+	});
+	return () => {
+		disposed = true;
+		fonts.removeEventListener('loadingdone', loaded);
+		fonts.removeEventListener('loadingerror', failed);
+	};
 }
 
 function flush() {
@@ -192,6 +233,8 @@ function initialStateFor(text: string, dialect: DocumentDialect): EditorState {
 
 function createView(text: string, dialect: DocumentDialect, zoomPercent: unknown) {
 	const root = document.getElementById('mlp-root')!;
+	disposeFontMeasurement?.();
+	disposeFontMeasurement = watchKatexFontMeasurements(root);
 	// Install the persisted factor before EditorView's first measurement. This
 	// avoids a one-frame 100% height map when a panel is reopened at another
 	// zoom, while the controller still owns all later event and layout updates.

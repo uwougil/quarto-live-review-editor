@@ -26,6 +26,9 @@ function mimeType(filePath) {
 		'.js': 'text/javascript; charset=utf-8',
 		'.json': 'application/json',
 		'.svg': 'image/svg+xml',
+		'.woff2': 'font/woff2',
+		'.woff': 'font/woff',
+		'.ttf': 'font/ttf',
 	}[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
 }
 

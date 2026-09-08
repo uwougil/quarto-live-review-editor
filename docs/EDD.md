@@ -69,7 +69,14 @@ Webview Editor
 
 源位置是所有交互的身份：点击、脚注回跳、表格编辑、图片和图表操作都必须使用 CodeMirror 文档偏移或 DOM 到文档位置的 API，不使用屏幕像素推断文档位置。
 
-### 3.1 Typewriter Mode
+### 3.1 数学字体与局部 widget
+
+- 数学渲染固定使用 KaTeX；`media/katex.min.css` 引用的 20 个 KaTeX face（woff2/woff/ttf）全部随扩展打包在 `media/fonts/`，webview CSP 只允许从自身资源源加载字体。
+- KaTeX 保留自身的 glyph metrics、字重、TeX spacing 和 display style；扩展 CSS 只负责继承主题前景色、可测量的 display padding 和横向溢出，不替换数学字体或缩放整个 widget。
+- KaTeX 字体完成加载后触发 CodeMirror 的 supported measurement；加载错误会写入 `data-mlp-katex-fonts="error"` 并记录错误，不静默接受浏览器 serif fallback。
+- `MathWidget` 的等价性由公式内容与 inline/display 模式决定，不由易变的源码绝对偏移决定；鼠标交互通过当前 DOM 向 CodeMirror 查询最新偏移，因此单个公式编辑不会重建其余公式 DOM。
+
+### 3.2 Typewriter Mode
 
 - `src/webview-editor/typewriterMode.ts` 只负责编辑器视口控制，不创建文档变更，也不参与宿主同步。
 - 写作型键盘事件、文本输入、删除、粘贴和拖放会安排一次下一帧定位；控制器使用 `coordsAtPos` 和 `scrollDOM` 的实际几何，把主光标中点尽量放到视口高度的 40%。
@@ -130,6 +137,7 @@ npm run test:browser:inline-interaction
 npm run test:browser:typewriter
 npm run test:browser:arrow-scroll
 npm run test:browser:zoom
+npm run test:browser:math
 ```
 
 CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行七个浏览器命令。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。

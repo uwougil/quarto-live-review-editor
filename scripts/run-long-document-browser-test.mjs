@@ -43,6 +43,7 @@ function mimeType(filePath) {
 		'.css': 'text/css; charset=utf-8', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
 		'.json': 'application/json; charset=utf-8', '.map': 'application/json; charset=utf-8', '.svg': 'image/svg+xml',
 		'.png': 'image/png', '.gif': 'image/gif', '.qmd': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8',
+		'.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf',
 	}[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
 }
 
