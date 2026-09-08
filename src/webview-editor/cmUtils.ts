@@ -5,7 +5,7 @@ export { sourceSelectionTouchesInlineRange as selectionTouchesInlineRange };
 
 /** Keep rendered inline DOM stable until CodeMirror's pointer gesture ends. */
 export function selectionTouchesInlineRangeForDecoration(state: EditorState, from: number, to: number): boolean {
-	return pointerDown || sourceSelectionTouchesInlineRange(state, from, to);
+	return !pointerDown && sourceSelectionTouchesInlineRange(state, from, to);
 }
 
 export function pointerGestureIsActive(): boolean {

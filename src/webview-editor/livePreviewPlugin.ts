@@ -2,7 +2,7 @@ import { EditorView, ViewPlugin, ViewUpdate, Decoration, DecorationSet, WidgetTy
 import { syntaxTree } from '@codemirror/language';
 import { RangeSet, StateField, type Range, type EditorState } from '@codemirror/state';
 import type { SyntaxNode, SyntaxNodeRef } from '@lezer/common';
-import { cursorTouchesLineRange, selectionTouchesInlineRangeForDecoration, blockCursorTouchesRange, noteRevealed } from './cmUtils';
+import { cursorTouchesLineRange, selectionTouchesInlineRangeForDecoration, blockCursorTouchesRange, noteRevealed, pointerGestureIsActive } from './cmUtils';
 import { isDiagramLang } from './diagramLang';
 import { isDrawioPath } from './drawioFileClient';
 import { DrawioFileWidget } from './drawioWidget';
@@ -1640,6 +1640,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
 
 		update(update: ViewUpdate) {
 			const reason = decorationRebuildReason(update);
+			// Selection transactions arrive throughout a native pointer drag. Keep
+			// the exact decoration set that was visible at mousedown so source and
+			// replacement widths cannot move beneath the pointer. The shared
+			// pointer-release refresh rebuilds this plugin immediately afterward.
+			if (reason && reason !== 'docChanged' && pointerGestureIsActive()) return;
 			if (reason) {
 				const start = performance.now();
 				const nextDecorations = buildDecorations(update.view);

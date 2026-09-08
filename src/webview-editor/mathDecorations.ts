@@ -2,6 +2,8 @@ import { StateField, type EditorState, type Range } from '@codemirror/state';
 import { Decoration, DecorationSet, EditorView, WidgetType } from '@codemirror/view';
 import katex from 'katex';
 import { mathRangeTouchesSelection, mathRangesForState, type MathRange } from './math';
+import { pointerGestureIsActive } from './cmUtils';
+import { refreshSyntaxDecorations } from './decorationRefresh';
 
 class MathWidget extends WidgetType {
 	constructor(private readonly range: MathRange) {
@@ -26,16 +28,33 @@ class MathWidget extends WidgetType {
 		} catch {
 			element.textContent = this.range.tex;
 		}
+		let press: { x: number; y: number } | null = null;
+		let swallowClick = false;
 		element.addEventListener('mousedown', (event) => {
+			if (event instanceof MouseEvent && event.button === 0) press = { x: event.clientX, y: event.clientY };
+		});
+		element.addEventListener('mouseup', (event) => {
+			if (!(event instanceof MouseEvent) || !press || event.button !== 0) return;
+			const click = Math.hypot(event.clientX - press.x, event.clientY - press.y) <= 4;
+			press = null;
+			if (!click || !view.state.selection.main.empty) return;
 			event.preventDefault();
+			event.stopPropagation();
 			view.dispatch({ selection: { anchor: this.range.from + 1 }, scrollIntoView: true });
 			view.focus();
+			swallowClick = true;
+		});
+		element.addEventListener('click', (event) => {
+			if (!swallowClick) return;
+			swallowClick = false;
+			event.preventDefault();
+			event.stopPropagation();
 		});
 		return element;
 	}
 
 	ignoreEvent(): boolean {
-		return false;
+		return true;
 	}
 }
 
@@ -50,7 +69,7 @@ class MathWidget extends WidgetType {
 function buildMathDecorations(state: EditorState): DecorationSet {
 	const decorations: Range<Decoration>[] = [];
 	for (const range of mathRangesForState(state)) {
-		if (mathRangeTouchesSelection(state, range)) continue;
+		if (!pointerGestureIsActive() && mathRangeTouchesSelection(state, range)) continue;
 		const fromLine = state.doc.lineAt(range.from);
 		const toLine = state.doc.lineAt(range.to);
 		if (fromLine.number !== toLine.number) {
@@ -69,7 +88,11 @@ function buildMathDecorations(state: EditorState): DecorationSet {
 export const mathDecorationsField = StateField.define<DecorationSet>({
 	create: buildMathDecorations,
 	update(value, transaction) {
-		if (transaction.docChanged || transaction.selection) return buildMathDecorations(transaction.state);
+		if (transaction.docChanged) return buildMathDecorations(transaction.state);
+		if (transaction.selection && pointerGestureIsActive()) return value;
+		if (transaction.selection || transaction.effects.some((effect) => effect.is(refreshSyntaxDecorations))) {
+			return buildMathDecorations(transaction.state);
+		}
 		return value;
 	},
 	provide: (field) => EditorView.decorations.from(field),

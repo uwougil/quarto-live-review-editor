@@ -232,7 +232,13 @@ function footnoteBoundaryForGoal(
 	const desiredX = view.contentDOM.getBoundingClientRect().left + goalColumn;
 	const fromX = (fromCoords.left + fromCoords.right) / 2;
 	const toX = (toCoords.left + toCoords.right) / 2;
-	return Math.abs(desiredX - fromX) <= Math.abs(desiredX - toX) ? cluster.from : cluster.to;
+	// Replacement widgets can report the boundary coordinate associated with
+	// the opposite side depending on the `assoc` direction and browser. Map
+	// physical left/right back to the logical source edges before choosing the
+	// endpoint; otherwise a left-column vertical move enters the cluster's end.
+	const leftX = Math.min(fromX, toX);
+	const rightX = Math.max(fromX, toX);
+	return Math.abs(desiredX - leftX) <= Math.abs(desiredX - rightX) ? cluster.from : cluster.to;
 }
 
 /**
@@ -284,6 +290,7 @@ export function moveVerticallyAvoidingFootnotes(forward: boolean): Command {
  */
 export function createFootnoteMouseHandler(): ReturnType<typeof EditorView.domEventHandlers> {
 	let gesture: PointerGestureStart | null = null;
+	let correctedOnMouseup = false;
 	const correctClick = (event: MouseEvent, view: EditorView): boolean => {
 		// Native hit testing may leave the old selection non-empty until the
 		// click event has completed. Pointer slop, rather than that transient
@@ -293,15 +300,37 @@ export function createFootnoteMouseHandler(): ReturnType<typeof EditorView.domEv
 		if (target?.closest('.mlp-footnote-ref')) return false;
 		const line = (target?.closest('.cm-line') ?? document.elementFromPoint(event.clientX, event.clientY)?.closest('.cm-line')) as HTMLElement | null;
 		if (!line) return false;
+		// A reference may already be showing source when the gesture begins (for
+		// example after ArrowRight entered one occurrence). Use the source index as
+		// the stable cluster identity and fall back to source coordinates for any
+		// button that is not currently mounted.
 		const buttons = Array.from(line.querySelectorAll<HTMLElement>('.mlp-footnote-ref'));
-		if (buttons.length === 0) return false;
-		const head = view.state.selection.main.head;
-		const entries = buttons.map((button) => {
+		const buttonByRange = new Map<string, HTMLElement>();
+		for (const button of buttons) {
 			const from = Number(button.dataset.referenceFrom);
 			const to = Number(button.dataset.referenceTo);
-			const rect = button.getBoundingClientRect();
-			return { button, from, to, rect, centerY: (rect.top + rect.bottom) / 2 };
-		}).filter((entry) => Number.isFinite(entry.from) && Number.isFinite(entry.to));
+			if (Number.isFinite(from) && Number.isFinite(to)) buttonByRange.set(`${from}:${to}`, button);
+		}
+		const head = view.state.selection.main.head;
+		const sourceLine = view.state.doc.lineAt(head);
+		const references = view.state.field(footnoteIndexField).references.filter((reference) =>
+			reference.from >= sourceLine.from && reference.to <= sourceLine.to);
+		const entries = references.map((reference) => {
+			const from = reference.from;
+			const to = reference.to;
+			const button = buttonByRange.get(`${from}:${to}`) ?? null;
+			const fromCoords = button ? null : view.coordsAtPos(from, 1);
+			const toCoords = button ? null : view.coordsAtPos(to, -1);
+			const domRect = button?.getBoundingClientRect();
+			if ((!fromCoords || !toCoords) && !domRect) return null;
+			const rect = domRect ?? {
+				left: Math.min(fromCoords!.left, toCoords!.left),
+				right: Math.max(fromCoords!.right, toCoords!.right),
+				top: Math.min(fromCoords!.top, toCoords!.top),
+				bottom: Math.max(fromCoords!.bottom, toCoords!.bottom),
+			};
+			return { from: reference.from, to: reference.to, rect, centerY: (rect.top + rect.bottom) / 2 };
+		}).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 		const clusters: Array<typeof entries> = [];
 		for (const entry of entries) {
 			const cluster = clusters.at(-1);
@@ -317,9 +346,8 @@ export function createFootnoteMouseHandler(): ReturnType<typeof EditorView.domEv
 		const rows: Array<typeof entries> = [];
 		for (const entry of clusterEntries) {
 			const row = rows.find((candidate) => {
-				const top = Math.max(candidate[0].rect.top, entry.rect.top);
-				const bottom = Math.min(candidate[0].rect.bottom, entry.rect.bottom);
-				return bottom > top;
+				const center = candidate.reduce((sum, item) => sum + item.centerY, 0) / candidate.length;
+				return Math.abs(center - entry.centerY) <= 2;
 			});
 			if (row) row.push(entry);
 			else rows.push([entry]);
@@ -336,6 +364,25 @@ export function createFootnoteMouseHandler(): ReturnType<typeof EditorView.domEv
 		const clusterFrom = clusterEntries[0].from;
 		const clusterTo = clusterEntries.at(-1)?.to ?? clusterFrom;
 		if (head < clusterFrom || head > clusterTo) return false;
+		// When the browser hit-tests the one-pixel seam between a replacement
+		// widget and following prose, the native selection may remain at the
+		// cluster end even though the user clicked the prose. Prefer the DOM
+		// caret position whenever it resolves clearly outside the cluster.
+		const caretRange = document.caretRangeFromPoint?.(event.clientX, event.clientY);
+		if (caretRange?.startContainer) {
+			try {
+				const domPos = view.posAtDOM(caretRange.startContainer, caretRange.startOffset);
+				if (domPos < clusterFrom || domPos > clusterTo) {
+					event.preventDefault();
+					event.stopPropagation();
+					view.dispatch({ selection: { anchor: domPos }, userEvent: 'select.pointer' });
+					view.focus();
+					return true;
+				}
+			} catch {
+				// Ignore nodes outside CodeMirror's content DOM.
+			}
+		}
 		const desired = Math.abs(event.clientX - left) <= Math.abs(event.clientX - right) ? clusterFrom : clusterTo;
 		if (desired === head) return false;
 		event.preventDefault();
@@ -351,14 +398,21 @@ export function createFootnoteMouseHandler(): ReturnType<typeof EditorView.domEv
 		},
 		mouseup(event, view) {
 			if (!(event instanceof MouseEvent)) return false;
-			if (!gesture || Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 4) {
+			if (!isPointerClick(gesture, event, view.state.selection.main.empty)) {
 				gesture = null;
+				correctedOnMouseup = false;
 				return false;
 			}
-			return false;
+			correctedOnMouseup = correctClick(event, view);
+			return correctedOnMouseup;
 		},
 		click(event, view) {
 			if (!(event instanceof MouseEvent)) return false;
+			if (correctedOnMouseup) {
+				correctedOnMouseup = false;
+				gesture = null;
+				return true;
+			}
 			const corrected = correctClick(event, view);
 			gesture = null;
 			return corrected;
