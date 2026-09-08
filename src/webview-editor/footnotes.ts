@@ -216,6 +216,9 @@ interface RenderedFootnoteRect {
 	centerY: number;
 }
 
+const VISUAL_ROW_TOLERANCE_PX = 2;
+const WIDGET_EDGE_TOLERANCE_PX = 0.5;
+
 function renderedFootnoteRects(view: EditorView): RenderedFootnoteRect[] {
 	return Array.from(view.contentDOM.querySelectorAll<HTMLElement>('.mlp-footnote-ref'))
 		.map((button) => {
@@ -232,7 +235,7 @@ function renderedFootnoteRects(view: EditorView): RenderedFootnoteRect[] {
 function renderedFootnotesOnVisualRow(view: EditorView, targetY: number): RenderedFootnoteRect[] {
 	const rows: RenderedFootnoteRect[][] = [];
 	for (const entry of renderedFootnoteRects(view)) {
-		const row = rows.find((candidate) => candidate[0].centerY === entry.centerY);
+		const row = rows.find((candidate) => Math.abs(candidate[0].centerY - entry.centerY) <= VISUAL_ROW_TOLERANCE_PX);
 		if (row) row.push(entry);
 		else rows.push([entry]);
 	}
@@ -256,6 +259,16 @@ function footnoteBoundaryForVisualGoal(entries: RenderedFootnoteRect[], desiredX
 		if (!best || distance < best.distance) best = { boundary, distance };
 	}
 	return best?.boundary ?? entries[0].from;
+}
+
+function desiredXHitsVisualFootnotes(entries: RenderedFootnoteRect[], desiredX: number): boolean {
+	const left = Math.min(...entries.map((entry) => entry.rect.left));
+	const right = Math.max(...entries.map((entry) => entry.rect.right));
+	return desiredX > left + WIDGET_EDGE_TOLERANCE_PX && desiredX < right - WIDGET_EDGE_TOLERANCE_PX;
+}
+
+function visualFootnoteLeft(entries: RenderedFootnoteRect[]): number {
+	return Math.min(...entries.map((entry) => entry.rect.left));
 }
 
 /**
@@ -283,6 +296,18 @@ export function moveVerticallyAvoidingFootnotes(forward: boolean): Command {
 				.filter((entry) => entry.from >= cluster.from && entry.to <= cluster.to);
 			if (rowEntries.length === 0) return moved;
 			const desiredX = view.contentDOM.getBoundingClientRect().left + goalColumn;
+			if (!desiredXHitsVisualFootnotes(rowEntries, desiredX)) {
+				const left = visualFootnoteLeft(rowEntries);
+				const proseSide = desiredX <= left + WIDGET_EDGE_TOLERANCE_PX;
+				const atClusterBoundary = moved.head === cluster.from || moved.head === cluster.from - 1 || moved.head === cluster.to;
+				const clearlyBeforeWidget = desiredX < left - WIDGET_EDGE_TOLERANCE_PX;
+				// A target with real prose geometry before the first widget must stay
+				// prose even if native vertical movement resolves to a cluster edge.
+				if (proseSide && atClusterBoundary && clearlyBeforeWidget) {
+					return EditorSelection.cursor(cluster.from - 1, moved.assoc, moved.bidiLevel ?? undefined, goalColumn);
+				}
+				if (!proseSide) return moved;
+			}
 			const boundary = footnoteBoundaryForVisualGoal(rowEntries, desiredX);
 			return EditorSelection.cursor(boundary, moved.assoc, moved.bidiLevel ?? undefined, goalColumn);
 		});

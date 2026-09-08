@@ -207,6 +207,11 @@
 		return [body, '', ...definitions].join('\n');
 	}
 
+	function buildFootnoteCaretNegativeFixture() {
+		const body = `FOOTNOTE-CARET-NEGATIVE-START ${'ordinary words '.repeat(18)}ordinary proseX[^1] after ${'ordinary words '.repeat(30)}FOOTNOTE-CARET-NEGATIVE-END.`;
+		return [body, '', '[^1]: Negative caret geometry definition.'].join('\n');
+	}
+
 	function buildTypewriterFixture() {
 		const sentence = 'This long writing line keeps enough ordinary prose to make the caret position and viewport movement measurable in a real CodeMirror editor. ';
 		return Array.from({ length: 180 }, (_, index) => `TYPEWRITER-${String(index + 1).padStart(3, '0')} ${sentence.repeat(2)}`).join('\n');
@@ -255,6 +260,7 @@
 		if (testParams.get('interaction') === '1') return { text: buildInteractionFixture(), kind: 'interaction-geometry' };
 		if (testParams.get('footnoteInteraction') === '1') return { text: buildFootnoteInteractionFixture(), kind: 'footnote-interaction' };
 		if (testParams.get('footnoteCaret') === '1') return { text: buildFootnoteCaretFixture(), kind: 'footnote-caret' };
+		if (testParams.get('footnoteCaretNegative') === '1') return { text: buildFootnoteCaretNegativeFixture(), kind: 'footnote-caret-negative' };
 		if (testParams.get('typewriter') === '1') return { text: buildTypewriterFixture(), kind: 'typewriter' };
 		if (testParams.get('arrowScroll') === '1') return { text: buildArrowScrollFixture(), kind: 'arrow-scroll' };
 		const benchmarkLines = Number(testParams.get('lines'));
@@ -520,7 +526,7 @@
 	}
 
 	(async () => {
-		try { window.__mlpLongDocumentResult = await (testParams.get('probe') === '1' ? runBugProbe() : testParams.get('inline') === '1' ? runInlineGeometry() : testParams.get('typewriter') === '1' ? runTypewriterMode() : testParams.get('interaction') === '1' || testParams.get('footnoteInteraction') === '1' || testParams.get('arrowScroll') === '1' ? runInteractionReady() : run()); }
+		try { window.__mlpLongDocumentResult = await (testParams.get('probe') === '1' ? runBugProbe() : testParams.get('inline') === '1' ? runInlineGeometry() : testParams.get('typewriter') === '1' ? runTypewriterMode() : testParams.get('interaction') === '1' || testParams.get('footnoteInteraction') === '1' || testParams.get('footnoteCaretNegative') === '1' || testParams.get('arrowScroll') === '1' ? runInteractionReady() : run()); }
 		catch (error) { window.__mlpLongDocumentResult = { ok: false, error: String(error?.stack || error) }; }
 	})();
 </script>

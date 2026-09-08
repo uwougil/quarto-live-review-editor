@@ -135,6 +135,76 @@ async function inspectGeometry(page) {
 	});
 }
 
+async function inspectNegativeGeometry(page) {
+	await page.evaluate(() => {
+		const line = [...document.querySelectorAll('.cm-line')].find((candidate) => candidate.textContent?.includes('FOOTNOTE-CARET-NEGATIVE-START'));
+		line?.scrollIntoView({ block: 'center', inline: 'nearest' });
+	});
+	await page.waitForTimeout(60);
+	return page.evaluate(() => {
+		const line = [...document.querySelectorAll('.cm-line')].find((candidate) => candidate.textContent?.includes('FOOTNOTE-CARET-NEGATIVE-START'));
+		if (!line) throw new Error('negative footnote caret fixture line is not mounted');
+		const button = line.querySelector('.mlp-footnote-ref');
+		if (!button) throw new Error('negative footnote caret fixture has no rendered reference');
+		const buttonRect = button.getBoundingClientRect();
+		const referenceFrom = Number(button.dataset.referenceFrom);
+		const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+		let xRect = null;
+		let node;
+		while ((node = walker.nextNode())) {
+			if (node.parentElement?.closest('.mlp-footnote-ref')) continue;
+			const index = (node.nodeValue || '').indexOf('X');
+			if (index < 0) continue;
+			const range = document.createRange();
+			range.setStart(node, index);
+			range.setEnd(node, index + 1);
+			xRect = range.getBoundingClientRect();
+			break;
+		}
+		if (!xRect) throw new Error('negative footnote caret fixture prose marker is not mounted');
+
+		const textEntries = [];
+		const textWalker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+		while ((node = textWalker.nextNode())) {
+			if (node.parentElement?.closest('.mlp-footnote-ref')) continue;
+			const range = document.createRange();
+			range.selectNodeContents(node);
+			for (const rect of [...range.getClientRects()]) {
+				if (rect.width <= 1 || rect.height <= 1) continue;
+				textEntries.push({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, center: (rect.top + rect.bottom) / 2 });
+			}
+		}
+		const textRows = [];
+		for (const entry of textEntries.sort((a, b) => a.center - b.center || a.left - b.left)) {
+			const row = textRows.at(-1);
+			if (row && Math.abs(row.center - entry.center) <= 2) {
+				row.left = Math.min(row.left, entry.left);
+				row.right = Math.max(row.right, entry.right);
+				row.top = Math.min(row.top, entry.top);
+				row.bottom = Math.max(row.bottom, entry.bottom);
+				row.center = (row.top + row.bottom) / 2;
+			} else {
+				textRows.push({ ...entry });
+			}
+		}
+		const lineHeight = Number.parseFloat(getComputedStyle(line).lineHeight);
+		const targetCenter = (xRect.top + xRect.bottom) / 2;
+		const targetRow = textRows.find((row) => Math.abs(row.center - targetCenter) <= 2);
+		if (!targetRow) throw new Error('negative footnote prose marker row is not mounted');
+		const rowSeparation = Math.max(lineHeight * 0.5, 1);
+		return {
+			source: window.__mlpTestSourceText || '',
+			referenceFrom,
+			xRect: { left: xRect.left, right: xRect.right, top: xRect.top, bottom: xRect.bottom, center: targetCenter },
+			buttonRect: { left: buttonRect.left, right: buttonRect.right, top: buttonRect.top, bottom: buttonRect.bottom },
+			targetRow,
+			beforeRow: textRows.filter((row) => row.center < targetRow.center - rowSeparation).at(-1),
+			afterRow: textRows.find((row) => row.center > targetRow.center + rowSeparation),
+			lineHeight,
+		};
+	});
+}
+
 function pointForRow(targetRow, textRow, side) {
 	const targetX = side === 'left' ? targetRow.left + 1 : targetRow.right - 1;
 	const left = textRow.left + 1;
@@ -161,6 +231,38 @@ async function moveFromTextRow(page, point, direction) {
 	await page.waitForTimeout(50);
 	const after = await page.evaluate(() => window.__mlpDebugSelection?.());
 	return { point, before, after };
+}
+
+async function runNegativeCase(browser, baseUrl, width, zoom) {
+	const page = await browser.newPage({ viewport: { width, height: 800 } });
+	try {
+		const url = new URL('/scripts/long-document-browser-harness.html', baseUrl);
+		url.searchParams.set('footnoteCaretNegative', '1');
+		url.searchParams.set('zoom', String(zoom));
+		await page.goto(url.toString(), { waitUntil: 'load' });
+		await page.waitForFunction(() => window.__mlpLongDocumentResult !== undefined, null, { timeout: 30000 });
+		const ready = await page.evaluate(() => window.__mlpLongDocumentResult);
+		assert(ready.ok, 'negative fixture failed to initialize', { ready, width, zoom });
+		await page.waitForTimeout(120);
+		const geometry = await inspectNegativeGeometry(page);
+		assert(geometry.beforeRow && geometry.afterRow, 'negative fixture lacks surrounding text rows', { width, zoom, geometry });
+		assert(geometry.xRect.right <= geometry.buttonRect.left + 0.5, 'negative prose marker is not visibly before the widget', { width, zoom, geometry });
+		const targetX = geometry.xRect.left + 1;
+		const pointForTextRow = (row) => ({
+			x: Math.max(row.left + 1, Math.min(row.right - 1, targetX)),
+			y: row.center,
+		});
+		const down = await moveFromTextRow(page, pointForTextRow(geometry.beforeRow), 'ArrowDown');
+		const up = await moveFromTextRow(page, pointForTextRow(geometry.afterRow), 'ArrowUp');
+		const expected = geometry.referenceFrom - 1;
+		const checks = {
+			arrowDownKeepsProseBoundary: down.after?.head === expected,
+			arrowUpKeepsProseBoundary: up.after?.head === expected,
+		};
+		return { width, zoom, ok: Object.values(checks).every(Boolean), checks, geometry, down, up, expected };
+	} finally {
+		await page.close();
+	}
 }
 
 async function checkFirstPointerPlacement(page, geometry) {
@@ -256,16 +358,20 @@ async function main() {
 	const baseUrl = `http://127.0.0.1:${server.address().port}`;
 	const browser = await chromium.launch({ headless: true });
 	const results = [];
+	const negativeResults = [];
 	try {
 		for (const width of WIDTHS) {
-			for (const zoom of ZOOMS) results.push(await runCase(browser, baseUrl, width, zoom));
+			for (const zoom of ZOOMS) {
+				results.push(await runCase(browser, baseUrl, width, zoom));
+				negativeResults.push(await runNegativeCase(browser, baseUrl, width, zoom));
+			}
 		}
 	} finally {
 		await browser.close();
 		await new Promise((resolve) => server.close(resolve));
 	}
-	const failed = results.filter((result) => !result.ok);
-	process.stdout.write(JSON.stringify({ ok: failed.length === 0, widths: WIDTHS, zooms: ZOOMS, results }, null, 2) + '\n');
+	const failed = [...results, ...negativeResults].filter((result) => !result.ok);
+	process.stdout.write(JSON.stringify({ ok: failed.length === 0, widths: WIDTHS, zooms: ZOOMS, results, negativeResults }, null, 2) + '\n');
 	if (failed.length) process.exitCode = 1;
 }
 
