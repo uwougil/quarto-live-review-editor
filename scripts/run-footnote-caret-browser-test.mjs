@@ -221,8 +221,8 @@ function expectedBoundaryForPoint(row, point) {
 	return point.x <= (entry.left + entry.right) / 2 ? entry.from : entry.to;
 }
 
-function expectedBoundaryForKeyboardGoal(row, point, before, side) {
-	if (side === 'left' && before?.x !== null && before?.x < row.left - 0.5) return row.entries[0].from - 1;
+function expectedBoundaryForKeyboardGoal(row, point) {
+	if (point.x < row.left - 0.5) return row.entries[0].from - 1;
 	return expectedBoundaryForPoint(row, point);
 }
 
@@ -333,7 +333,7 @@ async function runCase(browser, baseUrl, width, zoom) {
 			const moved = await moveFromTextRow(page, point, 'ArrowDown');
 			down[side] = {
 				...moved,
-				expected: expectedBoundaryForKeyboardGoal(firstRow, point, moved.before, side),
+				expected: expectedBoundaryForKeyboardGoal(firstRow, point),
 			};
 		}
 		const up = {};
@@ -342,7 +342,7 @@ async function runCase(browser, baseUrl, width, zoom) {
 			const moved = await moveFromTextRow(page, point, 'ArrowUp');
 			up[side] = {
 				...moved,
-				expected: expectedBoundaryForKeyboardGoal(lastRow, point, moved.before, side),
+				expected: expectedBoundaryForKeyboardGoal(lastRow, point),
 			};
 		}
 		const pointer = await checkFirstPointerPlacement(page, geometry);
