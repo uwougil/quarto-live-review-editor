@@ -96,7 +96,7 @@ function compactResult(item) {
 		markers: (item.markers || []).map((marker) => Object.fromEntries(['label', 'found', 'pos', 'viewportContains', 'domContainsMarker'].map((key) => [key, marker[key]]))),
 		final: compactSnapshot(item.final), interactions: item.interactions, markerFailures: item.markerFailures, pageErrors: item.pageErrors, error: item.error,
 		interaction: item.interaction ? { checks: item.interaction.checks, initialDiagnostics: item.interaction.initialDiagnostics } : undefined,
-		footnoteInteraction: item.footnoteInteraction ? { checks: item.footnoteInteraction.checks, traceCount: item.footnoteInteraction.traceCount } : undefined,
+		footnoteInteraction: item.footnoteInteraction ? { checks: item.footnoteInteraction.checks, pointerCaret: item.footnoteInteraction.pointerCaret, afterProseClick: item.footnoteInteraction.afterProseClick, repeated: item.footnoteInteraction.repeated, traceCount: item.footnoteInteraction.traceCount } : undefined,
 		typewriter: item.typewriter ? { checks: item.typewriter.checks, targetCenter: item.typewriter.targetCenter } : undefined,
 		arrowScroll: item.arrowScroll,
 	};
@@ -351,6 +351,222 @@ async function runFootnoteInteraction(page, text) {
 	};
 }
 
+async function runPointerCaretRegression(page, text) {
+	await page.evaluate(() => {
+		const content = () => document.querySelector('.cm-content');
+		const lineFor = (needle) => [...document.querySelectorAll('.cm-line')]
+			.find((line) => line.textContent?.includes(needle)) || null;
+		const textNodeFor = (needle) => {
+			const root = content();
+			if (!root) return null;
+			const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+			let node;
+			while ((node = walker.nextNode())) {
+				const index = (node.nodeValue || '').indexOf(needle);
+				if (index >= 0) return { node, index };
+			}
+			return null;
+		};
+		const pointFor = (needle, side = 'center') => {
+			const match = textNodeFor(needle);
+			if (!match) return null;
+			const range = document.createRange();
+			range.setStart(match.node, match.index);
+			range.setEnd(match.node, match.index + needle.length);
+			const rects = [...range.getClientRects()].filter((rect) => rect.width > 0 && rect.height > 0);
+			const rect = side === 'end' ? rects[rects.length - 1] : rects[0];
+			if (!rect) return null;
+			return {
+				x: side === 'start' ? rect.left + 1 : side === 'end' ? rect.right - 1 : (rect.left + rect.right) / 2,
+				y: (rect.top + rect.bottom) / 2,
+			};
+		};
+		const sourcePointFor = (from, to, side = 'center') => {
+			const start = window.__mlpDebugCoordsAtPos?.(from, 1);
+			const end = window.__mlpDebugCoordsAtPos?.(to, -1);
+			if (!start || !end) return null;
+			if (side === 'start') return { x: start.left + 1, y: (start.top + start.bottom) / 2 };
+			if (side === 'end') return { x: end.right - 1, y: (end.top + end.bottom) / 2 };
+			return { x: (start.left + end.right) / 2, y: (start.top + start.bottom) / 2 };
+		};
+		window.__mlpPointerCaret = {
+			scrollTo(needle) {
+				const line = lineFor(needle);
+				if (!line) return false;
+				line.scrollIntoView({ block: 'center', inline: 'nearest' });
+				return true;
+			},
+			pointFor,
+			sourcePointFor,
+			lineY(needle) {
+				const line = lineFor(needle);
+				if (!line) return null;
+				const rect = line.getBoundingClientRect();
+				return (rect.top + rect.bottom) / 2;
+			},
+			clusterRect(needle) {
+				const line = lineFor(needle);
+				const buttons = line ? [...line.querySelectorAll('.mlp-footnote-ref')] : [];
+				if (!buttons.length) return null;
+				const rects = buttons.map((button) => button.getBoundingClientRect());
+				return {
+					left: Math.min(...rects.map((rect) => rect.left)),
+					right: Math.max(...rects.map((rect) => rect.right)),
+					top: Math.min(...rects.map((rect) => rect.top)),
+					bottom: Math.max(...rects.map((rect) => rect.bottom)),
+				};
+			},
+			buttonPoint(needle) {
+				const line = lineFor(needle);
+				const button = line?.querySelector('.mlp-footnote-ref');
+				if (!(button instanceof HTMLElement)) return null;
+				const rect = button.getBoundingClientRect();
+				return { x: rect.left + 1, y: (rect.top + rect.bottom) / 2 };
+			},
+			state() {
+				return {
+					selection: window.__mlpDebugSelection?.() || null,
+					snapshot: window.__mlpDebugSnapshot?.() || null,
+					messages: [...(window.__mlpPostedMessages || [])],
+				};
+			},
+			resetMessages() { window.__mlpPostedMessages = []; },
+		};
+	});
+
+	const settle = () => page.waitForTimeout(100);
+	const sourceSpan = (start, end) => ({ from: text.indexOf(start), to: text.indexOf(end) + end.length });
+	const selectedSpan = (result, span) => Boolean(
+		result?.selection && span.from >= 0 && span.to >= span.from &&
+		result.selection.from <= span.from + 2 && result.selection.to >= span.to - 12 &&
+		result.selection.to > result.selection.from,
+	);
+	const scrollTo = async (needle) => {
+		if (!(await page.evaluate((value) => window.__mlpPointerCaret?.scrollTo(value), needle))) {
+			throw new Error(`pointer/caret line not found for ${needle}`);
+		}
+		await page.waitForTimeout(60);
+	};
+	const pointFor = async (needle, side) => {
+		const from = text.indexOf(needle);
+		const point = await page.evaluate(([value, edge, start]) =>
+			window.__mlpPointerCaret?.pointFor(value, edge) ??
+			window.__mlpPointerCaret?.sourcePointFor(start, start + value.length, edge), [needle, side, from]);
+		if (!point) throw new Error(`pointer point not found for ${needle}`);
+		return point;
+	};
+	const resetMessages = () => page.evaluate(() => window.__mlpPointerCaret?.resetMessages());
+	const state = () => page.evaluate(() => window.__mlpPointerCaret?.state());
+	const drag = async ({ marker, start, startSide = 'start', end, endSide = 'end', startPoint }) => {
+		await page.evaluate(() => window.__mlpDebugSetSelection?.(0));
+		await settle();
+		await scrollTo(marker);
+		await resetMessages();
+		const from = startPoint ? await startPoint() : await pointFor(start, startSide);
+		const to = await pointFor(end, endSide);
+		await page.mouse.move(from.x, from.y);
+		await page.mouse.down();
+		await page.mouse.move(to.x, to.y, { steps: 12 });
+		await page.mouse.up();
+		await settle();
+		return state();
+	};
+
+	const plainSpan = sourceSpan('VERTICAL-TOP', '0123456789 0123456789');
+	const plainDrag = await drag({ marker: 'VERTICAL-TOP', start: 'VERTICAL-TOP', end: '0123456789 0123456789' });
+	const inlineSpan = sourceSpan('DRAG-START', 'inline math');
+	const inlineDrag = await drag({ marker: 'DRAG-START', start: 'DRAG-START', end: 'inline math' });
+	const linkSpan = sourceSpan('rendered link', 'inline math');
+	const linkDrag = await drag({ marker: 'DRAG-START', start: 'rendered link', end: 'inline math' });
+	const footnoteFrom = text.indexOf('[^drag]');
+	const footnoteTo = text.indexOf('DRAG-END') + 'DRAG-END'.length;
+	const footnoteDrag = await drag({
+		marker: 'DRAG-START',
+		start: 'before footnote',
+		startPoint: () => page.evaluate(() => window.__mlpPointerCaret?.buttonPoint('DRAG-START')),
+		end: 'DRAG-END',
+	});
+	const softSpan = sourceSpan('SOFT-WRAP-START', 'SOFT-WRAP-END');
+	const softDrag = await drag({ marker: 'SOFT-WRAP-START', start: 'SOFT-WRAP-START', end: 'SOFT-WRAP-END' });
+
+	const verticalCase = async (direction, side) => {
+		await scrollTo('VERTICAL-FOOTNOTE-ROW');
+		const geometry = await page.evaluate(([lineMarker, fromMarker]) => {
+			const cluster = window.__mlpPointerCaret?.clusterRect('VERTICAL-FOOTNOTE-ROW');
+			const y = window.__mlpPointerCaret?.lineY(lineMarker);
+			return cluster && y !== null ? { cluster, y, marker: fromMarker } : null;
+		}, [direction === 'down' ? 'VERTICAL-TOP' : 'VERTICAL-BOTTOM', direction]);
+		if (!geometry) throw new Error(`vertical ${direction} geometry unavailable`);
+		const x = side === 'left' ? geometry.cluster.left + 1 : geometry.cluster.right - 1;
+		await page.mouse.click(x, geometry.y);
+		await settle();
+		const before = await state();
+		await page.keyboard.press(direction === 'down' ? 'ArrowDown' : 'ArrowUp');
+		await settle();
+		return { x, geometry, before, after: await state() };
+	};
+	const vertical = {
+		downLeft: await verticalCase('down', 'left'),
+		downRight: await verticalCase('down', 'right'),
+		upLeft: await verticalCase('up', 'left'),
+		upRight: await verticalCase('up', 'right'),
+	};
+	const clusterFrom = text.indexOf('[^v1]');
+	const clusterTo = text.indexOf('[^v2]') + '[^v2]'.length;
+
+	await scrollTo('LAST-LINE-FOOTNOTE-PROSE');
+	const lastPoint = await pointFor('final reference', 'end');
+	await page.mouse.click(lastPoint.x, lastPoint.y);
+	await settle();
+	const lastLineClick = await state();
+	const lastReferenceFrom = text.lastIndexOf('[^last]');
+
+	await scrollTo('DRAG-START');
+	await resetMessages();
+	const linkPoint = await pointFor('rendered link', 'center');
+	await page.mouse.click(linkPoint.x, linkPoint.y);
+	await settle();
+	const linkClick = await state();
+	const allGestureStates = [plainDrag, inlineDrag, linkDrag, footnoteDrag, softDrag];
+	const checks = {
+		plainTextDrag: selectedSpan(plainDrag, plainSpan),
+		crossInlineSyntaxDrag: selectedSpan(inlineDrag, inlineSpan),
+		linkDragIsSelection: selectedSpan(linkDrag, linkSpan),
+		linkDragDoesNotNavigate: !linkDrag.messages.some((message) => message.type === 'openLink'),
+		footnoteDragIsSelection: Boolean(
+			footnoteDrag?.selection &&
+			footnoteDrag.selection.from <= footnoteFrom + 12 &&
+			footnoteDrag.selection.to >= footnoteTo - 12 &&
+			footnoteDrag.selection.to > footnoteDrag.selection.from,
+		),
+		softWrappedFootnoteDrag: selectedSpan(softDrag, softSpan),
+		arrowDownPreservesLeftGoal: vertical.downLeft.after.selection?.head === clusterFrom,
+		arrowDownPreservesRightGoal: vertical.downRight.after.selection?.head === clusterTo,
+		arrowUpPreservesLeftGoal: vertical.upLeft.after.selection?.head === clusterFrom,
+		arrowUpPreservesRightGoal: vertical.upRight.after.selection?.head === clusterTo,
+		lastLineClickStaysBeforeFootnote: lastLineClick.selection?.head <= lastReferenceFrom,
+		linkClickStillNavigates: linkClick.messages.some((message) => message.type === 'openLink' && message.href === 'https://example.org/issue-26'),
+		selectionDoesNotEditOrSync: allGestureStates.every((item) =>
+			item.snapshot?.docLength === text.length && !item.messages.some((message) => message.type === 'edit')),
+	};
+	const legacyCluster = await page.evaluate(() => window.__mlpPointerCaret?.clusterRect('FOOTNOTE-INTERACTION-START'));
+	return {
+		ok: Object.values(checks).every(Boolean),
+		checks,
+		gestures: Object.fromEntries(Object.entries({ plainDrag, inlineDrag, linkDrag, footnoteDrag, softDrag })
+			.map(([name, item]) => [name, { selection: item.selection, messages: item.messages }])),
+		vertical: Object.fromEntries(Object.entries(vertical).map(([name, item]) => [name, {
+			targetX: item.x,
+			cluster: item.geometry.cluster,
+			before: item.before.selection,
+			after: item.after.selection,
+		}])),
+		lastLineClick: lastLineClick.selection,
+		linkClick: { selection: linkClick.selection, messages: linkClick.messages },
+		legacyCluster,
+	};
+}
+
 async function runTypewriterInteraction(page, sourceLength, marker) {
 	const target = await page.evaluate((needle) => {
 		const source = window.__mlpTestSourceText || '';
@@ -541,7 +757,8 @@ async function main() {
 				try {
 					const sourceText = await page.evaluate(() => window.__mlpTestSourceText || '');
 					result.footnoteInteraction = await runFootnoteInteraction(page, sourceText);
-					result.ok = result.ok && result.footnoteInteraction.ok;
+					result.footnoteInteraction.pointerCaret = await runPointerCaretRegression(page, sourceText);
+					result.ok = result.ok && result.footnoteInteraction.ok && result.footnoteInteraction.pointerCaret.ok;
 				} catch (error) {
 					result.ok = false;
 					result.error = String(error?.stack || error);

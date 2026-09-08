@@ -2,7 +2,7 @@ import { EditorView, ViewPlugin, ViewUpdate, Decoration, DecorationSet, WidgetTy
 import { syntaxTree } from '@codemirror/language';
 import { RangeSet, StateField, type Range, type EditorState } from '@codemirror/state';
 import type { SyntaxNode, SyntaxNodeRef } from '@lezer/common';
-import { cursorTouchesLineRange, selectionTouchesInlineRange, blockCursorTouchesRange, noteRevealed } from './cmUtils';
+import { cursorTouchesLineRange, selectionTouchesInlineRangeForDecoration, blockCursorTouchesRange, noteRevealed, pointerGestureIsActive } from './cmUtils';
 import { isDiagramLang } from './diagramLang';
 import { isDrawioPath } from './drawioFileClient';
 import { DrawioFileWidget } from './drawioWidget';
@@ -14,6 +14,7 @@ import { insertRow, insertColumn, renderTableMarkdown, type TableEditModel } fro
 import { parseFenceInfo } from '../quarto/fence';
 import { recordDecorationRebuild, recordFullDecorationRebuild } from './debug';
 import { FootnoteBackWidget, FootnoteReferenceWidget, footnoteIndexField } from './footnotes';
+import { beginPrimaryPointerGesture, isPointerClick, type PointerGestureStart } from './pointerGesture';
 import {
 	changedDecorationRanges,
 	initialDecorationRanges,
@@ -1152,7 +1153,7 @@ function listItemIsTask(state: EditorState, listMark: SyntaxNodeRef): boolean {
 	return /^\s*\[[ xX]\]/.test(after);
 }
 
-export type DecorationRebuildReason = 'docChanged' | 'viewportChanged' | 'selectionSet' | 'syntaxTreeChanged';
+export type DecorationRebuildReason = 'docChanged' | 'viewportChanged' | 'selectionSet' | 'syntaxTreeChanged' | 'explicit';
 
 function requestMeasureAfterDecorationUpdate(view: EditorView): void {
 	// ViewPlugin.update runs while CodeMirror is applying the transaction. Queue
@@ -1173,6 +1174,8 @@ export function decorationRebuildReason(update: ViewUpdate): DecorationRebuildRe
 	if (update.docChanged) return 'docChanged';
 	if (update.viewportChanged) return 'viewportChanged';
 	if (update.selectionSet) return 'selectionSet';
+	if ((update.transactions ?? []).some((transaction) =>
+		transaction.effects.some((effect) => effect.is(refreshSyntaxDecorations)))) return 'explicit';
 	if (syntaxTree(update.startState) !== syntaxTree(update.state)) return 'syntaxTreeChanged';
 	return null;
 }
@@ -1439,7 +1442,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 						// their line/block reveal behavior.
 						const parent = node.node.parent;
 						const touches = parent?.name === 'InlineCode'
-							? selectionTouchesInlineRange(state, parent.from, parent.to)
+							? selectionTouchesInlineRangeForDecoration(state, parent.from, parent.to)
 							: cursorTouchesLineRange(state, node.from, node.to);
 						if (!touches) {
 							const next = state.sliceDoc(node.to, node.to + 1);
@@ -1454,7 +1457,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 						// this delimiter would reveal a marker only when the caret touches
 						// that particular '*'/'_'/'~~' token.
 						const range = enclosingInlineRange(node);
-						if (!selectionTouchesInlineRange(state, range.from, range.to)) {
+						if (!selectionTouchesInlineRangeForDecoration(state, range.from, range.to)) {
 							pushReplace(node.from, node.to, hiddenMarkerDeco);
 						}
 						return;
@@ -1561,7 +1564,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 						decorations.push(
 							Decoration.mark({ tagName: 'a', class: 'mlp-link', attributes: { 'data-href': href } }).range(labelFrom, labelTo),
 						);
-						if (!selectionTouchesInlineRange(state, node.from, node.to)) {
+						if (!selectionTouchesInlineRangeForDecoration(state, node.from, node.to)) {
 							if (labelFrom > node.from) pushReplace(node.from, labelFrom, hiddenMarkerDeco);
 							if (node.to > labelTo) pushReplace(labelTo, node.to, hiddenMarkerDeco);
 						}
@@ -1575,7 +1578,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 						const urlNode = node.node.getChild('URL');
 						const src = urlNode ? state.sliceDoc(urlNode.from, urlNode.to) : '';
 						const alt = state.sliceDoc(altFrom, altTo);
-						if (!selectionTouchesInlineRange(state, node.from, node.to)) {
+						if (!selectionTouchesInlineRangeForDecoration(state, node.from, node.to)) {
 							// A `.drawio` reference is XML, not an image format: an <img>
 							// pointed at it renders nothing at all, so it goes to the
 							// diagram widget (which reads the file through the host)
@@ -1610,7 +1613,7 @@ function buildDecorations(view: EditorView): DecorationSet {
 	const visible = (from: number, to: number) => view.visibleRanges.some((range) => to >= range.from && from <= range.to);
 	for (const reference of footnotes.references) {
 		if (!visible(reference.from, reference.to)) continue;
-		if (!selectionTouchesInlineRange(state, reference.from, reference.to)) {
+		if (!selectionTouchesInlineRangeForDecoration(state, reference.from, reference.to)) {
 			pushReplace(reference.from, reference.to, Decoration.replace({ widget: new FootnoteReferenceWidget(reference) }));
 		}
 	}
@@ -1637,6 +1640,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
 
 		update(update: ViewUpdate) {
 			const reason = decorationRebuildReason(update);
+			// Selection transactions arrive throughout a native pointer drag. Keep
+			// the exact decoration set that was visible at mousedown so source and
+			// replacement widths cannot move beneath the pointer. The shared
+			// pointer-release refresh rebuilds this plugin immediately afterward.
+			if (reason && reason !== 'docChanged' && pointerGestureIsActive()) return;
 			if (reason) {
 				const start = performance.now();
 				const nextDecorations = buildDecorations(update.view);
@@ -1669,25 +1677,35 @@ export const livePreviewPlugin = ViewPlugin.fromClass(
  * the keyboard. That is the same trade every rendered block makes here.
  */
 export function createLinkClickHandler(onOpen: (href: string) => void) {
-	const handle = (event: MouseEvent): boolean => {
-		// Only the primary button; a right-click belongs to the context menu.
-		if (event.button !== 0) return false;
-		const target = event.target as HTMLElement | null;
-		const linkEl = target?.closest('.mlp-link') as HTMLElement | null;
-		const href = linkEl?.getAttribute('data-href');
-		if (!href) return false;
-		event.preventDefault();
-		onOpen(href);
-		return true;
-	};
+	let gesture: (PointerGestureStart & { href: string; selection: EditorState['selection'] }) | null = null;
+	let swallowClick = false;
 	return EditorView.domEventHandlers({
-		// Taken on the press, before CodeMirror's own mousedown handler can move
-		// the caret into the link and reveal its source.
-		mousedown: handle,
-		// The click that follows is swallowed too, so nothing acts on it twice.
-		click: (event) => {
+		mousedown: (event, view) => {
+			gesture = null;
+			if (!(event instanceof MouseEvent)) return false;
+			const start = beginPrimaryPointerGesture(event);
+			if (!start) return false;
 			const target = event.target as HTMLElement | null;
-			if (!target?.closest('.mlp-link')) return false;
+			const linkEl = target?.closest('.mlp-link') as HTMLElement | null;
+			const href = linkEl?.getAttribute('data-href');
+			if (!href) return false;
+			gesture = { ...start, href, selection: view.state.selection };
+			return false;
+		},
+		mouseup: (event, view) => {
+			if (!(event instanceof MouseEvent)) return false;
+			const started = gesture;
+			gesture = null;
+			if (!started || !isPointerClick(started, event, view.state.selection.main.empty)) return false;
+			event.preventDefault();
+			view.dispatch({ selection: started.selection, userEvent: 'select.pointer' });
+			onOpen(started.href);
+			swallowClick = true;
+			return true;
+		},
+		click: (event) => {
+			if (!swallowClick) return false;
+			swallowClick = false;
 			event.preventDefault();
 			return true;
 		},

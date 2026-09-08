@@ -150,8 +150,9 @@ export const dragReleaseRefresh = ViewPlugin.fromClass(
 					const ranges = selectionDecorationRanges(view.state);
 					const next = buildBlockDecorations(view.state, ranges);
 					const current = decorationsWithin(view.state.field(blockDecorationsField), ranges);
-					if (sameRanges(next, current)) return;
-					view.dispatch({ effects: refreshBlocks.of(null) });
+					const effects: StateEffect<unknown>[] = [refreshSyntaxDecorations.of(ranges)];
+					if (!sameRanges(next, current)) effects.push(refreshBlocks.of(null));
+					view.dispatch({ effects });
 				}, 0);
 			});
 		}

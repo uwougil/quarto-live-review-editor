@@ -3,6 +3,7 @@ import { EditorState } from '@codemirror/state';
 import {
 	cursorTouchesLineRange,
 	selectionTouchesInlineRange,
+	selectionTouchesInlineRangeForDecoration,
 	blockCursorTouchesRange,
 	setPointerDownForTesting,
 	setSuppressForTesting,
@@ -110,6 +111,21 @@ describe('selectionTouchesInlineRange', () => {
 		const linkTo = doc.indexOf(')', linkFrom) + 1;
 		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: linkFrom + 2 } }), boldFrom, boldTo)).toBe(false);
 		expect(selectionTouchesInlineRange(EditorState.create({ doc, selection: { anchor: linkFrom + 2 } }), linkFrom, linkTo)).toBe(true);
+	});
+});
+
+describe('selectionTouchesInlineRangeForDecoration', () => {
+	const doc = 'plain **bold** text';
+	const from = doc.indexOf('**bold**');
+	const to = from + '**bold**'.length;
+
+	beforeEach(() => setPointerDownForTesting(false));
+
+	it('keeps rendered inline DOM stable for the duration of a pointer gesture', () => {
+		const state = EditorState.create({ doc, selection: { anchor: from + 3 } });
+		expect(selectionTouchesInlineRangeForDecoration(state, from, to)).toBe(true);
+		setPointerDownForTesting(true);
+		expect(selectionTouchesInlineRangeForDecoration(state, from, to)).toBe(false);
 	});
 });
 
