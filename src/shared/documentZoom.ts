@@ -10,6 +10,12 @@ export const DOCUMENT_ZOOM_MAX = 200;
 export const DOCUMENT_ZOOM_DEFAULT = 100;
 export const DOCUMENT_ZOOM_STEP = 10;
 
+/** Reading-column width as a percentage of a theme's own finite baseline. */
+export const READING_WIDTH_MIN = 60;
+export const READING_WIDTH_MAX = 180;
+export const READING_WIDTH_DEFAULT = 100;
+export const READING_WIDTH_STEP = 10;
+
 /** Normalizes persisted or message-supplied zoom to the supported step grid. */
 export function normalizeDocumentZoom(value: unknown): number {
 	if (typeof value !== 'number' || !Number.isFinite(value)) return DOCUMENT_ZOOM_DEFAULT;
@@ -22,4 +28,18 @@ export function adjustDocumentZoom(current: unknown, steps: number): number {
 	const base = normalizeDocumentZoom(current);
 	if (!Number.isFinite(steps) || steps === 0) return base;
 	return normalizeDocumentZoom(base + Math.trunc(steps) * DOCUMENT_ZOOM_STEP);
+}
+
+/** Normalizes persisted or message-supplied reading width to its step grid. */
+export function normalizeReadingWidth(value: unknown): number {
+	if (typeof value !== 'number' || !Number.isFinite(value)) return READING_WIDTH_DEFAULT;
+	const stepped = Math.round(value / READING_WIDTH_STEP) * READING_WIDTH_STEP;
+	return Math.min(READING_WIDTH_MAX, Math.max(READING_WIDTH_MIN, stepped));
+}
+
+/** Applies signed 10% steps while preserving the reading-width bounds. */
+export function adjustReadingWidth(current: unknown, steps: number): number {
+	const base = normalizeReadingWidth(current);
+	if (!Number.isFinite(steps) || steps === 0) return base;
+	return normalizeReadingWidth(base + Math.trunc(steps) * READING_WIDTH_STEP);
 }
