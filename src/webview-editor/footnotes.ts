@@ -285,35 +285,57 @@ export function moveVerticallyAvoidingFootnotes(forward: boolean): Command {
 export function createFootnoteMouseHandler(): ReturnType<typeof EditorView.domEventHandlers> {
 	let gesture: PointerGestureStart | null = null;
 	const correctClick = (event: MouseEvent, view: EditorView): boolean => {
-		if (!isPointerClick(gesture, event, view.state.selection.main.empty)) return false;
+		// Native hit testing may leave the old selection non-empty until the
+		// click event has completed. Pointer slop, rather than that transient
+		// selection state, is the reliable click-vs-drag discriminator here.
+		if (!gesture || Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 4) return false;
 		const target = event.target instanceof Element ? event.target : null;
 		if (target?.closest('.mlp-footnote-ref')) return false;
-		const line = target?.closest('.cm-line') as HTMLElement | null;
+		const line = (target?.closest('.cm-line') ?? document.elementFromPoint(event.clientX, event.clientY)?.closest('.cm-line')) as HTMLElement | null;
 		if (!line) return false;
 		const buttons = Array.from(line.querySelectorAll<HTMLElement>('.mlp-footnote-ref'));
 		if (buttons.length === 0) return false;
 		const head = view.state.selection.main.head;
-		const relevant = buttons.find((button) => {
+		const entries = buttons.map((button) => {
 			const from = Number(button.dataset.referenceFrom);
 			const to = Number(button.dataset.referenceTo);
-			return Number.isFinite(from) && Number.isFinite(to) && head >= from && head <= to;
-		});
-		if (!relevant) return false;
-		let clusterFrom = Number(relevant.dataset.referenceFrom);
-		let clusterTo = Number(relevant.dataset.referenceTo);
-		let left = relevant.getBoundingClientRect().left;
-		let right = relevant.getBoundingClientRect().right;
-		for (const button of buttons) {
-			const from = Number(button.dataset.referenceFrom);
-			const to = Number(button.dataset.referenceTo);
-			if (to === clusterFrom || from === clusterTo || (from >= clusterFrom && to <= clusterTo)) {
-				clusterFrom = Math.min(clusterFrom, from);
-				clusterTo = Math.max(clusterTo, to);
-				const rect = button.getBoundingClientRect();
-				left = Math.min(left, rect.left);
-				right = Math.max(right, rect.right);
-			}
+			const rect = button.getBoundingClientRect();
+			return { button, from, to, rect, centerY: (rect.top + rect.bottom) / 2 };
+		}).filter((entry) => Number.isFinite(entry.from) && Number.isFinite(entry.to));
+		const clusters: Array<typeof entries> = [];
+		for (const entry of entries) {
+			const cluster = clusters.at(-1);
+			if (cluster?.at(-1)?.to === entry.from) cluster.push(entry);
+			else clusters.push([entry]);
 		}
+		const clusterEntries = clusters.find((cluster) => {
+			const from = cluster[0].from;
+			const to = cluster.at(-1)?.to ?? from;
+			return Math.abs(head - from) <= 1 || Math.abs(head - to) <= 1;
+		});
+		if (!clusterEntries || clusterEntries.length === 0) return false;
+		const rows: Array<typeof entries> = [];
+		for (const entry of clusterEntries) {
+			const row = rows.find((candidate) => {
+				const top = Math.max(candidate[0].rect.top, entry.rect.top);
+				const bottom = Math.min(candidate[0].rect.bottom, entry.rect.bottom);
+				return bottom > top;
+			});
+			if (row) row.push(entry);
+			else rows.push([entry]);
+		}
+		const row = rows.reduce((best, candidate) => {
+			const bestDistance = Math.abs(event.clientY - best.reduce((sum, entry) => sum + entry.centerY, 0) / best.length);
+			const candidateDistance = Math.abs(event.clientY - candidate.reduce((sum, entry) => sum + entry.centerY, 0) / candidate.length);
+			return candidateDistance < bestDistance ? candidate : best;
+		});
+		const rowFrom = row[0].from;
+		const rowTo = row[row.length - 1].to;
+		const left = Math.min(...row.map((entry) => entry.rect.left));
+		const right = Math.max(...row.map((entry) => entry.rect.right));
+		const clusterFrom = clusterEntries[0].from;
+		const clusterTo = clusterEntries.at(-1)?.to ?? clusterFrom;
+		if (head < clusterFrom || head > clusterTo) return false;
 		const desired = Math.abs(event.clientX - left) <= Math.abs(event.clientX - right) ? clusterFrom : clusterTo;
 		if (desired === head) return false;
 		event.preventDefault();
@@ -329,11 +351,11 @@ export function createFootnoteMouseHandler(): ReturnType<typeof EditorView.domEv
 		},
 		mouseup(event, view) {
 			if (!(event instanceof MouseEvent)) return false;
-			if (!isPointerClick(gesture, event, view.state.selection.main.empty)) {
+			if (!gesture || Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 4) {
 				gesture = null;
 				return false;
 			}
-			return correctClick(event, view);
+			return false;
 		},
 		click(event, view) {
 			if (!(event instanceof MouseEvent)) return false;

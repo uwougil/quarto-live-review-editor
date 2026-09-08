@@ -29,6 +29,7 @@ interface DebugWindow extends Window {
 	__mlpDebugScrollTo?: (top: number) => void;
 	__mlpDebugScrollToPosition?: (pos: number) => void;
 	__mlpDebugSelection?: () => { anchor: number; head: number; from: number; to: number; x: number | null; y: number | null; blockFrom: number; blockLength: number; blockTop: number; blockHeight: number; defaultLineHeight: number; contentHeight: number } | null;
+	__mlpDebugCoordsAtPos?: (pos: number, assoc?: 1 | -1) => { left: number; right: number; top: number; bottom: number } | null;
 	__mlpDebugLineBlock?: (pos: number) => { from: number; length: number; top: number; height: number } | null;
 	__mlpDebugSetSelection?: (anchor: number, head?: number) => void;
 	__mlpDebugEdit?: (from: number, to: number, insert: string) => void;
@@ -104,6 +105,12 @@ export function installDebugView(view: EditorView): void {
 		const coords = debugView.coordsAtPos(range.head);
 		const block = debugView.lineBlockAt(range.head);
 		return { anchor: range.anchor, head: range.head, from: range.from, to: range.to, x: coords?.left ?? null, y: coords?.top ?? null, blockFrom: block.from, blockLength: block.length, blockTop: block.top, blockHeight: block.height, defaultLineHeight: debugView.defaultLineHeight, contentHeight: debugView.contentHeight };
+	};
+	debugWindow.__mlpDebugCoordsAtPos = (pos, assoc = 1) => {
+		if (!debugView) return null;
+		const length = debugView.state.doc.length;
+		const coords = debugView.coordsAtPos(Math.max(0, Math.min(pos, length)), assoc === -1 ? -1 : 1);
+		return coords ? { left: coords.left, right: coords.right, top: coords.top, bottom: coords.bottom } : null;
 	};
 	debugWindow.__mlpDebugLineBlock = (pos) => {
 		if (!debugView) return null;

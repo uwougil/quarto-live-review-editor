@@ -380,6 +380,14 @@ async function runPointerCaretRegression(page, text) {
 				y: (rect.top + rect.bottom) / 2,
 			};
 		};
+		const sourcePointFor = (from, to, side = 'center') => {
+			const start = window.__mlpDebugCoordsAtPos?.(from, 1);
+			const end = window.__mlpDebugCoordsAtPos?.(to, -1);
+			if (!start || !end) return null;
+			if (side === 'start') return { x: start.left + 1, y: (start.top + start.bottom) / 2 };
+			if (side === 'end') return { x: end.right - 1, y: (end.top + end.bottom) / 2 };
+			return { x: (start.left + end.right) / 2, y: (start.top + start.bottom) / 2 };
+		};
 		window.__mlpPointerCaret = {
 			scrollTo(needle) {
 				const line = lineFor(needle);
@@ -388,6 +396,7 @@ async function runPointerCaretRegression(page, text) {
 				return true;
 			},
 			pointFor,
+			sourcePointFor,
 			lineY(needle) {
 				const line = lineFor(needle);
 				if (!line) return null;
@@ -438,7 +447,10 @@ async function runPointerCaretRegression(page, text) {
 		await page.waitForTimeout(60);
 	};
 	const pointFor = async (needle, side) => {
-		const point = await page.evaluate(([value, edge]) => window.__mlpPointerCaret?.pointFor(value, edge), [needle, side]);
+		const from = text.indexOf(needle);
+		const point = await page.evaluate(([value, edge, start]) =>
+			window.__mlpPointerCaret?.pointFor(value, edge) ??
+			window.__mlpPointerCaret?.sourcePointFor(start, start + value.length, edge), [needle, side, from]);
 		if (!point) throw new Error(`pointer point not found for ${needle}`);
 		return point;
 	};
