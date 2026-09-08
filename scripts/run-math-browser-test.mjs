@@ -164,6 +164,22 @@ async function main() {
 			assert(typography[name]?.family.startsWith(family), `wrong computed family for ${name}`, { typography });
 		}
 		assert(typography.root.fontWeight === '400' && typography.root.transform === 'none' && typography.root.opacity === '1', 'KaTeX root uses synthetic visual weight/scale', { typography });
+		const mathBaseline = await page.evaluate(() => {
+			const paragraph = document.querySelector('.cm-line.mlp-line-paragraph');
+			const inline = paragraph?.querySelector('.mlp-math-inline .katex');
+			const display = document.querySelector('.mlp-math-display .katex');
+			const content = document.querySelector('.cm-content');
+			const fontSize = (element) => element ? parseFloat(getComputedStyle(element).fontSize) : 0;
+			return {
+				paragraph: fontSize(paragraph),
+				content: fontSize(content),
+				inline: fontSize(inline),
+				display: fontSize(display),
+			};
+		});
+		assert(mathBaseline.paragraph > 0 && mathBaseline.content > 0, 'typography fixture did not render a measurable prose baseline', { mathBaseline });
+		assert(Math.abs(mathBaseline.inline / mathBaseline.paragraph - 1) < 0.03, 'inline math body is not visually aligned with surrounding prose', { mathBaseline });
+		assert(Math.abs(mathBaseline.display / mathBaseline.content - 1) < 0.03, 'display math base is not visually aligned with document typography', { mathBaseline });
 
 		const colors = {};
 		colors.light = typography.root.color;
@@ -216,6 +232,7 @@ async function main() {
 		await settle(page);
 		const clicked = await page.evaluate(() => window.__mlpDebugSelection?.());
 		assert(clicked?.head === clickFrom + 1, 'inline formula mouse hit mapped to the wrong source range', { clicked, clickFrom });
+		assert(clicked?.x !== null && clicked?.y !== null && clicked.blockHeight > 0 && Math.abs(clicked.blockHeight - clicked.defaultLineHeight) <= 1.5, 'formula hit left caret or line-height geometry inconsistent', { clicked });
 
 		const localitySource = equationFixture(100, true);
 		await init(page, localitySource);
