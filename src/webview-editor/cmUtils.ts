@@ -1,6 +1,16 @@
 import type { EditorState } from '@codemirror/state';
+import { selectionTouchesInlineRange as sourceSelectionTouchesInlineRange } from '../shared/selection';
 
-export { selectionTouchesInlineRange } from '../shared/selection';
+export { sourceSelectionTouchesInlineRange as selectionTouchesInlineRange };
+
+/** Keep rendered inline DOM stable until CodeMirror's pointer gesture ends. */
+export function selectionTouchesInlineRangeForDecoration(state: EditorState, from: number, to: number): boolean {
+	return pointerDown || sourceSelectionTouchesInlineRange(state, from, to);
+}
+
+export function pointerGestureIsActive(): boolean {
+	return pointerDown;
+}
 
 /**
  * Whether a mouse button is currently held down anywhere in the document.

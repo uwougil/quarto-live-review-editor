@@ -1,7 +1,8 @@
 import { EditorSelection, StateEffect, StateField, type EditorState, type Text } from '@codemirror/state';
 import { EditorView, WidgetType, type Command } from '@codemirror/view';
 import { findFenceSpans, scanSourceLines } from '../quarto/fence';
-import { selectionTouchesInlineRange } from '../shared/selection';
+import { pointerGestureIsActive, selectionTouchesInlineRangeForDecoration } from './cmUtils';
+import { beginPrimaryPointerGesture, isPointerClick, type PointerGestureStart } from './pointerGesture';
 
 export interface FootnoteReference {
 	id: string;
@@ -180,28 +181,58 @@ export function resolveFootnoteReference(index: FootnoteIndex, widgetReference: 
 }
 
 function renderedFootnote(reference: FootnoteReference, state: EditorState): boolean {
-	return !selectionTouchesInlineRange(state, reference.from, reference.to);
+	return pointerGestureIsActive() || !selectionTouchesInlineRangeForDecoration(state, reference.from, reference.to);
+}
+
+function renderedFootnoteClusters(state: EditorState): Array<{ from: number; to: number }> {
+	const clusters: Array<{ from: number; to: number }> = [];
+	for (const reference of state.field(footnoteIndexField).references) {
+		if (!renderedFootnote(reference, state)) continue;
+		const previous = clusters.at(-1);
+		if (previous?.to === reference.from) previous.to = reference.to;
+		else clusters.push({ from: reference.from, to: reference.to });
+	}
+	return clusters;
 }
 
 function renderedFootnoteClusterAt(state: EditorState, position: number): { from: number; to: number } | null {
-	const references = state.field(footnoteIndexField).references;
-	const index = references.findIndex((reference) =>
-		renderedFootnote(reference, state) && position > reference.from && position < reference.to,
-	);
-	if (index < 0) return null;
-	let from = references[index].from;
-	let to = references[index].to;
-	for (let i = index - 1; i >= 0; i -= 1) {
-		const previous = references[i];
-		if (!renderedFootnote(previous, state) || previous.to !== from) break;
-		from = previous.from;
-	}
-	for (let i = index + 1; i < references.length; i += 1) {
-		const next = references[i];
-		if (!renderedFootnote(next, state) || next.from !== to) break;
-		to = next.to;
-	}
-	return { from, to };
+	return renderedFootnoteClusters(state).find((cluster) => position > cluster.from && position < cluster.to) ?? null;
+}
+
+function renderedFootnoteClusterAtGoal(
+	view: EditorView,
+	state: EditorState,
+	position: number,
+	goalColumn: number | undefined,
+): { from: number; to: number } | null {
+	const inside = renderedFootnoteClusterAt(state, position);
+	if (inside || goalColumn === undefined) return inside;
+	const desiredX = view.contentDOM.getBoundingClientRect().left + goalColumn;
+	return renderedFootnoteClusters(state).find((cluster) => {
+		if (position !== cluster.from && position !== cluster.to) return false;
+		const fromCoords = view.coordsAtPos(cluster.from, 1);
+		const toCoords = view.coordsAtPos(cluster.to, -1);
+		if (!fromCoords || !toCoords) return false;
+		const left = Math.min(fromCoords.left, toCoords.left);
+		const right = Math.max(fromCoords.right, toCoords.right);
+		return desiredX >= left && desiredX <= right;
+	}) ?? null;
+}
+
+function footnoteBoundaryForGoal(
+	view: EditorView,
+	cluster: { from: number; to: number },
+	goalColumn: number | undefined,
+	forward: boolean,
+): number {
+	if (goalColumn === undefined) return forward ? cluster.to : cluster.from;
+	const fromCoords = view.coordsAtPos(cluster.from, 1);
+	const toCoords = view.coordsAtPos(cluster.to, -1);
+	if (!fromCoords || !toCoords) return forward ? cluster.to : cluster.from;
+	const desiredX = view.contentDOM.getBoundingClientRect().left + goalColumn;
+	const fromX = (fromCoords.left + fromCoords.right) / 2;
+	const toX = (toCoords.left + toCoords.right) / 2;
+	return Math.abs(desiredX - fromX) <= Math.abs(desiredX - toX) ? cluster.from : cluster.to;
 }
 
 /**
@@ -215,12 +246,17 @@ export function moveVerticallyAvoidingFootnotes(forward: boolean): Command {
 		const state = view.state;
 		const ranges = state.selection.ranges.map((range) => {
 			if (!range.empty) return EditorSelection.cursor(forward ? range.to : range.from);
+			const startCoords = view.coordsAtPos(range.head, range.assoc || undefined);
+			const startGoal = range.goalColumn ?? (startCoords
+				? startCoords.left - view.contentDOM.getBoundingClientRect().left
+				: undefined);
 			let moved = view.moveVertically(range, forward);
 			if (moved.head === range.head) moved = view.moveToLineBoundary(range, forward);
-			const cluster = renderedFootnoteClusterAt(state, moved.head);
+			const goalColumn = moved.goalColumn ?? startGoal;
+			const cluster = renderedFootnoteClusterAtGoal(view, state, moved.head, goalColumn);
 			if (!cluster) return moved;
-			const boundary = forward ? cluster.to : cluster.from;
-			return EditorSelection.cursor(boundary, moved.assoc, moved.bidiLevel ?? undefined, moved.goalColumn);
+			const boundary = footnoteBoundaryForGoal(view, cluster, goalColumn, forward);
+			return EditorSelection.cursor(boundary, moved.assoc, moved.bidiLevel ?? undefined, goalColumn);
 		});
 		const selection = EditorSelection.create(ranges, state.selection.mainIndex);
 		if (selection.eq(state.selection, true)) return false;
@@ -239,27 +275,6 @@ export function moveVerticallyAvoidingFootnotes(forward: boolean): Command {
 	};
 }
 
-interface BrowserCaretPoint {
-	node: Node;
-	offset: number;
-}
-
-function lineElementFor(node: Node): HTMLElement | null {
-	const element = node.nodeType === Node.ELEMENT_NODE ? node as HTMLElement : node.parentElement;
-	return element?.closest('.cm-line') ?? null;
-}
-
-function caretPointAt(event: MouseEvent): BrowserCaretPoint | null {
-	const documentWithCaret = document as Document & {
-		caretRangeFromPoint?: (x: number, y: number) => globalThis.Range | null;
-		caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
-	};
-	const range = documentWithCaret.caretRangeFromPoint?.(event.clientX, event.clientY);
-	if (range) return { node: range.startContainer, offset: range.startOffset };
-	const position = documentWithCaret.caretPositionFromPoint?.(event.clientX, event.clientY);
-	return position ? { node: position.offsetNode, offset: position.offset } : null;
-}
-
 /**
  * Protects only prose-side pointer placement around a rendered reference
  * cluster. It asks the browser for the caret in the clicked text node and
@@ -268,49 +283,63 @@ function caretPointAt(event: MouseEvent): BrowserCaretPoint | null {
  * clicks on the superscript itself continue to the widget's navigation handler.
  */
 export function createFootnoteMouseHandler(): ReturnType<typeof EditorView.domEventHandlers> {
+	let gesture: PointerGestureStart | null = null;
+	const correctClick = (event: MouseEvent, view: EditorView): boolean => {
+		if (!isPointerClick(gesture, event, view.state.selection.main.empty)) return false;
+		const target = event.target instanceof Element ? event.target : null;
+		if (target?.closest('.mlp-footnote-ref')) return false;
+		const line = target?.closest('.cm-line') as HTMLElement | null;
+		if (!line) return false;
+		const buttons = Array.from(line.querySelectorAll<HTMLElement>('.mlp-footnote-ref'));
+		if (buttons.length === 0) return false;
+		const head = view.state.selection.main.head;
+		const relevant = buttons.find((button) => {
+			const from = Number(button.dataset.referenceFrom);
+			const to = Number(button.dataset.referenceTo);
+			return Number.isFinite(from) && Number.isFinite(to) && head >= from && head <= to;
+		});
+		if (!relevant) return false;
+		let clusterFrom = Number(relevant.dataset.referenceFrom);
+		let clusterTo = Number(relevant.dataset.referenceTo);
+		let left = relevant.getBoundingClientRect().left;
+		let right = relevant.getBoundingClientRect().right;
+		for (const button of buttons) {
+			const from = Number(button.dataset.referenceFrom);
+			const to = Number(button.dataset.referenceTo);
+			if (to === clusterFrom || from === clusterTo || (from >= clusterFrom && to <= clusterTo)) {
+				clusterFrom = Math.min(clusterFrom, from);
+				clusterTo = Math.max(clusterTo, to);
+				const rect = button.getBoundingClientRect();
+				left = Math.min(left, rect.left);
+				right = Math.max(right, rect.right);
+			}
+		}
+		const desired = Math.abs(event.clientX - left) <= Math.abs(event.clientX - right) ? clusterFrom : clusterTo;
+		if (desired === head) return false;
+		event.preventDefault();
+		event.stopPropagation();
+		view.dispatch({ selection: { anchor: desired }, userEvent: 'select.pointer' });
+		view.focus();
+		return true;
+	};
 	return EditorView.domEventHandlers({
-		mousedown(event, view) {
-			if (!(event instanceof MouseEvent) || event.button !== 0) return false;
-			const target = event.target instanceof Element ? event.target : null;
-			if (target?.closest('.mlp-footnote-ref')) return false;
-			const point = caretPointAt(event);
-			if (!point) return false;
-			const line = lineElementFor(point.node);
-			if (!line) return false;
-			const buttons = Array.from(line.querySelectorAll('.mlp-footnote-ref'));
-			if (buttons.length === 0) return false;
-			const firstButton = buttons[0];
-			const lastButton = buttons[buttons.length - 1];
-			const nodeBeforeFirst = Boolean(point.node.compareDocumentPosition(firstButton) & Node.DOCUMENT_POSITION_FOLLOWING);
-			const nodeAfterLast = Boolean(lastButton.compareDocumentPosition(point.node) & Node.DOCUMENT_POSITION_FOLLOWING);
-			if (!nodeBeforeFirst && !nodeAfterLast) return false;
-
-			let position: number;
-			try {
-				position = view.posAtDOM(point.node, point.offset);
-			} catch {
+		mousedown(event) {
+			gesture = event instanceof MouseEvent ? beginPrimaryPointerGesture(event) : null;
+			return false;
+		},
+		mouseup(event, view) {
+			if (!(event instanceof MouseEvent)) return false;
+			if (!isPointerClick(gesture, event, view.state.selection.main.empty)) {
+				gesture = null;
 				return false;
 			}
-			const index = view.state.field(footnoteIndexField);
-			const lineReferences = index.references.filter((reference) => {
-				if (!renderedFootnote(reference, view.state)) return false;
-				try {
-					return lineElementFor(view.domAtPos(reference.from, 1).node) === line;
-				} catch {
-					return false;
-				}
-			}).sort((a, b) => a.from - b.from);
-			if (lineReferences.length === 0) return false;
-			const firstReference = lineReferences[0];
-			const lastReference = lineReferences[lineReferences.length - 1];
-			const desired = nodeBeforeFirst
-				? Math.min(position, firstReference.from)
-				: Math.max(position, lastReference.to);
-			event.preventDefault();
-			event.stopPropagation();
-			view.dispatch({ selection: { anchor: desired }, userEvent: 'select.pointer' });
-			view.focus();
-			return true;
+			return correctClick(event, view);
+		},
+		click(event, view) {
+			if (!(event instanceof MouseEvent)) return false;
+			const corrected = correctClick(event, view);
+			gesture = null;
+			return corrected;
 		},
 	});
 }
@@ -331,6 +360,8 @@ export class FootnoteReferenceWidget extends WidgetType {
 		const button = document.createElement('button');
 		button.type = 'button';
 		button.className = 'mlp-footnote-ref';
+		button.dataset.referenceFrom = String(this.reference.from);
+		button.dataset.referenceTo = String(this.reference.to);
 		button.textContent = String(this.reference.ordinal);
 		button.setAttribute('aria-label', `脚注 ${this.reference.ordinal}`);
 		button.title = `跳转到脚注 ${this.reference.ordinal}`;
@@ -348,11 +379,20 @@ export class FootnoteReferenceWidget extends WidgetType {
 			});
 			view.focus();
 		};
+		let gesture: PointerGestureStart | null = null;
 		button.addEventListener('mousedown', (event) => {
-			event.preventDefault();
-			event.stopPropagation();
+			gesture = beginPrimaryPointerGesture(event);
 		});
-		button.addEventListener('click', activate);
+		button.addEventListener('click', (event) => {
+			if (event instanceof MouseEvent && event.detail > 0 && !isPointerClick(gesture, event, view.state.selection.main.empty)) {
+				gesture = null;
+				event.preventDefault();
+				event.stopPropagation();
+				return;
+			}
+			gesture = null;
+			activate(event);
+		});
 		return button;
 	}
 
