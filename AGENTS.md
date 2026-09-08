@@ -30,6 +30,7 @@ npm run test:browser:inline-interaction
 npm run test:browser:typewriter
 npm run test:browser:arrow-scroll
 npm run test:browser:zoom
+npm run test:browser:math
 ```
 
 CI 在 Ubuntu/Node 22 上执行同一组核心检查，并在浏览器回归前编译 `dist/`。

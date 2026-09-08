@@ -68,3 +68,5 @@ jobs:
         run: npm run test:browser:arrow-scroll
       - name: Document zoom regression
         run: npm run test:browser:zoom
+      - name: KaTeX typography regression
+        run: npm run test:browser:math
