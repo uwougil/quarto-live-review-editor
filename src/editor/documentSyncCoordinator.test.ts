@@ -58,6 +58,17 @@ function emitChanges(doc: ReturnType<typeof document>, changes: TextChange[]): v
 	});
 }
 
+function emitChangesAtVersion(doc: ReturnType<typeof document>, changes: TextChange[], version: number): void {
+	for (const listener of listeners) listener({
+		document: { ...doc, version },
+		contentChanges: changes.map((change) => ({
+			rangeOffset: change.from,
+			rangeLength: change.to - change.from,
+			text: change.insert,
+		})),
+	});
+}
+
 function applyAndEmit(doc: ReturnType<typeof document>, edit: any): void {
 	const changes = doc.apply(edit);
 	emitChanges(doc, changes);
@@ -164,6 +175,38 @@ describe('DocumentSyncCoordinator', () => {
 		expect(b.updates).toEqual([
 			{ changes: [{ from: 1, to: 1, insert: 'A' }], baseVersion: 1, version: 2 },
 			{ changes: external, baseVersion: 2, version: 3 },
+		]);
+		coordinator.dispose();
+	});
+
+	it('keeps a delayed local identity when an external event is observed first', async () => {
+		const doc = document('ab');
+		const applyResult = deferred<boolean>();
+		let localChanges: TextChange[] = [];
+		vi.mocked(vscode.workspace.applyEdit).mockImplementation((edit: any) => {
+			localChanges = doc.apply(edit);
+			return applyResult.promise;
+		});
+		const coordinator = new DocumentSyncCoordinator(doc as any);
+		const a = peer(); const b = peer();
+		coordinator.addPeer(a); coordinator.addPeer(b);
+
+		const operation = coordinator.enqueueEdit(a, [{ from: 1, to: 1, insert: 'A' }], 1, 13);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const external = [{ from: 3, to: 3, insert: 'X' }];
+		doc.applyChanges(external);
+		// The external event is dispatched before the delayed event for the local
+		// mutation. Each event carries the version at which that change occurred.
+		emitChangesAtVersion(doc, external, 3);
+		emitChangesAtVersion(doc, localChanges, 2);
+		applyResult.resolve(true);
+		await operation;
+
+		expect(a.acks).toEqual([{ editId: 13, version: 2 }]);
+		expect(a.updates).toEqual([{ changes: external, baseVersion: 1, version: 3 }]);
+		expect(b.updates).toEqual([
+			{ changes: external, baseVersion: 1, version: 3 },
+			{ changes: localChanges, baseVersion: 1, version: 2 },
 		]);
 		coordinator.dispose();
 	});

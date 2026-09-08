@@ -11,8 +11,9 @@ export interface DocumentSyncPeer {
 interface PendingMutation {
 	readonly peer: DocumentSyncPeer;
 	readonly editId: number;
+	readonly baseVersion: number;
 	readonly changesKey: string;
-	expectedVersion: number;
+	readonly expectedVersion: number;
 	eventVersion?: number;
 }
 
@@ -76,6 +77,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 			const pending: PendingMutation = {
 				peer,
 				editId,
+				baseVersion,
 				changesKey: changesKey(changes),
 				expectedVersion: baseVersion + 1,
 			};
@@ -127,8 +129,8 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 
 	private handleDocumentChanged(event: vscode.TextDocumentChangeEvent): void {
 		if (event.contentChanges.length === 0) return;
-		const baseVersion = this.lastObservedVersion;
-		this.lastObservedVersion = event.document.version;
+		const eventVersion = event.document.version;
+		const previousVersion = this.lastObservedVersion;
 		const changes = event.contentChanges.map((change) => ({
 			from: change.rangeOffset,
 			to: change.rangeOffset + change.rangeLength,
@@ -136,26 +138,27 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		}));
 		const eventKey = changesKey(changes);
 		const mutationIndex = this.pendingMutations.findIndex((pending) => (
-			pending.expectedVersion === event.document.version && pending.changesKey === eventKey
+			pending.expectedVersion === eventVersion && pending.changesKey === eventKey
 		));
 		const mutation = mutationIndex >= 0 ? this.pendingMutations.splice(mutationIndex, 1)[0] : undefined;
 		if (mutation) {
-			mutation.eventVersion = event.document.version;
+			mutation.eventVersion = eventVersion;
 			if (this.peers.has(mutation.peer)) {
-				mutation.peer.acknowledgeEdit(mutation.editId, event.document.version);
+				mutation.peer.acknowledgeEdit(mutation.editId, eventVersion);
 			}
 		}
 
-		// An unrelated event can legitimately win the next document version while
-		// applyEdit() is pending. Move only unmatched identities forward; the exact
-		// content still has to match before any origin is excluded.
-		for (const pending of this.pendingMutations) {
-			if (pending.expectedVersion <= event.document.version) {
-				pending.expectedVersion = event.document.version + 1;
-			}
-		}
+		// A delayed event can arrive after a newer event has already been observed.
+		// Never move an unmatched mutation's expected version: its resulting version
+		// is part of the operation identity and must remain stable until that exact
+		// event arrives. For an out-of-order event, derive its own base from the
+		// event version without regressing the coordinator's latest observed value.
+		const baseVersion = mutation?.baseVersion ?? (
+			eventVersion > previousVersion ? previousVersion : Math.max(0, eventVersion - 1)
+		);
+		if (eventVersion > previousVersion) this.lastObservedVersion = eventVersion;
 		for (const peer of this.peers) {
-			if (peer !== mutation?.peer) peer.receiveDocumentChanges(changes, baseVersion, event.document.version);
+			if (peer !== mutation?.peer) peer.receiveDocumentChanges(changes, baseVersion, eventVersion);
 		}
 	}
 
