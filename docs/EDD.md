@@ -77,6 +77,7 @@ Webview Editor
 - webview 的 `EditorSyncClient` 保留 confirmed、pending 和 in-flight ChangeSet；收到 sibling 的 saved snapshot 时按版本拒绝过期通知并保留未确认的本地输入。
 - stale sibling 发送旧 `baseVersion` 时由 coordinator 拒绝并返回当前 host snapshot；该 panel 先把 host 变更映射到当前视图，再将自己的 in-flight/pending ChangeSet rebase 后重试。相同插入边界采用 host 变更在前、本地变更在后的确定性顺序。
 - stale panel 的 save 请求在 `EditorSyncClient` 仍有 outstanding ChangeSet 时只排队，不发送给 host；只有 resync、rebase、retry 和 ack 全部完成后才发送 save，避免 host 先保存 A 而 B 的重试随后落地造成丢字。
+- 任一 host-side save（包括 File/Command Palette/Auto Save 路径）在 `onWillSaveTextDocument` 中向该 URI 的所有已注册 peer 请求 save barrier；webview 先排空本地 ChangeSet、等待 host ack，再回传 barrier ack。coordinator 随后等待自己的 mutation queue 和延迟 change event 完成，才允许 native save 写盘；peer dispose、不可投递的 webview message 或 barrier 异常会确定性地解除对应等待，不阻塞其他 peer 的保存。
 - save 是 sibling 同步 barrier，而不是逐字符协同编辑协议；origin panel 的本地视图和 VS Code native dirty state 可以先于 sibling 更新。
 
 ### 3.2 数学字体与局部 widget

@@ -6,6 +6,7 @@ export interface DocumentSyncPeer {
 	receiveSavedSnapshot(text: string, version: number): void;
 	acknowledgeEdit(editId: number, version: number): void;
 	resync(rejectedEditId?: number): void;
+	requestSaveBarrier(barrierId: number): Promise<void>;
 	runHistoryCommand(command: 'undo' | 'redo'): Promise<void>;
 }
 
@@ -33,8 +34,10 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	private queue: Promise<void> = Promise.resolve();
 	private readonly pendingMutations: PendingMutation[] = [];
 	private readonly pendingWaiters = new Set<() => void>();
+	private readonly saveBarrierWaiters = new Map<DocumentSyncPeer, Set<() => void>>();
 	private lastObservedVersion: number;
 	private saveInProgress = 0;
+	private nextSaveBarrierId = 1;
 	private disposed = false;
 
 	constructor(private readonly document: vscode.TextDocument) {
@@ -55,6 +58,11 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	addPeer(peer: DocumentSyncPeer): void { this.peers.add(peer); }
 	removePeer(peer: DocumentSyncPeer): void {
 		this.peers.delete(peer);
+		const waiters = this.saveBarrierWaiters.get(peer);
+		if (waiters) {
+			for (const resolve of waiters) resolve();
+			this.saveBarrierWaiters.delete(peer);
+		}
 		for (let index = this.pendingMutations.length - 1; index >= 0; index--) {
 			if (this.pendingMutations[index].peer === peer) this.pendingMutations.splice(index, 1);
 		}
@@ -62,9 +70,15 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	}
 	get peerCount(): number { return this.peers.size; }
 
+	/** Test/support hook for callers that need the native queue fully settled. */
+	async waitForIdle(): Promise<void> {
+		await this.queue.catch(() => undefined);
+		await this.waitForPendingMutations();
+	}
+
 	/** Save after all edits already received from any webview have settled. */
 	requestSave(): Promise<void> {
-		return this.enqueue(async () => {
+		return this.waitForSaveBarrier().then(() => this.enqueue(async () => {
 			await this.waitForPendingMutations();
 			this.saveInProgress++;
 			try {
@@ -72,7 +86,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 			} finally {
 				this.saveInProgress--;
 			}
-		});
+		}));
 	}
 
 	enqueueEdit(peer: DocumentSyncPeer, changes: TextChange[], baseVersion: number, editId: number): Promise<void> {
@@ -197,7 +211,45 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	}
 
 	private waitForSaveBarrier(): Promise<void> {
-		return this.queue.catch(() => undefined).then(() => this.waitForPendingMutations());
+		return this.queue.catch(() => undefined).then(async () => {
+			const peers = [...this.peers];
+			if (peers.length > 0) {
+				const barrierId = this.nextSaveBarrierId++;
+				// Ask every live panel to drain its local ChangeSets. The request is
+				// made only after the current host queue is idle so peer retries can
+				// enqueue work without waiting behind this barrier itself.
+				await Promise.all(peers.map((peer) => this.requestPeerSaveBarrier(peer, barrierId)));
+			}
+			// A peer acknowledges only after its final edit has been accepted by
+			// the host. Still wait for the coordinator queue and delayed VS Code
+			// change events before allowing the native save to write.
+			await this.queue.catch(() => undefined);
+			await this.waitForPendingMutations();
+		});
+	}
+
+	private requestPeerSaveBarrier(peer: DocumentSyncPeer, barrierId: number): Promise<void> {
+		return new Promise((resolve) => {
+			let waiters = this.saveBarrierWaiters.get(peer);
+			if (!waiters) {
+				waiters = new Set();
+				this.saveBarrierWaiters.set(peer, waiters);
+			}
+			let settled = false;
+			const settle = () => {
+				if (settled) return;
+				settled = true;
+				waiters!.delete(settle);
+				if (waiters!.size === 0) this.saveBarrierWaiters.delete(peer);
+				resolve();
+			};
+			waiters.add(settle);
+			try {
+				void peer.requestSaveBarrier(barrierId).then(settle, settle);
+			} catch {
+				settle();
+			}
+		});
 	}
 
 	private waitForPendingMutations(): Promise<void> {
@@ -227,6 +279,10 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		if (this.disposed) return;
 		this.disposed = true;
 		this.peers.clear();
+		for (const waiters of this.saveBarrierWaiters.values()) {
+			for (const resolve of waiters) resolve();
+		}
+		this.saveBarrierWaiters.clear();
 		this.pendingMutations.length = 0;
 		this.resolvePendingWaitersIfSettled();
 		this.changeListener.dispose();

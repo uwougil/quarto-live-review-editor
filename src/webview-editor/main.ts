@@ -34,6 +34,7 @@ let nextImageRequestId = 1;
 let imageInFlight: number | undefined;
 const imageQueue: Array<{ requestId: number; atPos: number; mimeType: string; dataBase64: string; needsOwnParagraph: boolean }> = [];
 const controlQueue: Array<'undo' | 'redo'> = [];
+const saveBarriers = new Set<number>();
 let lastCodeTokenGeneration = 0;
 let typewriterMode: TypewriterModeController | undefined;
 let disposeFontMeasurement: (() => void) | undefined;
@@ -113,6 +114,9 @@ function drainOutbound(): void {
 	}
 	while (controlQueue.length > 0) postToHost({ type: controlQueue.shift()! });
 	if (syncClient.takeSaveRequest()) postToHost({ type: 'save' });
+	if (saveBarriers.size === 0 || syncClient.hasOutstandingEdits || imageQueue.length > 0 || controlQueue.length > 0) return;
+	for (const barrierId of saveBarriers) postToHost({ type: 'saveBarrierAck', barrierId });
+	saveBarriers.clear();
 }
 
 function queueControl(type: 'undo' | 'redo'): boolean {
@@ -295,6 +299,11 @@ onHostMessage((message) => {
 			clearDrawioFileCache();
 			resetView(message.text, message.dialect, message.zoomPercent);
 			typewriterMode?.setEnabled(message.typewriterMode);
+			drainOutbound();
+			break;
+		case 'saveBarrier':
+			saveBarriers.add(message.barrierId);
+			drainOutbound();
 			break;
 		case 'ackEdit':
 			if (!syncClient) return;

@@ -42,6 +42,9 @@ const REHIGHLIGHT_DEBOUNCE_MS = 150;
  */
 export class DocumentSyncSession implements DocumentSyncPeer {
 	private disposables: vscode.Disposable[] = [];
+	private readonly pendingSaveBarriers = new Map<number, () => void>();
+	private webviewReady = false;
+	private disposed = false;
 	private rehighlightTimer: ReturnType<typeof setTimeout> | undefined;
 	private readonly tokenizationGate = new TokenizationGate();
 	private readonly ownsCoordinator: boolean;
@@ -77,6 +80,7 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 	private handleMessage(message: EditorToHostMessage) {
 		switch (message.type) {
 			case 'ready':
+				this.webviewReady = true;
 				this.sendInit();
 				this.scheduleRehighlight(true);
 				break;
@@ -88,6 +92,9 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 				break;
 			case 'save':
 				void this.coordinator.requestSave();
+				break;
+			case 'saveBarrierAck':
+				this.resolveSaveBarrier(message.barrierId);
 				break;
 			case 'undo':
 				// The shared coordinator queues this behind edits from every panel so
@@ -377,6 +384,37 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 
 	resync(rejectedEditId?: number): void { this.sendResync(rejectedEditId); }
 
+	requestSaveBarrier(barrierId: number): Promise<void> {
+		return new Promise((resolve) => {
+			if (this.disposed || !this.webviewReady) {
+				resolve();
+				return;
+			}
+			if (this.pendingSaveBarriers.has(barrierId)) {
+				this.resolveSaveBarrier(barrierId);
+			}
+			this.pendingSaveBarriers.set(barrierId, resolve);
+			try {
+				void Promise.resolve(this.webviewPanel.webview.postMessage({ type: 'saveBarrier', barrierId })).then((delivered) => {
+					// A disposed/non-deliverable webview cannot acknowledge. Its
+					// disposal callback will remove it from the coordinator; resolve
+					// here as a deterministic fallback for hosts that report the
+					// dropped message before firing onDidDispose.
+					if (!delivered) this.resolveSaveBarrier(barrierId);
+				}, () => this.resolveSaveBarrier(barrierId));
+			} catch {
+				this.resolveSaveBarrier(barrierId);
+			}
+		});
+	}
+
+	private resolveSaveBarrier(barrierId: number): void {
+		const resolve = this.pendingSaveBarriers.get(barrierId);
+		if (!resolve) return;
+		this.pendingSaveBarriers.delete(barrierId);
+		resolve();
+	}
+
 	private scheduleRehighlight(immediate = false) {
 		if (this.rehighlightTimer) {
 			clearTimeout(this.rehighlightTimer);
@@ -426,12 +464,15 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 	}
 
 	dispose() {
+		this.disposed = true;
 		this.coordinator.removePeer(this);
 		if (this.ownsCoordinator) this.coordinator.dispose();
 		if (this.rehighlightTimer) {
 			clearTimeout(this.rehighlightTimer);
 		}
 		this.tokenizationGate.invalidate();
+		for (const resolve of this.pendingSaveBarriers.values()) resolve();
+		this.pendingSaveBarriers.clear();
 		this.disposables.forEach((d) => d.dispose());
 	}
 }

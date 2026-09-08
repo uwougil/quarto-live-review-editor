@@ -18,4 +18,8 @@ module.exports.run = async function run() {
 	assert.ok(report.staleRetryCount >= 5, `expected stale edit retries, got ${report.staleRetryCount}`);
 	assert.equal(report.staleSaveFailureBroadcastCount, 0);
 	assert.ok(report.staleFinalText.endsWith('345uvwRrEF'), `unexpected stale-sibling final text: ${report.staleFinalText}`);
+	assert.equal(report.hostSaveScenarioCount, 4);
+	assert.ok(report.hostSaveBarrierCount >= 8, `expected host-side save barriers, got ${report.hostSaveBarrierCount}`);
+	assert.equal(report.hostSaveFailureBroadcastCount, 0);
+	assert.ok(report.hostSaveFinalText.endsWith('H1H2Q1S1S2F1F2'), `unexpected host-save final text: ${report.hostSaveFinalText}`);
 };

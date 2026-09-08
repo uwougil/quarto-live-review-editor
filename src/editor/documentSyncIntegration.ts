@@ -18,6 +18,10 @@ interface SyncIntegrationReport {
 	staleRetryCount: number;
 	staleSaveFailureBroadcastCount: number;
 	staleFinalText: string;
+	hostSaveScenarioCount: number;
+	hostSaveBarrierCount: number;
+	hostSaveFailureBroadcastCount: number;
+	hostSaveFinalText: string;
 }
 
 function ensure(condition: unknown, message: string): asserts condition {
@@ -57,6 +61,8 @@ class ProbePeer implements DocumentSyncPeer {
 		this.acknowledgements.push(editId);
 	}
 
+	requestSaveBarrier(): Promise<void> { return Promise.resolve(); }
+
 	resync(): void {
 		throw new Error('The integration scenario did not expect a resync.');
 	}
@@ -81,8 +87,12 @@ class EditorSyncIntegrationPeer implements DocumentSyncPeer {
 	readonly retriedEditIds: number[] = [];
 	readonly savedSnapshots: Array<{ text: string; version: number }> = [];
 	readonly resyncedTexts: string[] = [];
+	barrierRequestCount = 0;
+	holdAcknowledgements = false;
 	private viewText: string;
 	private readonly operations = new Set<Promise<void>>();
+	private readonly saveBarrierResolvers = new Map<number, () => void>();
+	private readonly heldAcknowledgements: Array<{ editId: number; version: number }> = [];
 	private retryPending = false;
 
 	constructor(
@@ -96,6 +106,8 @@ class EditorSyncIntegrationPeer implements DocumentSyncPeer {
 	}
 
 	get text(): string { return this.viewText; }
+	get hostVersion(): number { return this.client.hostVersion; }
+	get documentIsDirty(): boolean { return this.document.isDirty; }
 
 	localEdit(change: TextChange): void {
 		const previousText = this.viewText;
@@ -107,6 +119,23 @@ class EditorSyncIntegrationPeer implements DocumentSyncPeer {
 	requestSave(): void {
 		this.client.requestSave();
 		this.drainOutbound();
+	}
+
+	requestSaveBarrier(barrierId: number): Promise<void> {
+		this.barrierRequestCount++;
+		return new Promise((resolve) => {
+			this.saveBarrierResolvers.set(barrierId, resolve);
+			this.schedule(() => {
+				this.drainOutbound();
+				this.resolveSaveBarriersIfSettled();
+				return Promise.resolve();
+			});
+		});
+	}
+
+	dispose(): void {
+		for (const resolve of this.saveBarrierResolvers.values()) resolve();
+		this.saveBarrierResolvers.clear();
 	}
 
 	async waitForIdle(): Promise<void> {
@@ -139,6 +168,21 @@ class EditorSyncIntegrationPeer implements DocumentSyncPeer {
 	}
 
 	acknowledgeEdit(editId: number, version: number): void {
+		if (this.holdAcknowledgements) {
+			this.heldAcknowledgements.push({ editId, version });
+			return;
+		}
+		this.acceptAcknowledgement(editId, version);
+	}
+
+	get heldAcknowledgementCount(): number { return this.heldAcknowledgements.length; }
+
+	releaseHeldAcknowledgements(): void {
+		const acknowledgements = this.heldAcknowledgements.splice(0);
+		for (const { editId, version } of acknowledgements) this.acceptAcknowledgement(editId, version);
+	}
+
+	private acceptAcknowledgement(editId: number, version: number): void {
 		if (this.client.acknowledge(editId, version).resyncRequired) {
 			this.scheduleResync();
 			return;
@@ -184,6 +228,13 @@ class EditorSyncIntegrationPeer implements DocumentSyncPeer {
 		if (this.client.takeSaveRequest()) {
 			this.schedule(() => this.coordinator.requestSave());
 		}
+		this.resolveSaveBarriersIfSettled();
+	}
+
+	private resolveSaveBarriersIfSettled(): void {
+		if (this.client.hasOutstandingEdits) return;
+		for (const resolve of this.saveBarrierResolvers.values()) resolve();
+		this.saveBarrierResolvers.clear();
 	}
 
 	private schedule(operation: () => Promise<void>): void {
@@ -203,6 +254,8 @@ class EditorSyncIntegrationPeer implements DocumentSyncPeer {
 class IntegrationFileSystemProvider implements vscode.FileSystemProvider {
 	private content = new Uint8Array();
 	failWrites = false;
+	writeAttemptCount = 0;
+	failedWriteCount = 0;
 
 	private readonly changes = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
 	readonly onDidChangeFile = this.changes.event;
@@ -216,7 +269,11 @@ class IntegrationFileSystemProvider implements vscode.FileSystemProvider {
 	readFile(): Uint8Array { return this.content.slice(); }
 
 	writeFile(uri: vscode.Uri, content: Uint8Array): void {
-		if (this.failWrites) throw vscode.FileSystemError.NoPermissions(uri);
+		this.writeAttemptCount++;
+		if (this.failWrites) {
+			this.failedWriteCount++;
+			throw vscode.FileSystemError.NoPermissions(uri);
+		}
 		this.content = content.slice();
 	}
 
@@ -231,10 +288,47 @@ function tick(): Promise<void> {
 	return new Promise((resolve) => setImmediate(resolve));
 }
 
+async function waitForSavedSnapshot(peer: EditorSyncIntegrationPeer, count: number, provider: IntegrationFileSystemProvider): Promise<void> {
+	for (let attempt = 0; attempt < 40; attempt++) {
+		if (peer.savedSnapshots.length > count) return;
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	ensure(
+		peer.savedSnapshots.length > count,
+		`host save: onDidSaveTextDocument did not broadcast a snapshot (snapshots=${peer.savedSnapshots.length}, barriers=${peer.barrierRequestCount}, dirty=${peer.documentIsDirty}, version=${peer.hostVersion}, text=${peer.text}, writes=${provider.writeAttemptCount}, failedWrites=${provider.failedWriteCount}, failMode=${provider.failWrites})`,
+	);
+}
+
+async function waitForCondition(condition: () => boolean, message: string): Promise<void> {
+	for (let attempt = 0; attempt < 40; attempt++) {
+		if (condition()) return;
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	ensure(condition(), message);
+}
+
+async function saveFromHost(document: vscode.TextDocument, peer: EditorSyncIntegrationPeer, provider: IntegrationFileSystemProvider): Promise<boolean> {
+	const snapshotsBeforeSave = peer.savedSnapshots.length;
+	const result = await document.save();
+	// VS Code may dispatch onDidSaveTextDocument well after the save promise has
+	// settled. Wait for the actual savedSnapshot rather than assuming one tick is
+	// enough before asserting convergence.
+	if (result) await waitForSavedSnapshot(peer, snapshotsBeforeSave, provider);
+	else await tick();
+	return result;
+}
+
 interface StaleSiblingIntegrationReport {
 	scenarioCount: number;
 	resyncCount: number;
 	retryCount: number;
+	saveFailureBroadcastCount: number;
+	finalText: string;
+}
+
+interface HostSaveIntegrationReport {
+	scenarioCount: number;
+	barrierCount: number;
 	saveFailureBroadcastCount: number;
 	finalText: string;
 }
@@ -340,6 +434,123 @@ async function runStaleSiblingIntegration(
 	};
 }
 
+async function runHostSaveIntegration(
+	document: vscode.TextDocument,
+	coordinator: DocumentSyncCoordinator,
+	provider: IntegrationFileSystemProvider,
+): Promise<HostSaveIntegrationReport> {
+	ensure(!provider.failWrites, 'host save: previous failed-save test left the provider in failure mode');
+	let expected = document.getText();
+	const a = new EditorSyncIntegrationPeer(expected, document.version, coordinator, document);
+	const b = new EditorSyncIntegrationPeer(expected, document.version, coordinator, document);
+	coordinator.addPeer(a);
+	coordinator.addPeer(b);
+
+	const ensureConverged = (label: string): void => {
+		ensure(document.getText() === expected, `${label}: host text diverged from expected text`);
+		ensure(a.text === expected, `${label}: panel A diverged from expected text`);
+		ensure(b.text === expected, `${label}: panel B diverged from expected text (panel=${b.text}, expected=${expected}, host=${document.getText()}, snapshots=${b.savedSnapshots.length})`);
+		ensure(!document.isDirty, `${label}: successful host save left the document dirty`);
+	};
+
+	// A host-side save must flush both the in-flight first edit and the second
+	// edit that still exists only in the webview's local ChangeSet.
+	const snapshotsBeforePartialSave = b.savedSnapshots.length;
+	a.holdAcknowledgements = true;
+	a.localEdit({ from: a.text.length, to: a.text.length, insert: 'H1' });
+	a.localEdit({ from: a.text.length, to: a.text.length, insert: 'H2' });
+	ensure(a.client.hasInFlightEdit, 'host save: first edit was not in flight');
+	ensure(a.text.endsWith('H1H2'), 'host save: local pending edit was not retained in the webview');
+	await waitForCondition(
+		() => document.getText().endsWith('H1') && a.heldAcknowledgementCount === 1,
+		'host save: first edit never reached the host while its acknowledgement was held',
+	);
+	ensure(document.getText() === expected + 'H1', 'host save: pending edit reached the host before the barrier');
+	const hostSave = document.save();
+	await waitForCondition(() => a.barrierRequestCount > 0, 'host save: coordinator did not ask the in-flight peer to flush');
+	ensure(b.savedSnapshots.length === snapshotsBeforePartialSave, 'host save: broadcast a premature saved snapshot');
+	a.holdAcknowledgements = false;
+	a.releaseHeldAcknowledgements();
+	ensure(await hostSave, 'host save: direct TextDocument.save() failed unexpectedly');
+	await waitForSavedSnapshot(b, snapshotsBeforePartialSave, provider);
+	await Promise.all([a.waitForIdle(), b.waitForIdle()]);
+	expected += 'H1H2';
+	ensureConverged('host save with in-flight and pending edits');
+	const partialSaveSnapshots = b.savedSnapshots.slice(snapshotsBeforePartialSave);
+	ensure(partialSaveSnapshots.length === 1, 'host save: expected one saved snapshot after the barrier');
+	ensure(partialSaveSnapshots[0].text === expected, 'host save: broadcast a partial saved snapshot');
+
+	// A second panel with an outstanding edit is also included in a host-side
+	// save barrier, even though no webview Mod-S request was sent.
+	b.holdAcknowledgements = true;
+	b.localEdit({ from: b.text.length, to: b.text.length, insert: 'Q1' });
+	ensure(b.client.hasInFlightEdit, 'host save with two panels: B edit was not in flight');
+	await waitForCondition(
+		() => document.getText().endsWith('Q1') && b.heldAcknowledgementCount === 1,
+		'host save with two panels: B edit never reached the host while its acknowledgement was held',
+	);
+	const twoPanelBarrierBefore = b.barrierRequestCount;
+	const twoPanelSave = document.save();
+	await waitForCondition(() => b.barrierRequestCount > twoPanelBarrierBefore, 'host save with two panels: coordinator did not ask B to flush');
+	b.holdAcknowledgements = false;
+	b.releaseHeldAcknowledgements();
+	ensure(await twoPanelSave, 'host save with two panels failed unexpectedly');
+	await waitForSavedSnapshot(b, snapshotsBeforePartialSave + 1, provider);
+	await Promise.all([a.waitForIdle(), b.waitForIdle()]);
+	expected += 'Q1';
+	ensureConverged('host save with two panels');
+
+	// Reconcile a stale sibling first, then save directly from the host. This
+	// proves the barrier remains valid after resync/rebase/retry has changed the
+	// pending edit's base version.
+	a.localEdit({ from: a.text.length, to: a.text.length, insert: 'S1' });
+	await a.waitForIdle();
+	b.localEdit({ from: b.text.length, to: b.text.length, insert: 'S2' });
+	await b.waitForIdle();
+	ensure(b.resyncs.length > 0, 'host save after stale reconciliation: B never resynced');
+	const staleSnapshotsBeforeHostSave = b.savedSnapshots.length;
+	ensure(await saveFromHost(document, b, provider), 'host save after stale reconciliation failed unexpectedly');
+	await Promise.all([a.waitForIdle(), b.waitForIdle()]);
+	expected += 'S1S2';
+	ensureConverged('host save after stale reconciliation');
+	ensure(b.savedSnapshots.length === staleSnapshotsBeforeHostSave + 1, 'host save after stale reconciliation: snapshot count was not deterministic');
+
+	// A failed direct host save still flushes all edits, but must not publish a
+	// successful-save snapshot. The next successful host save converges both
+	// panels without replaying either edit.
+	a.localEdit({ from: a.text.length, to: a.text.length, insert: 'F1' });
+	await a.waitForIdle();
+	b.localEdit({ from: b.text.length, to: b.text.length, insert: 'F2' });
+	const failedExpected = expected + 'F1F2';
+	const snapshotsBeforeHostFailure = b.savedSnapshots.length;
+	provider.failWrites = true;
+	ensure(!(await saveFromHost(document, b, provider)), 'failed host save unexpectedly reported success');
+	await Promise.all([a.waitForIdle(), b.waitForIdle()]);
+	ensure(document.isDirty, 'failed host save unexpectedly cleaned the document');
+	ensure(document.getText() === failedExpected, 'failed host save lost a reconciled local edit');
+	ensure(b.text === failedExpected, 'failed host save lost B local state');
+	ensure(b.savedSnapshots.length === snapshotsBeforeHostFailure, 'failed host save broadcast a saved snapshot');
+	ensure(a.savedSnapshots.length === snapshotsBeforeHostFailure, 'failed host save broadcast a snapshot to A');
+	const hostSaveFailureBroadcastCount = b.savedSnapshots.length - snapshotsBeforeHostFailure;
+	provider.failWrites = false;
+	ensure(await saveFromHost(document, b, provider), 'host save failure recovery failed unexpectedly');
+	await Promise.all([a.waitForIdle(), b.waitForIdle()]);
+	expected = failedExpected;
+	ensureConverged('host save failure recovery');
+
+	const barrierCount = a.barrierRequestCount + b.barrierRequestCount;
+	a.dispose();
+	b.dispose();
+	coordinator.removePeer(a);
+	coordinator.removePeer(b);
+	return {
+		scenarioCount: 4,
+		barrierCount,
+		saveFailureBroadcastCount: hostSaveFailureBroadcastCount,
+		finalText: expected,
+	};
+}
+
 /**
  * Runs the host-side synchronization contract against the real VS Code
  * extension host. It intentionally uses probes instead of webview mocks so
@@ -388,6 +599,8 @@ export async function runDocumentSyncIntegration(): Promise<SyncIntegrationRepor
 		ensure(a.text === document.getText() && b.text === document.getText(), 'saved snapshot did not converge all peers');
 
 		const stale = await runStaleSiblingIntegration(document, coordinator, provider);
+		await coordinator.waitForIdle();
+		const hostSave = await runHostSaveIntegration(document, coordinator, provider);
 
 		// Save immediately after the final local character is sent through the same
 		// coordinator queue used by the webview's Mod-S handler. This closes the
@@ -451,6 +664,10 @@ export async function runDocumentSyncIntegration(): Promise<SyncIntegrationRepor
 			staleRetryCount: stale.retryCount,
 			staleSaveFailureBroadcastCount: stale.saveFailureBroadcastCount,
 			staleFinalText: stale.finalText,
+			hostSaveScenarioCount: hostSave.scenarioCount,
+			hostSaveBarrierCount: hostSave.barrierCount,
+			hostSaveFailureBroadcastCount: hostSave.saveFailureBroadcastCount,
+			hostSaveFinalText: hostSave.finalText,
 		} satisfies SyncIntegrationReport;
 	} finally {
 		provider.failWrites = false;

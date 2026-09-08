@@ -117,6 +117,7 @@ function peer(): DocumentSyncPeer & { updates: any[]; snapshots: any[]; acks: an
 		receiveSavedSnapshot(text, version) { this.snapshots.push({ text, version }); },
 		acknowledgeEdit(editId, version) { this.acks.push({ editId, version }); },
 		resync(editId) { this.resyncs.push(editId ?? -1); },
+		requestSaveBarrier: async () => undefined,
 		async runHistoryCommand(command) { this.commands.push(command); },
 	};
 }
@@ -524,6 +525,41 @@ describe('DocumentSyncCoordinator', () => {
 		emitChanges(doc, localChanges);
 		await barrier;
 		expect(barrierSettled).toBe(true);
+		coordinator.dispose();
+	});
+
+	it('does not deadlock a host save when a peer closes during its barrier', async () => {
+		const doc = document('ab');
+		const coordinator = new DocumentSyncCoordinator(doc as any);
+		const a = peer();
+		const barrier = deferred<void>();
+		let requested = false;
+		a.requestSaveBarrier = () => {
+			requested = true;
+			return barrier.promise;
+		};
+		coordinator.addPeer(a);
+
+		const saveBarrier = emitWillSave(doc);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(requested).toBe(true);
+		// removePeer is the host-side half of DocumentSyncSession.dispose(). The
+		// coordinator must release its wrapper even if the peer's own promise has
+		// not resolved yet.
+		coordinator.removePeer(a);
+		await saveBarrier;
+		barrier.resolve();
+		coordinator.dispose();
+	});
+
+	it('treats a failed peer barrier as unavailable without hanging the host save', async () => {
+		const doc = document('ab');
+		const coordinator = new DocumentSyncCoordinator(doc as any);
+		const a = peer();
+		a.requestSaveBarrier = async () => { throw new Error('webview unavailable'); };
+		coordinator.addPeer(a);
+
+		await emitWillSave(doc);
 		coordinator.dispose();
 	});
 
