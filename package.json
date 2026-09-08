@@ -191,6 +191,7 @@
     "test:browser": "node scripts/run-long-document-browser-test.mjs",
     "test:browser:inline": "node scripts/run-long-document-browser-test.mjs --inline-geometry",
     "test:browser:inline-interaction": "node scripts/run-long-document-browser-test.mjs --inline-interaction",
+    "test:browser:footnote-caret": "node scripts/run-footnote-caret-browser-test.mjs",
     "test:browser:typewriter": "node scripts/run-long-document-browser-test.mjs --typewriter",
     "test:browser:arrow-scroll": "node scripts/run-long-document-browser-test.mjs --arrow-scroll",
     "test:browser:geometry": "node scripts/run-geometry-regression.mjs",

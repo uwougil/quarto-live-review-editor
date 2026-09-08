@@ -62,6 +62,8 @@ jobs:
         run: npm run test:browser:inline
       - name: Inline interaction regression
         run: npm run test:browser:inline-interaction
+      - name: Footnote caret regression
+        run: npm run test:browser:footnote-caret
       - name: Typewriter mode regression
         run: npm run test:browser:typewriter
       - name: Arrow scroll regression
