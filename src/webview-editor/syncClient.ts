@@ -71,6 +71,7 @@ export class EditorSyncClient {
 	private version: number;
 	private pending: ChangeSet | null = null;
 	private inFlight: InFlightEdit | null = null;
+	private saveRequested = false;
 	private nextEditId = 1;
 
 	constructor(text: string, version: number) {
@@ -90,6 +91,10 @@ export class EditorSyncClient {
 		return this.inFlight !== null;
 	}
 
+	get hasPendingSave(): boolean {
+		return this.saveRequested;
+	}
+
 	mapHostPosition(pos: number): number {
 		return this.outstandingChanges()?.mapPos(pos, 1) ?? pos;
 	}
@@ -97,6 +102,19 @@ export class EditorSyncClient {
 	recordLocal(changes: ChangeSet): void {
 		if (changes.empty) return;
 		this.pending = this.pending ? this.pending.compose(changes) : changes;
+	}
+
+	requestSave(): void {
+		// A stale panel may need a host resync before its in-flight edit can be
+		// retried. Keep save behind that rebase so the retry cannot land after the
+		// save and appear to have been lost.
+		this.saveRequested = true;
+	}
+
+	takeSaveRequest(): boolean {
+		if (!this.saveRequested || this.hasOutstandingEdits) return false;
+		this.saveRequested = false;
+		return true;
 	}
 
 	takeNextEdit(): OutboundEdit | null {

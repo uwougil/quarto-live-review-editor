@@ -112,6 +112,7 @@ function drainOutbound(): void {
 		return;
 	}
 	while (controlQueue.length > 0) postToHost({ type: controlQueue.shift()! });
+	if (syncClient.takeSaveRequest()) postToHost({ type: 'save' });
 }
 
 function queueControl(type: 'undo' | 'redo'): boolean {
@@ -123,7 +124,14 @@ function queueControl(type: 'undo' | 'redo'): boolean {
 
 function requestSave(): boolean {
 	flushNow();
-	postToHost({ type: 'save' });
+	if (!syncClient) {
+		postToHost({ type: 'save' });
+		return true;
+	}
+	// Keep Mod-S behind any stale-base resync/retry. The client will release
+	// this request from drainOutbound after its outstanding ChangeSet is acked.
+	syncClient.requestSave();
+	drainOutbound();
 	return true;
 }
 
