@@ -1,5 +1,6 @@
 import type { HeadingItem } from './headings';
 import type { DocumentDialect } from '../quarto/dialect';
+import type { ReadingWidthState } from './documentZoom';
 
 export interface TextChange {
 	from: number;
@@ -33,6 +34,7 @@ export type HostToEditorMessage =
 		dialect: DocumentDialect;
 		typewriterMode: boolean;
 		zoomPercent: number;
+		readingWidthPercent: ReadingWidthState;
 	}
 	| { type: 'externalUpdate'; changes: TextChange[]; baseVersion: number; version: number }
 	| { type: 'ackEdit'; editId: number; version: number }
@@ -50,6 +52,7 @@ export type HostToEditorMessage =
 	| { type: 'drawioFile'; requestId: number; text?: string; error?: string }
 	| { type: 'imageResult'; requestId: number; ok: boolean; error?: string }
 	| { type: 'setZoom'; percent: number }
+	| { type: 'setReadingWidth'; percent: ReadingWidthState }
 	| { type: 'setCursor'; pos: number };
 
 export type EditorToHostMessage =
@@ -67,7 +70,8 @@ export type EditorToHostMessage =
 	// and sends its text back for the widget to parse. `src` is the raw, relative
 	// path exactly as written in the Markdown; the host resolves it.
 	| { type: 'readDrawioFile'; requestId: number; src: string }
-	| { type: 'setZoom'; percent: number };
+	| { type: 'setZoom'; percent: number }
+	| { type: 'setReadingWidth'; percent: ReadingWidthState };
 
 export interface StyleEntry {
 	id: string;

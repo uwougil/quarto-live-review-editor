@@ -237,7 +237,7 @@ function initialStateFor(text: string, dialect: DocumentDialect): EditorState {
 	return state.update({ selection: { anchor } }).state;
 }
 
-function createView(text: string, dialect: DocumentDialect, zoomPercent: unknown) {
+function createView(text: string, dialect: DocumentDialect, zoomPercent: unknown, readingWidthPercent: unknown) {
 	const root = document.getElementById('mlp-root')!;
 	disposeFontMeasurement?.();
 	disposeFontMeasurement = watchKatexFontMeasurements(root);
@@ -246,7 +246,9 @@ function createView(text: string, dialect: DocumentDialect, zoomPercent: unknown
 	// zoom, while the controller still owns all later event and layout updates.
 	documentZoom = new DocumentZoomController(root, {
 		initialPercent: zoomPercent,
+		initialReadingWidthPercent: readingWidthPercent,
 		onChange: (percent) => postToHost({ type: 'setZoom', percent }),
+		onReadingWidthChange: (percent) => postToHost({ type: 'setReadingWidth', percent }),
 		// Font-size changes affect both visible line boxes and replaced widgets.
 		// Wait one animation frame so CodeMirror measures the committed layout,
 		// preserving caret, hit-test and scroll geometry after every step.
@@ -266,12 +268,13 @@ function createView(text: string, dialect: DocumentDialect, zoomPercent: unknown
 	typewriterMode = new TypewriterModeController(view);
 }
 
-function resetView(text: string, dialect: DocumentDialect, zoomPercent: unknown) {
+function resetView(text: string, dialect: DocumentDialect, zoomPercent: unknown, readingWidthPercent: unknown) {
 	if (!view) {
-		createView(text, dialect, zoomPercent);
+		createView(text, dialect, zoomPercent, readingWidthPercent);
 		return;
 	}
 	documentZoom?.setPercent(zoomPercent);
+	documentZoom?.setReadingWidthPercent(readingWidthPercent);
 	view.setState(initialStateFor(text, dialect));
 	typewriterMode?.suspendForNavigation();
 }
@@ -297,7 +300,7 @@ onHostMessage((message) => {
 			// A re-init means a different document (or the same one reloaded), so
 			// files read for the previous one must not be served from cache.
 			clearDrawioFileCache();
-			resetView(message.text, message.dialect, message.zoomPercent);
+			resetView(message.text, message.dialect, message.zoomPercent, message.readingWidthPercent);
 			typewriterMode?.setEnabled(message.typewriterMode);
 			drainOutbound();
 			break;
@@ -356,6 +359,9 @@ onHostMessage((message) => {
 			break;
 		case 'setZoom':
 			documentZoom?.setPercent(message.percent);
+			break;
+		case 'setReadingWidth':
+			documentZoom?.setReadingWidthPercent(message.percent);
 			break;
 		case 'jumpToLine': {
 			if (!view) return;

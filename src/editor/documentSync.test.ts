@@ -65,8 +65,16 @@ vi.mock('vscode', () => {
 
 import * as vscode from 'vscode';
 import { DocumentSyncSession } from './documentSync';
+import { READING_WIDTH_FULL, type ReadingWidthState } from '../shared/documentZoom';
 
-function createSession(version = 1, text = 'abc', zoomPercent = 100, onZoomChange: (percent: number) => void = () => undefined) {
+function createSession(
+	version = 1,
+	text = 'abc',
+	zoomPercent = 100,
+	onZoomChange: (percent: number) => void = () => undefined,
+	readingWidthPercent: ReadingWidthState = 100,
+	onReadingWidthChange: (state: ReadingWidthState) => void = () => undefined,
+) {
 	const document = {
 		uri: vscode.Uri.file('/notes/example.qmd'),
 		version,
@@ -87,7 +95,7 @@ function createSession(version = 1, text = 'abc', zoomPercent = 100, onZoomChang
 			asWebviewUri: (uri: vscode.Uri) => uri,
 		},
 	} as unknown as vscode.WebviewPanel;
-	return new DocumentSyncSession(document, panel, () => '', undefined, () => zoomPercent, onZoomChange);
+	return new DocumentSyncSession(document, panel, () => '', undefined, () => zoomPercent, onZoomChange, undefined, undefined, () => readingWidthPercent, onReadingWidthChange);
 }
 
 async function send(session: DocumentSyncSession, message: unknown): Promise<void> {
@@ -152,12 +160,52 @@ describe('DocumentSyncSession document zoom', () => {
 		session.dispose();
 	});
 
+	it('includes the shared reading width in init and forwards independent local changes', async () => {
+		let requestedWidth: ReadingWidthState = 100;
+		const session = createSession(1, 'abc', 140, () => undefined, 160, (state: ReadingWidthState) => { requestedWidth = state; });
+
+		await send(session, { type: 'ready' });
+		expect(mockState.posts).toContainEqual(expect.objectContaining({ type: 'init', zoomPercent: 140, readingWidthPercent: 160 }));
+		await send(session, { type: 'setReadingWidth', percent: 180 });
+		expect(requestedWidth).toBe(180);
+		await send(session, { type: 'setReadingWidth', percent: READING_WIDTH_FULL });
+		expect(requestedWidth).toBe(READING_WIDTH_FULL);
+		session.notifyReadingWidthChanged(60);
+		expect(mockState.posts).toContainEqual({ type: 'setReadingWidth', percent: 60 });
+		session.dispose();
+	});
+
+	it('broadcasts Full reading width to each open panel', () => {
+		const first = createSession();
+		const second = createSession();
+
+		first.notifyReadingWidthChanged(READING_WIDTH_FULL);
+		second.notifyReadingWidthChanged(READING_WIDTH_FULL);
+
+		expect(mockState.posts.filter((message) => (message as { type?: string }).type === 'setReadingWidth'))
+			.toEqual([
+				{ type: 'setReadingWidth', percent: READING_WIDTH_FULL },
+				{ type: 'setReadingWidth', percent: READING_WIDTH_FULL },
+			]);
+		first.dispose();
+		second.dispose();
+	});
+
 	it('normalizes an invalid zoom request before handing it to the provider', async () => {
 		let requestedZoom = 0;
 		const session = createSession(1, 'abc', 100, (percent: number) => { requestedZoom = percent; });
 
 		await send(session, { type: 'setZoom', percent: 999 });
 		expect(requestedZoom).toBe(200);
+		session.dispose();
+	});
+
+	it('normalizes an invalid reading-width request before handing it to the provider', async () => {
+		let requestedWidth: ReadingWidthState = 0;
+		const session = createSession(1, 'abc', 100, () => undefined, 100, (state: ReadingWidthState) => { requestedWidth = state; });
+
+		await send(session, { type: 'setReadingWidth', percent: 999 });
+		expect(requestedWidth).toBe(320);
 		session.dispose();
 	});
 });

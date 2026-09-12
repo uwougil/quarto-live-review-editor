@@ -420,6 +420,7 @@
 		window.dispatchEvent(new MessageEvent('message', { data: {
 			type: 'init', text, version: 1, css, codeTheme: 'light-plus', baseUri: location.origin + '/', dialect: 'markdown', typewriterMode,
 			zoomPercent: Number(testParams.get('zoom') || 100),
+			readingWidthPercent: Number(testParams.get('readingWidth') || 100),
 		} }));
 	}
 

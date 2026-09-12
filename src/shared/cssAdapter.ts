@@ -11,7 +11,8 @@
  * mapping. This transformer rewrites the block-element selectors so an
  * unmodified VS Code Markdown theme can be dropped in and mostly "just work".
  *
- * Only selectors are rewritten; declaration blocks pass through untouched.
+ * Selectors are rewritten, and only a tightly-scoped finite reading-column
+ * `max-width` declaration is adapted to the Live Preview width scale.
  */
 
 const ELEMENT_MAP: Record<string, string> = {
@@ -98,6 +99,51 @@ function transformSelectorList(selectorList: string): string {
 			return leading + transformSelector(sel.trim()) + trailing;
 		})
 		.join(',');
+}
+
+// Reading-column rules are the only user CSS rules whose finite `max-width`
+// represents the document column itself. The selector check is intentionally
+// strict: scaling `img`, a widget, or a mixed selector list would change the
+// meaning of unrelated content and could make a custom theme wider by accident.
+const READING_COLUMN_SELECTOR_RE = /^(?:(?:body(?:\.[\w-]+)*)\s+)?\.cm-editor\s+\.cm-content$/i;
+
+function isReadingColumnSelectorList(selectorList: string): boolean {
+	const selectors = selectorList.split(',').map((s) => s.trim()).filter(Boolean);
+	return selectors.length > 0 && selectors.every((selector) => READING_COLUMN_SELECTOR_RE.test(selector));
+}
+
+// A CSS length is safe to multiply only when it is a single finite length
+// token. Percentages, viewport units, `none`, and functions such as
+// `min()`/`clamp()` carry layout semantics that this adapter cannot safely
+// reinterpret, so they remain byte-for-byte unchanged.
+const FINITE_MAX_WIDTH_RE = /^((?:0|(?:\d+(?:\.\d*)?|\.\d+)(?:px|rem|em|ex|ch|cap|ic|lh|rlh|cm|mm|Q|in|pc|pt)))(\s*!important)?$/i;
+
+function scaledFiniteMaxWidth(value: string): string | undefined {
+	const match = FINITE_MAX_WIDTH_RE.exec(value.trim());
+	if (!match) return undefined;
+	// Only declarations proven to belong to the reading column receive this
+	// fallback. Full mode can set the custom property to `none` without
+	// rewriting arbitrary theme selectors or unsupported width expressions.
+	return `var(--mlp-reading-column-max-width, calc(${match[1]} * var(--mlp-reading-width, 1)))${match[2] ?? ''}`;
+}
+
+function scaleReadingColumnBody(body: string): string {
+	const declarations = parseDeclarations(body);
+	let changed = false;
+	const rewritten = declarations.map((item) => {
+		if ('raw' in item || item.prop.toLowerCase() !== 'max-width') {
+			return 'raw' in item ? item.raw : `${item.prop}: ${item.value}`;
+		}
+		const scaled = scaledFiniteMaxWidth(item.value);
+		if (!scaled) return `${item.prop}: ${item.value}`;
+		changed = true;
+		return `${item.prop}: ${scaled}`;
+	});
+	return changed ? rewritten.join('; ') : body;
+}
+
+function adaptReadingColumnRule(selectorList: string, body: string): string {
+	return isReadingColumnSelectorList(selectorList) ? scaleReadingColumnBody(body) : body;
 }
 
 // ── `pre code` text-color fallback ──────────────────────────────────────────
@@ -505,7 +551,7 @@ function emitRule(prelude: string, body: string): string {
 		// padding so they stay inside CodeMirror's measured line box.
 		return comments + flattenLineRule(selectorList, body);
 	}
-	return `${comments}${selectorList}{${body}}`;
+	return `${comments}${selectorList}{${adaptReadingColumnRule(selectorList, body)}}`;
 }
 
 function processRules(css: string): string {

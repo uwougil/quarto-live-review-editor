@@ -15,7 +15,7 @@
 - 内置 CSS 主题：VS Code、Dark、GitHub Light、Claude 和 GitHub Dark；主题之间互相独立，可在侧栏切换。
 - 可选 Typewriter Mode：输入时将主光标保持在编辑器视口约 40% 的位置，鼠标滚动和显式导航仍由用户控制。
 - ` ```{python} `、` ```{r} `、` ```{julia} ` 和 ` ```{.python} ` 使用统一的 Quarto/Pandoc 围栏解析入口，并交给现有 Shiki 高亮体系。
-- Live Preview 支持独立于 VS Code 全局缩放的文档字号缩放：聚焦预览后使用 `Ctrl/Cmd + 滚轮`、`Ctrl/Cmd + +`、`Ctrl/Cmd + -` 调整，`Ctrl/Cmd + 0` 重置。范围为 70%–200%，所有 Live Preview 文档共享并持久化该值。
+- Live Preview 支持独立于 VS Code 全局缩放的文档字号和正文阅读区宽度缩放：聚焦预览后使用 `Ctrl/Cmd + 滚轮` 调整字号，使用 `Ctrl/Cmd + +`、`Ctrl/Cmd + -` 调整阅读区宽度，使用 `Ctrl/Cmd + 0` 重置字号、`Ctrl/Cmd + Shift + 0` 重置阅读区宽度。字号范围为 70%–200%；阅读区宽度为 60%–320% 的 10% 步进，320% 后可进入响应式 Full 状态；两者独立共享并持久化。
 
 ## 安装开发版
 
@@ -52,9 +52,9 @@ $$
 
 光标离开公式时显示渲染结果；点击公式或将选区移入公式时显示原始 `$` 语法。编辑和保存不会把公式替换成 HTML、Unicode 或 KaTeX 输出。
 
-### 文档字号缩放
+### 文档字号与阅读区宽度缩放
 
-字号缩放只作用于 Live Preview 文档内容，不会修改 VS Code 的全局缩放，也不会修改磁盘中的 Markdown/Quarto 文本。只有 Live Preview 获得焦点时，带有平台对应 Mod 键的滚轮和快捷键才会生效；普通滚轮仍用于滚动。缩放值保存在扩展的全局偏好中，因此切换文档、打开多个预览面板或重启 VS Code 后仍保持一致。
+字号缩放只作用于 Live Preview 文档内容，不会修改 VS Code 的全局缩放，也不会修改磁盘中的 Markdown/Quarto 文本。只有 Live Preview 获得焦点时，带有平台对应 Mod 键的滚轮和快捷键才会生效；普通滚轮仍用于滚动。阅读区从 60% 到 320% 始终按 10% 步进；到达 320% 后再次按增加键进入 Full，Full 随预览视口响应式伸展，再按减少键回到 320%。字号和阅读区宽度保存在扩展的独立全局偏好中，因此切换文档、打开多个预览面板或重启 VS Code 后仍保持一致。
 
 Quarto 特有的 callout、shortcode、citation、cross-reference 和代码单元目前保持源码安全，不会被错误改写；代码单元只负责识别和高亮，暂不执行。
 
@@ -120,7 +120,7 @@ npm run test:browser:math
 
 Quarto 示例位于 [examples/quarto-live-preview.qmd](examples/quarto-live-preview.qmd)，科研回归 fixture 位于 [examples/quarto-scientific.qmd](examples/quarto-scientific.qmd)。
 
-`npm run test:browser:zoom` 会在真实 Chromium 中验证字号增减、70%/200% 边界、重置、普通滚轮、编辑器焦点边界、长文档几何以及重新初始化文档时的共享 zoom 值。
+`npm run test:browser:zoom` 会在真实 Chromium 中验证字号 70%/200% 边界、阅读区 60%–320% 的 10% 步进、320%↔Full、独立重置、普通滚轮、编辑器焦点边界、长文档几何以及重新初始化文档时的共享偏好值。
 
 `npm run test:browser:math` 会验证本地打包的 KaTeX 字体族真实加载，并覆盖复杂公式、light/dark/custom CSS 颜色、70%/100%/150%/200% 缩放、display height map、鼠标命中、单公式局部更新，以及 20/100/500 个公式的渲染与滚动。
 

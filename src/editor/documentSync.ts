@@ -8,7 +8,13 @@ import { documentDialectForPath } from '../quarto/dialect';
 import { findMarkdownAnchorLine } from '../shared/headings';
 import { TokenizationGate } from './tokenizationGuard';
 import { DocumentSyncCoordinator, type DocumentSyncPeer } from './documentSyncCoordinator';
-import { DOCUMENT_ZOOM_DEFAULT, normalizeDocumentZoom } from '../shared/documentZoom';
+import {
+	DOCUMENT_ZOOM_DEFAULT,
+	normalizeDocumentZoom,
+	READING_WIDTH_DEFAULT,
+	normalizeReadingWidth,
+	type ReadingWidthState,
+} from '../shared/documentZoom';
 
 /**
  * Largest `.drawio` file that will be read and parsed.
@@ -59,6 +65,8 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 		private readonly onDocumentZoomChange: (percent: number) => void = () => undefined,
 		coordinator?: DocumentSyncCoordinator,
 		private readonly getTypewriterMode: () => boolean = () => false,
+		private readonly getReadingWidth: () => ReadingWidthState = () => READING_WIDTH_DEFAULT,
+		private readonly onReadingWidthChange: (state: ReadingWidthState) => void = () => undefined,
 	) {
 		this.ownsCoordinator = !coordinator;
 		this.coordinator = coordinator ?? new DocumentSyncCoordinator(document);
@@ -116,6 +124,9 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 				break;
 			case 'setZoom':
 				this.onDocumentZoomChange(normalizeDocumentZoom(message.percent));
+				break;
+			case 'setReadingWidth':
+				this.onReadingWidthChange(normalizeReadingWidth(message.percent));
 				break;
 		}
 	}
@@ -360,6 +371,7 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 			baseUri: `${this.webviewPanel.webview.asWebviewUri(docDir).toString()}/`,
 			typewriterMode: this.getTypewriterMode(),
 			zoomPercent: normalizeDocumentZoom(this.getDocumentZoom()),
+			readingWidthPercent: normalizeReadingWidth(this.getReadingWidth()),
 		});
 	}
 
@@ -445,6 +457,10 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 
 	notifyDocumentZoomChanged(percent: number): void {
 		this.post({ type: 'setZoom', percent: normalizeDocumentZoom(percent) });
+	}
+
+	notifyReadingWidthChanged(state: ReadingWidthState): void {
+		this.post({ type: 'setReadingWidth', percent: normalizeReadingWidth(state) });
 	}
 
 	getDocument(): vscode.TextDocument {
