@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import type { TextChange } from '../shared/messages';
 
 export interface DocumentSyncPeer {
+	/** Whether this peer is the currently active editor. Undefined keeps test/legacy peers active. */
+	readonly active?: boolean;
 	receiveDocumentChanges(changes: TextChange[], baseVersion: number, version: number): void;
 	receiveSavedSnapshot(text: string, version: number): void;
 	acknowledgeEdit(editId: number, version: number): void;
@@ -38,6 +40,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	private lastObservedVersion: number;
 	private saveInProgress = 0;
 	private nextSaveBarrierId = 1;
+	private saveBarrierInFlight: Promise<void> | undefined;
 	private disposed = false;
 
 	constructor(private readonly document: vscode.TextDocument) {
@@ -47,6 +50,9 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		});
 		this.willSaveListener = vscode.workspace.onWillSaveTextDocument((event) => {
 			if (event.document.uri.toString() !== document.uri.toString() || this.saveInProgress > 0) return;
+			// Native/Workbench saves share the same in-flight barrier as a webview
+			// Mod-S request. Cursor can route one physical Ctrl+S through both paths;
+			// coalescing here keeps that from doubling the peer round-trip.
 			event.waitUntil(this.waitForSaveBarrier());
 		});
 		this.didSaveListener = vscode.workspace.onDidSaveTextDocument((savedDocument) => {
@@ -76,10 +82,14 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		await this.waitForPendingMutations();
 	}
 
-	/** Save after all edits already received from any webview have settled. */
+	/** Save after edits already accepted by the host and the active peer have settled. */
 	requestSave(): Promise<void> {
 		return this.waitForSaveBarrier().then(() => this.enqueue(async () => {
 			await this.waitForPendingMutations();
+			// If a concurrent native/Workbench save already completed while this
+			// request was waiting at the shared barrier, there is nothing left to
+			// write. This also avoids a second onDidSave/savedSnapshot cycle.
+			if (this.document.isDirty === false) return;
 			this.saveInProgress++;
 			try {
 				await this.document.save();
@@ -211,21 +221,33 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	}
 
 	private waitForSaveBarrier(): Promise<void> {
-		return this.queue.catch(() => undefined).then(async () => {
-			const peers = [...this.peers];
-			if (peers.length > 0) {
+		if (this.saveBarrierInFlight) return this.saveBarrierInFlight;
+
+		const barrier = this.queue.catch(() => undefined).then(async () => {
+			// Only the active custom editor is allowed to flush webview-local input
+			// into this save. Hidden retained webviews can legitimately contain stale
+			// unsent ChangeSets; flushing them here makes Ctrl+S appear to roll back
+			// the active editor. Their local state remains intact and can be rebased/
+			// sent later, at which point the document becomes dirty again normally.
+			const activePeers = [...this.peers].filter((peer) => peer.active !== false);
+			if (activePeers.length > 0) {
 				const barrierId = this.nextSaveBarrierId++;
-				// Ask every live panel to drain its local ChangeSets. The request is
-				// made only after the current host queue is idle so peer retries can
-				// enqueue work without waiting behind this barrier itself.
-				await Promise.all(peers.map((peer) => this.requestPeerSaveBarrier(peer, barrierId)));
+				// Request the barrier only after the current host queue is idle so an
+				// active peer's retry can enqueue work without waiting behind itself.
+				await Promise.all(activePeers.map((peer) => this.requestPeerSaveBarrier(peer, barrierId)));
 			}
-			// A peer acknowledges only after its final edit has been accepted by
-			// the host. Still wait for the coordinator queue and delayed VS Code
-			// change events before allowing the native save to write.
+			// Edits already accepted by the host still belong to the canonical save,
+			// regardless of which panel originated them.
 			await this.queue.catch(() => undefined);
 			await this.waitForPendingMutations();
 		});
+
+		let tracked!: Promise<void>;
+		tracked = barrier.finally(() => {
+			if (this.saveBarrierInFlight === tracked) this.saveBarrierInFlight = undefined;
+		});
+		this.saveBarrierInFlight = tracked;
+		return tracked;
 	}
 
 	private requestPeerSaveBarrier(peer: DocumentSyncPeer, barrierId: number): Promise<void> {
