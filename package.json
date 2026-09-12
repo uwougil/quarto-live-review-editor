@@ -197,6 +197,7 @@
     "test:browser:geometry": "node scripts/run-geometry-regression.mjs",
     "test:browser:zoom": "node scripts/run-document-zoom-browser-test.mjs",
     "test:browser:math": "node scripts/run-math-browser-test.mjs",
+    "test:integration": "npm run compile && node scripts/run-document-sync-integration.mjs",
     "test:watch": "vitest",
     "generate:long-fixtures": "node scripts/generate-long-fixtures.mjs",
     "watch:esbuild": "node esbuild.js --watch",
@@ -206,6 +207,7 @@
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/vscode": "^1.90.0",
+    "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.24.0",
     "fast-check": "^4.9.0",

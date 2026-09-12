@@ -23,6 +23,7 @@ npx playwright install chromium
 npm run typecheck
 npm test
 npm run compile
+npm run test:integration
 npm run test:browser
 npm run test:browser:geometry
 npm run test:browser:inline

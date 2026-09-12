@@ -62,21 +62,32 @@ Webview Editor
 1. VS Code 通过 `MarkdownLivePreviewProvider` 创建 webview，并以消息发送文档文本、版本和主题 CSS。
 2. webview 使用 CodeMirror `EditorState` 保存源文本、选区、语法树和 StateField。
 3. `livePreviewPlugin` 和 `blockDecorationsField` 根据源位置生成 decoration/widget；widget 只改变显示，不改变文档内容。
-4. 用户编辑产生 `ChangeSet`，经过短暂 debounce 后发送回宿主，由 `DocumentSyncSession` 写入 VS Code 文档。
-5. 用户主题通过 `adaptMarkdownCss` 注入到独立 style 元素，并请求 CodeMirror 的测量流程，避免高度图过期。
-6. `mdLivePreview.typewriterMode` 是宿主侧配置，打开 webview 时随 `init` 消息发送；配置变化通过 `typewriterModeChanged` 广播到所有活动会话。webview 只接收布尔状态，不直接读取 VS Code API。
-7. 文档字号由扩展宿主的 `globalState` 共享持久化；webview 在根节点设置 CSS 自定义属性，并在字号变化后的下一帧请求 CodeMirror 重新测量，保持行框、widget 和命中测试几何有效。
+4. 用户编辑产生 `ChangeSet`，webview 立即将 edit 发送回宿主，由同一文档 URI 的 `DocumentSyncCoordinator` 排队写入 VS Code 文档并向 origin 返回 ack；不使用固定 debounce 保证正确性。
+5. 未保存的 webview edit 不广播给 sibling panel。`onWillSaveTextDocument` 等待 edit queue 和 change ack；`onDidSaveTextDocument` 成功后向所有 panel 广播带版本的完整 `savedSnapshot`。保存失败不广播 saved snapshot。
+6. 普通源码编辑器产生的无 origin 变更是 host-authoritative external update，立即以增量发送到所有 panel；后续保存仍可发送 canonical snapshot。
+7. 用户主题通过 `adaptMarkdownCss` 注入到独立 style 元素，并请求 CodeMirror 的测量流程，避免高度图过期。
+8. `mdLivePreview.typewriterMode` 是宿主侧配置，打开 webview 时随 `init` 消息发送；配置变化通过 `typewriterModeChanged` 广播到所有活动会话。webview 只接收布尔状态，不直接读取 VS Code API。
+9. 文档字号由扩展宿主的 `globalState` 共享持久化；webview 在根节点设置 CSS 自定义属性，并在字号变化后的下一帧请求 CodeMirror 重新测量，保持行框、widget 和命中测试几何有效。
 
 源位置是所有交互的身份：点击、脚注回跳、表格编辑、图片和图表操作都必须使用 CodeMirror 文档偏移或 DOM 到文档位置的 API，不使用屏幕像素推断文档位置。
 
-### 3.1 数学字体与局部 widget
+### 3.1 文档同步与保存 barrier
+
+- 每个文档 URI 只创建一个 `DocumentSyncCoordinator`，它串行化来自所有 panel 的 edit、history 和 host mutation。
+- webview 的 `EditorSyncClient` 保留 confirmed、pending 和 in-flight ChangeSet；收到 sibling 的 saved snapshot 时按版本拒绝过期通知并保留未确认的本地输入。
+- stale sibling 发送旧 `baseVersion` 时由 coordinator 拒绝并返回当前 host snapshot；该 panel 先把 host 变更映射到当前视图，再将自己的 in-flight/pending ChangeSet rebase 后重试。相同插入边界采用 host 变更在前、本地变更在后的确定性顺序。
+- stale panel 的 save 请求在 `EditorSyncClient` 仍有 outstanding ChangeSet 时只排队，不发送给 host；只有 resync、rebase、retry 和 ack 全部完成后才发送 save，避免 host 先保存 A 而 B 的重试随后落地造成丢字。
+- 任一 host-side save（包括 File/Command Palette/Auto Save 路径）在 `onWillSaveTextDocument` 中向该 URI 的所有已注册 peer 请求 save barrier；webview 先排空本地 ChangeSet、等待 host ack，再回传 barrier ack。coordinator 随后等待自己的 mutation queue 和延迟 change event 完成，才允许 native save 写盘；peer dispose、不可投递的 webview message 或 barrier 异常会确定性地解除对应等待，不阻塞其他 peer 的保存。
+- save 是 sibling 同步 barrier，而不是逐字符协同编辑协议；origin panel 的本地视图和 VS Code native dirty state 可以先于 sibling 更新。
+
+### 3.2 数学字体与局部 widget
 
 - 数学渲染固定使用 KaTeX；`media/katex.min.css` 引用的 20 个 KaTeX face（woff2/woff/ttf）全部随扩展打包在 `media/fonts/`，webview CSP 只允许从自身资源源加载字体。
 - KaTeX 保留自身的 glyph metrics、字重、TeX spacing 和 display style；扩展 CSS 只负责继承主题前景色、可测量的 display padding 和横向溢出，不替换数学字体或缩放整个 widget。
 - KaTeX 字体完成加载后触发 CodeMirror 的 supported measurement；加载错误会写入 `data-mlp-katex-fonts="error"` 并记录错误，不静默接受浏览器 serif fallback。
 - `MathWidget` 的等价性由公式内容与 inline/display 模式决定，不由易变的源码绝对偏移决定；鼠标交互通过当前 DOM 向 CodeMirror 查询最新偏移，因此单个公式编辑不会重建其余公式 DOM。
 
-### 3.2 Typewriter Mode
+### 3.3 Typewriter Mode
 
 - `src/webview-editor/typewriterMode.ts` 只负责编辑器视口控制，不创建文档变更，也不参与宿主同步。
 - 写作型键盘事件、文本输入、删除、粘贴和拖放会安排一次下一帧定位；控制器使用 `coordsAtPos` 和 `scrollDOM` 的实际几何，把主光标中点尽量放到视口高度的 40%。
@@ -130,6 +141,7 @@ Webview Editor
 npm run typecheck
 npm test
 npm run compile
+npm run test:integration
 npm run test:browser
 npm run test:browser:geometry
 npm run test:browser:inline
@@ -140,7 +152,7 @@ npm run test:browser:zoom
 npm run test:browser:math
 ```
 
-CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行七个浏览器命令。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。
+CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`VS Code Extension Host Integration` job 使用真实 VS Code Extension Host、TextDocument、WorkspaceEdit 和保存事件执行同步契约；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行七个浏览器命令。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。
 
 ## 8. Issue 与 PR 交付契约
 

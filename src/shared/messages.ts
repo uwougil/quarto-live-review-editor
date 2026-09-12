@@ -37,6 +37,8 @@ export type HostToEditorMessage =
 	| { type: 'externalUpdate'; changes: TextChange[]; baseVersion: number; version: number }
 	| { type: 'ackEdit'; editId: number; version: number }
 	| { type: 'resync'; text: string; version: number; rejectedEditId?: number }
+	| { type: 'savedSnapshot'; text: string; version: number }
+	| { type: 'saveBarrier'; barrierId: number }
 	| { type: 'codeTokens'; version: number; generation: number; blocks: CodeBlockTokens[] }
 	| { type: 'applyCss'; css: string }
 	| { type: 'typewriterModeChanged'; enabled: boolean }
@@ -54,6 +56,8 @@ export type EditorToHostMessage =
 	| { type: 'ready' }
 	| { type: 'edit'; editId: number; baseVersion: number; changes: TextChange[] }
 	| { type: 'requestResync' }
+	| { type: 'save' }
+	| { type: 'saveBarrierAck'; barrierId: number }
 	| { type: 'undo' }
 	| { type: 'redo' }
 	| { type: 'openLink'; href: string }

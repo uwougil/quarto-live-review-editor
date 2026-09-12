@@ -27,6 +27,8 @@ vi.mock('vscode', () => ({
 	},
 	workspace: {
 		onDidChangeTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
+		onWillSaveTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
+		onDidSaveTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
 		applyEdit: vi.fn(() => new Promise<boolean>((resolve) => {
 			host.resolveApplyEdit = () => resolve(true);
 		})),

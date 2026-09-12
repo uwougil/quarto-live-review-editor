@@ -39,6 +39,8 @@ vi.mock('vscode', () => {
 				mockState.documentChangeHandler = handler;
 				return disposable();
 			},
+			onWillSaveTextDocument: () => disposable(),
+			onDidSaveTextDocument: () => disposable(),
 			openTextDocument: vi.fn(),
 			applyEdit: async () => mockState.applyEditResult,
 			fs: {

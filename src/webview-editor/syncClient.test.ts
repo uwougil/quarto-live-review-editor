@@ -58,6 +58,39 @@ describe('EditorSyncClient', () => {
 		expect(apply('abc1', ChangeSet.of(second.changes, 4))).toBe('abc12');
 	});
 
+	it('holds save until a stale edit is rebased, retried, and acknowledged', () => {
+		const client = new EditorSyncClient('abc', 1);
+		client.recordLocal(ChangeSet.of({ from: 3, insert: 'B' }, 3));
+		const first = client.takeNextEdit()!;
+		client.requestSave();
+		expect(client.takeSaveRequest()).toBe(false);
+
+		const resync = client.receiveResync({ text: 'abcA', version: 2, rejectedEditId: first.editId });
+		expect(resync.viewChanges.apply(text('abcB')).toString()).toBe('abcAB');
+		const retry = client.takeNextEdit()!;
+		expect(retry.baseVersion).toBe(2);
+		expect(client.takeSaveRequest()).toBe(false);
+
+		expect(client.acknowledge(retry.editId, 3).resyncRequired).toBe(false);
+		expect(client.takeSaveRequest()).toBe(true);
+	});
+
+	it('keeps rapid local input queued while the save request is held', () => {
+		const client = new EditorSyncClient('abc', 1);
+		client.recordLocal(ChangeSet.of({ from: 3, insert: 'B' }, 3));
+		const first = client.takeNextEdit()!;
+		client.requestSave();
+		client.recordLocal(ChangeSet.of({ from: 4, insert: 'C' }, 4));
+
+		const resync = client.receiveResync({ text: 'abcA', version: 2, rejectedEditId: first.editId });
+		expect(resync.viewChanges.apply(text('abcBC')).toString()).toBe('abcABC');
+		const retry = client.takeNextEdit()!;
+		expect(retry.baseVersion).toBe(2);
+		expect(client.hasPendingSave).toBe(true);
+		expect(client.acknowledge(retry.editId, 3).resyncRequired).toBe(false);
+		expect(client.takeSaveRequest()).toBe(true);
+	});
+
 	it('preserves both in-flight and pending edits through a host resync', () => {
 		const client = new EditorSyncClient('abc', 1);
 		client.recordLocal(ChangeSet.of({ from: 1, insert: 'X' }, 3));
@@ -78,6 +111,17 @@ describe('EditorSyncClient', () => {
 		const edit = client.takeNextEdit()!;
 		expect(client.acknowledge(edit.editId + 1, 2).resyncRequired).toBe(true);
 		expect(client.hasOutstandingEdits).toBe(true);
+	});
+
+	it('accepts a saved snapshot and ignores a delayed older snapshot', () => {
+		const client = new EditorSyncClient('abc', 4);
+		const current = client.receiveSavedSnapshot({ text: 'abcX', version: 5 });
+		expect(current.viewChanges.apply(text('abc')).toString()).toBe('abcX');
+		expect(client.hostVersion).toBe(5);
+
+		const stale = client.receiveSavedSnapshot({ text: 'abc', version: 4 });
+		expect(stale.viewChanges.empty).toBe(true);
+		expect(client.hostVersion).toBe(5);
 	});
 
 	it('rejects an external update based on an unexpected version without mutating local state', () => {
