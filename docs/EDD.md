@@ -86,6 +86,7 @@ Webview Editor
 - KaTeX 保留自身的 glyph metrics、字重、TeX spacing 和 display style；扩展 CSS 只负责继承主题前景色、可测量的 display padding 和横向溢出，不替换数学字体或缩放整个 widget。
 - KaTeX 字体完成加载后触发 CodeMirror 的 supported measurement；加载错误会写入 `data-mlp-katex-fonts="error"` 并记录错误，不静默接受浏览器 serif fallback。
 - `MathWidget` 的等价性由公式内容与 inline/display 模式决定，不由易变的源码绝对偏移决定；鼠标交互通过当前 DOM 向 CodeMirror 查询最新偏移，因此单个公式编辑不会重建其余公式 DOM。
+- `mathEditPreview.ts` 使用 `ViewPlugin` 管理折叠光标所在公式的单个绝对定位预览框。预览只从 `mathRangesField` 和当前选区派生，原始源码仍由 CodeMirror 唯一持有；预览 DOM 使用 `pointer-events: none`，通过 `coordsAtPos` 定位并随输入、选区、滚动和窗口尺寸更新，不加入 decoration、文档流、height map，也不主动滚动或调用 `requestMeasure`。
 
 ### 3.3 Typewriter Mode
 

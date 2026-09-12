@@ -169,6 +169,41 @@ html, body {
 	min-width: max-content;
 }
 
+/* ── Math source-edit preview ───────────────────────────────────────────────
+   This box is an absolute overlay owned by mathEditPreview.ts. It is not a
+   CodeMirror decoration and must never participate in document flow: the raw
+   formula remains the only editable source, while this box follows the caret
+   without changing the height map or scroll range. */
+.mlp-math-edit-preview {
+	position: absolute;
+	box-sizing: border-box;
+	max-height: min(45vh, 360px);
+	overflow: auto;
+	pointer-events: none;
+	z-index: 300;
+	padding: calc(6px * var(--mlp-document-zoom, 1)) calc(10px * var(--mlp-document-zoom, 1));
+	color: var(--vscode-editorWidget-foreground, var(--vscode-editor-foreground, #ccc));
+	background: var(--vscode-editorWidget-background, var(--vscode-editor-background, #1e1e1e));
+	border: 1px solid var(--vscode-editorWidget-border, rgba(127, 127, 127, 0.45));
+	border-radius: 5px;
+	box-shadow: 0 2px 10px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.28));
+}
+.mlp-math-edit-preview[hidden] {
+	display: none;
+}
+.mlp-math-edit-preview > .mlp-math {
+	display: block;
+	max-width: none;
+	padding: 0;
+	text-align: left;
+}
+.mlp-math-edit-preview > .mlp-math-display > .katex-display {
+	text-align: left;
+}
+.mlp-math-edit-preview .katex-error {
+	color: var(--vscode-editorError-foreground, var(--vscode-errorForeground, #f48771));
+}
+
 /* ── Fenced code blocks ──────────────────────────────────────────────────────
    Each code line carries a line decoration. Line decorations sit on the
    `.cm-line` block, so (unlike a mark) their padding and background never leak
