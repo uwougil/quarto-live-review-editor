@@ -54,7 +54,7 @@ Quarto Live Review Editor 是一个 VS Code 扩展，为 Markdown 和 Quarto (`.
 | FR-9 | 扩展必须提供文档大纲、图片粘贴、表格编辑和实时保存能力。 | P1 |
 | FR-10 | 用户可启用 Typewriter Mode；输入、删除、Enter 和上下移动光标时，主光标应尽量保持在编辑器视口约 40% 的位置，且不改写文档内容。 | P1 |
 | FR-11 | Live Preview 必须支持 70% 至 200% 的文档字号缩放，使用 10% 步进、快捷键与 Ctrl/Mod+滚轮，并共享持久化设置。 | P1 |
-| FR-12 | Live Preview 必须支持独立的 60% 至 180% 正文阅读区宽度缩放，并在 180% 后提供响应式 Full 状态；使用 10% 步进、快捷键并共享持久化设置。只有主题声明的 finite reading-column 宽度可被安全适配，Full 不得强行改写不受支持的主题 selector。 | P1 |
+| FR-12 | Live Preview 必须支持独立的 60% 至 320% 正文阅读区宽度缩放，并在 320% 后提供响应式 Full 状态；全范围使用 10% 步进、快捷键并共享持久化设置。只有主题声明的 finite reading-column 宽度可被安全适配，Full 不得强行改写不受支持的主题 selector。 | P1 |
 
 ## 5. 可接受行为
 
@@ -65,7 +65,7 @@ Quarto Live Review Editor 是一个 VS Code 扩展，为 Markdown 和 Quarto (`.
 - Typewriter Mode 默认关闭；启用后只跟随写作型键盘/输入交互，目标位置不可达时在文档首尾自然钳制；鼠标点击、滚轮滚动和宿主驱动的显式跳转必须暂停自动定位。
 - 文档字号缩放只作用于获得焦点的 Live Preview 内容，必须同步更新段落、标题、列表、代码、表格、front matter、脚注和数学布局；缩放不得移动光标、改变选区或修改源文本。
 - `Ctrl/Mod +` 与 `Ctrl/Mod -` 只调整正文阅读区宽度，`Ctrl/Mod + 0` 只重置字号，`Ctrl/Mod + Shift + 0` 只重置正文阅读区宽度；Ctrl/Mod+滚轮只调整字号。
-- 阅读区从 60% 到 180% 按 10% 步进；在 180% 再按增加键进入 Full，Full 使用可用预览视口并保留合理侧边留白，再按增加键保持 Full，减少键回到 180%。
+- 阅读区从 60% 到 320% 全程按 10% 步进；在 320% 再按增加键进入 Full，Full 使用可用预览视口并保留合理侧边留白，再按增加键保持 Full，减少键回到 320%。
 - 阅读区宽度以主题原有的 finite `px`/`rem` 等长度为基线进行缩放；百分比、`none`、viewport 单位、`min()`/`clamp()`、复杂或自定义 selector 保持原值，不生成非法 CSS；没有 finite 基线的主题保持原有 full-width 布局。
 - 保存后文件内容必须仍是用户输入的 Markdown/Quarto 源文本。
 

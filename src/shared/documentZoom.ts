@@ -12,7 +12,7 @@ export const DOCUMENT_ZOOM_STEP = 10;
 
 /** Reading-column width as a percentage of a theme's own finite baseline. */
 export const READING_WIDTH_MIN = 60;
-export const READING_WIDTH_MAX = 180;
+export const READING_WIDTH_MAX = 320;
 export const READING_WIDTH_DEFAULT = 100;
 export const READING_WIDTH_STEP = 10;
 export const READING_WIDTH_FULL = 'full' as const;
@@ -40,7 +40,7 @@ export function normalizeReadingWidth(value: unknown): ReadingWidthState {
 	return Math.min(READING_WIDTH_MAX, Math.max(READING_WIDTH_MIN, stepped));
 }
 
-/** Applies signed 10% steps, entering Full after 180% and leaving it at 180%. */
+/** Applies signed 10% steps, entering Full after 320% and leaving it at 320%. */
 export function adjustReadingWidth(current: unknown, steps: number): ReadingWidthState {
 	const base = normalizeReadingWidth(current);
 	if (!Number.isFinite(steps) || steps === 0) return base;

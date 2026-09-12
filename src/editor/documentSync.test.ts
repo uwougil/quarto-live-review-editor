@@ -205,7 +205,7 @@ describe('DocumentSyncSession document zoom', () => {
 		const session = createSession(1, 'abc', 100, () => undefined, 100, (state: ReadingWidthState) => { requestedWidth = state; });
 
 		await send(session, { type: 'setReadingWidth', percent: 999 });
-		expect(requestedWidth).toBe(180);
+		expect(requestedWidth).toBe(320);
 		session.dispose();
 	});
 });

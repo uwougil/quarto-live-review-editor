@@ -133,6 +133,8 @@ async function main() {
 		['github-light', fs.readFile(path.join(REPO, 'media/sample-styles/github-light.css'), 'utf8')],
 		['github-dark', fs.readFile(path.join(REPO, 'media/sample-styles/github-dark.css'), 'utf8')],
 		['claude', fs.readFile(path.join(REPO, 'media/sample-styles/claude.css'), 'utf8')],
+		['vscode', fs.readFile(path.join(REPO, 'media/sample-styles/vscode.css'), 'utf8')],
+		['dark', fs.readFile(path.join(REPO, 'media/sample-styles/dark.css'), 'utf8')],
 	]);
 	const browser = await chromium.launch({ headless: true });
 	const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -179,10 +181,19 @@ async function main() {
 		await settle(page);
 		const width180 = await snapshot(page);
 		assert(width180Key.defaultPrevented && width180.readingWidth === '1.8' && width180.readingWidthState === '180' && width180.zoom === '1.1', 'reading width did not reach its 180% step', { width180Key, width180 });
+
+		for (let i = 0; i < 13; i++) await dispatchKey(page, '+', 'Equal', { ctrlKey: true, shiftKey: true });
+		await settle(page);
+		const width310 = await snapshot(page);
+		assert(width310.readingWidth === '3.1' && width310.readingWidthState === '310' && width310.zoom === '1.1', 'reading width did not continue smoothly through the 10% steps to 310%', { width310 });
+		const width320Key = await dispatchKey(page, '+', 'Equal', { ctrlKey: true, shiftKey: true });
+		await settle(page);
+		const width320 = await snapshot(page);
+		assert(width320Key.defaultPrevented && width320.readingWidth === '3.2' && width320.readingWidthState === '320' && width320.zoom === '1.1', 'reading width did not reach its 320% step', { width320Key, width320 });
 		const fullKey = await dispatchKey(page, '+', 'Equal', { ctrlKey: true, shiftKey: true });
 		await settle(page);
 		const full = await snapshot(page);
-		assert(fullKey.defaultPrevented && full.readingWidth === '1.8' && full.readingWidthState === 'full' && full.readingColumnMaxWidth === 'none' && full.transform === 'none', '180% plus did not enter the responsive Full reading-width state', { fullKey, full });
+		assert(fullKey.defaultPrevented && full.readingWidth === '3.2' && full.readingWidthState === 'full' && full.readingColumnMaxWidth === 'none' && full.transform === 'none', '320% plus did not enter the responsive Full reading-width state', { fullKey, full });
 		const fullPlus = await dispatchKey(page, '+', 'Equal', { ctrlKey: true, shiftKey: true });
 		await settle(page);
 		const fullAgain = await snapshot(page);
@@ -194,7 +205,7 @@ async function main() {
 		const fullMinus = await dispatchKey(page, '-', 'Minus', { ctrlKey: true });
 		await settle(page);
 		const widthMaximum = await snapshot(page);
-		assert(fullMinus.defaultPrevented && widthMaximum.readingWidth === '1.8' && widthMaximum.readingWidthState === '180' && widthMaximum.readingColumnMaxWidth === '' && widthMaximum.zoom === '1.2', 'Ctrl+Minus did not leave Full at the 180% step', { fullMinus, widthMaximum });
+		assert(fullMinus.defaultPrevented && widthMaximum.readingWidth === '3.2' && widthMaximum.readingWidthState === '320' && widthMaximum.readingColumnMaxWidth === '' && widthMaximum.zoom === '1.2', 'Ctrl+Minus did not leave Full at the 320% step', { fullMinus, widthMaximum });
 
 		await page.setViewportSize({ width: 1600, height: 800 });
 		await settle(page);
@@ -216,17 +227,17 @@ async function main() {
 		for (let i = 0; i < 20; i++) await dispatchWheel(page, -120, { ctrlKey: true });
 		await settle(page);
 		const fontMaximum = await snapshot(page);
-		assert(fontMaximum.zoom === '2' && fontMaximum.readingWidth === '1.8' && fontMaximum.readingWidthState === 'full', 'typography exceeded its 200% boundary or changed Full reading width', { fontMaximum });
+		assert(fontMaximum.zoom === '2' && fontMaximum.readingWidth === '3.2' && fontMaximum.readingWidthState === 'full', 'typography exceeded its 200% boundary or changed Full reading width', { fontMaximum });
 		const atFontMaximum = await dispatchWheel(page, -120, { ctrlKey: true });
 		assert(atFontMaximum.defaultPrevented, 'boundary Ctrl+wheel was allowed to reach browser zoom', { atFontMaximum });
 		for (let i = 0; i < 20; i++) await dispatchWheel(page, 120, { ctrlKey: true });
 		await settle(page);
 		const fontMinimum = await snapshot(page);
-		assert(fontMinimum.zoom === '0.7' && fontMinimum.readingWidth === '1.8' && fontMinimum.readingWidthState === 'full', 'typography fell below its 70% boundary or changed Full reading width', { fontMinimum });
+		assert(fontMinimum.zoom === '0.7' && fontMinimum.readingWidth === '3.2' && fontMinimum.readingWidthState === 'full', 'typography fell below its 70% boundary or changed Full reading width', { fontMinimum });
 		for (let i = 0; i < 20; i++) await dispatchWheel(page, -120, { ctrlKey: true });
 		await settle(page);
 
-		for (let i = 0; i < 20; i++) await dispatchKey(page, '-', 'Minus', { ctrlKey: true });
+		for (let i = 0; i < 40; i++) await dispatchKey(page, '-', 'Minus', { ctrlKey: true });
 		await settle(page);
 		const widthMinimum = await snapshot(page);
 		assert(widthMinimum.readingWidth === '0.6' && widthMinimum.readingWidthState === '60' && widthMinimum.zoom === '2', 'reading width fell below its 60% boundary or changed typography', { widthMinimum });
@@ -238,11 +249,10 @@ async function main() {
 		const resetState = await snapshot(page);
 		assert(reset.defaultPrevented && resetState.zoom === '1' && resetState.readingWidth === '0.6' && resetState.readingWidthState === '60', 'Ctrl+0 did not reset typography only', { reset, resetState });
 
-		for (let i = 0; i < 12; i++) await dispatchKey(page, '+', 'Equal', { ctrlKey: true, shiftKey: true });
-		await dispatchKey(page, '+', 'Equal', { ctrlKey: true, shiftKey: true });
+		for (let i = 0; i < 27; i++) await dispatchKey(page, '+', 'Equal', { ctrlKey: true, shiftKey: true });
 		await settle(page);
 		const fullBeforeReset = await snapshot(page);
-		assert(fullBeforeReset.readingWidthState === 'full' && fullBeforeReset.zoom === '1', 'reading width did not re-enter Full before the independent reset', { fullBeforeReset });
+		assert(fullBeforeReset.readingWidthState === 'full' && fullBeforeReset.readingWidth === '3.2' && fullBeforeReset.zoom === '1', 'reading width did not re-enter Full after traversing the expanded range', { fullBeforeReset });
 
 		const widthReset = await dispatchKey(page, ')', 'Digit0', { ctrlKey: true, shiftKey: true });
 		await settle(page);
@@ -280,7 +290,7 @@ async function main() {
 		});
 		await settle(page);
 		const fullReinitialized = await snapshot(page);
-		assert(fullReinitialized.zoom === '1.4' && fullReinitialized.readingWidth === '1.8' && fullReinitialized.readingWidthState === 'full', 'reopening a document did not restore Full reading width', { fullReinitialized });
+		assert(fullReinitialized.zoom === '1.4' && fullReinitialized.readingWidth === '3.2' && fullReinitialized.readingWidthState === 'full', 'reopening a document did not restore Full reading width', { fullReinitialized });
 
 		const fixedThemeCss = 'body { max-width: 980px; }';
 		await page.evaluate((css) => {
@@ -341,7 +351,7 @@ async function main() {
 		assert(unsupportedTheme.transform === 'none', 'unsupported width theme introduced a transform', { unsupportedTheme });
 
 		assert(pageErrors.length === 0, 'browser page errors occurred', { pageErrors });
-		console.log(JSON.stringify({ ok: true, initial, focusedAfter, afterCtrlWheel, width170, width180, full, fullAgain, fullTypography, widthMaximum, fullWideState, fullNarrowState, fontMaximum, fontMinimum, widthMinimum, resetState, fullBeforeReset, widthResetState, unfocused, reinitialized, fullReinitialized, fixedTheme, fullFixedTheme, builtInThemeResults, unsupportedTheme }));
+		console.log(JSON.stringify({ ok: true, initial, focusedAfter, afterCtrlWheel, width170, width180, width310, width320, full, fullAgain, fullTypography, widthMaximum, fullWideState, fullNarrowState, fontMaximum, fontMinimum, widthMinimum, resetState, fullBeforeReset, widthResetState, unfocused, reinitialized, fullReinitialized, fixedTheme, fullFixedTheme, builtInThemeResults, unsupportedTheme }));
 	} finally {
 		await page.close();
 		await browser.close();

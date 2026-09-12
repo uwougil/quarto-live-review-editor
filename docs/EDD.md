@@ -67,7 +67,7 @@ Webview Editor
 6. 普通源码编辑器产生的无 origin 变更是 host-authoritative external update，立即以增量发送到所有 panel；后续保存仍可发送 canonical snapshot。
 7. 用户主题通过 `adaptMarkdownCss` 注入到独立 style 元素，并请求 CodeMirror 的测量流程，避免高度图过期。
 8. `mdLivePreview.typewriterMode` 是宿主侧配置，打开 webview 时随 `init` 消息发送；配置变化通过 `typewriterModeChanged` 广播到所有活动会话。webview 只接收布尔状态，不直接读取 VS Code API。
- 9. 文档字号与正文阅读区宽度分别由扩展宿主的 `globalState` 独立共享持久化；webview 在根节点设置两个 CSS 自定义属性，并在任一值变化后的下一帧请求 CodeMirror 重新测量，保持行框、widget 和命中测试几何有效。
+9. 文档字号与正文阅读区宽度分别由扩展宿主的 `globalState` 独立共享持久化；webview 在根节点设置两个 CSS 自定义属性，并在任一值变化后的下一帧请求 CodeMirror 重新测量，保持行框、widget 和命中测试几何有效。
 
 源位置是所有交互的身份：点击、脚注回跳、表格编辑、图片和图表操作都必须使用 CodeMirror 文档偏移或 DOM 到文档位置的 API，不使用屏幕像素推断文档位置。
 
@@ -120,9 +120,9 @@ Webview Editor
 
 - `documentZoom.ts` 是 Live Preview 根节点唯一的快捷键/滚轮事件 owner；只有其后代获得焦点时才处理输入，避免重复 keydown listener 造成一次输入执行两次。
 - 文档字号范围为 70% 至 200%，默认值和步进均为 100%/10%；边界操作仍取消浏览器默认缩放，但不越界。
-- 正文阅读区宽度范围为 60% 至 180%，默认值和步进均为 100%/10%；`Ctrl/Mod +` 增大、`Ctrl/Mod -` 减小、`Ctrl/Mod + Shift + 0` 重置为 100%，边界操作仍取消浏览器默认缩放但不越界。
+- 正文阅读区宽度范围为 60% 至 320%，默认值为 100%，全范围保持 10% 步进；`Ctrl/Mod +` 增大、`Ctrl/Mod -` 减小、`Ctrl/Mod + Shift + 0` 重置为 100%，边界操作仍取消浏览器默认缩放但不越界。
 - `Ctrl/Mod`+滚轮只改变字号；`Ctrl/Mod + 0` 只重置字号。两套动作由同一个事件 owner 分派。
-- 宿主分别通过 `mdLivePreview.documentZoomPercent` 和 `mdLivePreview.readingWidthPercent` 保存全局值，并向所有已打开的 `DocumentSyncSession` 广播；reading width 的状态为 60%–180% 的 10% 步进数值或持久化的 `full` 哨兵，webview 的本地交互分别回传 `setZoom`/`setReadingWidth`。
+- 宿主分别通过 `mdLivePreview.documentZoomPercent` 和 `mdLivePreview.readingWidthPercent` 保存全局值，并向所有已打开的 `DocumentSyncSession` 广播；reading width 的状态为 60%–320% 的 10% 步进数值或持久化的 `full` 哨兵，320% 再增加进入 Full，Full 减少一次回到 320%；webview 的本地交互分别回传 `setZoom`/`setReadingWidth`。
 - `adaptMarkdownCss` 仅在严格识别的 reading-column selector 上，把单一 finite CSS length 的 `max-width` 改写为乘以 `--mlp-reading-width`；百分比、`none`、viewport 单位、函数值、混合 selector 和无法安全解析的规则原样保留。没有 finite `max-width` 的主题不被基底 CSS 强制限制。
 - Full 仅把适配器已经证明属于 reading column 的 finite `max-width` 通过 `--mlp-reading-column-max-width: none` 释放；未适配 selector 和不支持的宽度表达式不引用该变量，因而继续使用主题原值。根节点维持 viewport 响应式布局和侧边留白。
 - 两个缩放值使用 CSS 自定义属性参与字体、间距或安全适配的列宽，不使用 `transform: scale`，不改变 CodeMirror 文档、选区或源文本；任一值变化后调用 `requestMeasure`。
