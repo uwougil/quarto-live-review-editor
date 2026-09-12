@@ -99,6 +99,10 @@ function equationFixture(count, oneLine = false) {
 	return oneLine ? `LOCAL-START ${formulas.join(' ')} LOCAL-END` : formulas.map((formula, index) => `Equation ${index}: ${formula}`).join('\n');
 }
 
+function editPreviewFixture() {
+	return ['Inline edit $x^2$ remains source while its preview follows input.', '', '$$', 'y = mx + b', '$$', '', 'After the formula.'].join('\n');
+}
+
 async function settle(page, delay = 30) {
 	await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 	if (delay) await page.waitForTimeout(delay);
@@ -275,10 +279,151 @@ async function main() {
 			performanceRuns.push({ count, readyMs, scrollMs, visibleMath: state.visibleMath, scrollTop: state.snapshot?.scrollTop, scrollHeight: state.snapshot?.scrollHeight, clientHeight: state.snapshot?.clientHeight });
 		}
 		assert(performanceRuns.every((run) => run.readyMs < 5000 && run.scrollMs < 2500 && run.visibleMath > 0 && run.scrollTop + run.clientHeight >= run.scrollHeight - 3), 'equation-heavy render or scroll regression', { performanceRuns });
+
+		// Issue #41: editing keeps the source in CodeMirror while a single, absolute
+		// KaTeX preview follows the collapsed caret. The preview must update for both
+		// valid and malformed intermediate TeX without entering document flow.
+		const editSource = editPreviewFixture();
+		await init(page, editSource);
+		const originalInlineFrom = editSource.indexOf('$x^2$');
+		const originalDisplayFrom = editSource.indexOf('$$');
+		const initialInlinePosition = originalInlineFrom + 2;
+		await page.evaluate((pos) => window.__mlpDebugSetSelection?.(pos), initialInlinePosition);
+		await page.waitForFunction(() => {
+			const preview = document.querySelector('.mlp-math-edit-preview');
+			return preview instanceof HTMLElement && !preview.hidden && Boolean(preview.querySelector('.mlp-math-inline'));
+		});
+		const inlinePreview = await page.evaluate(() => {
+			const preview = document.querySelector('.mlp-math-edit-preview');
+			const math = preview?.querySelector('.mlp-math-inline');
+			const editor = document.querySelector('.cm-editor')?.getBoundingClientRect();
+			const rect = preview?.getBoundingClientRect();
+			const selection = window.__mlpDebugSelection?.();
+			const sourceVisible = document.querySelector('.cm-content')?.textContent?.includes('$x^2$') ?? false;
+			return {
+				visible: preview instanceof HTMLElement && !preview.hidden,
+				label: math?.getAttribute('aria-label'),
+				previewCount: document.querySelectorAll('.mlp-math-edit-preview').length,
+				sourceVisible,
+				selection,
+				geometry: rect && editor ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, editorLeft: editor.left, editorTop: editor.top, editorRight: editor.right, editorBottom: editor.bottom, width: rect.width, height: rect.height } : null,
+			};
+		});
+		assert(inlinePreview.visible && inlinePreview.previewCount === 1 && inlinePreview.label === 'x^2', 'inline edit preview did not render beside raw source', { inlinePreview });
+		assert(inlinePreview.sourceVisible, 'edit preview replaced or hid the canonical source text', { inlinePreview });
+		assert(inlinePreview.geometry && inlinePreview.geometry.width > 0 && inlinePreview.geometry.height > 0 && inlinePreview.geometry.left >= inlinePreview.geometry.editorLeft - 0.5 && inlinePreview.geometry.right <= inlinePreview.geometry.editorRight + 0.5 && inlinePreview.geometry.top >= inlinePreview.geometry.editorTop - 0.5 && inlinePreview.geometry.bottom <= inlinePreview.geometry.editorBottom + 0.5, 'inline preview escaped the editor geometry', { inlinePreview });
+
+		const invalidInline = '\\frac{a';
+		await page.evaluate(({ from, insert }) => {
+			window.__mlpDebugEdit?.(from + 1, from + 4, insert);
+			window.__mlpDebugSetSelection?.(from + 1 + insert.length);
+		}, { from: originalInlineFrom, insert: invalidInline });
+		await page.waitForFunction((label) => document.querySelector('.mlp-math-edit-preview .mlp-math')?.getAttribute('aria-label') === label, invalidInline);
+		const invalidState = await page.evaluate(() => ({ previewVisible: !(document.querySelector('.mlp-math-edit-preview') instanceof HTMLElement) ? false : !document.querySelector('.mlp-math-edit-preview').hidden, selection: window.__mlpDebugSelection?.() }));
+		assert(invalidState.previewVisible, 'invalid intermediate TeX hid the edit preview', { invalidState });
+		assert(invalidState.selection?.head === originalInlineFrom + 1 + invalidInline.length, 'preview update changed the editor selection', { invalidState, expected: originalInlineFrom + 1 + invalidInline.length });
+
+		const deletedInline = invalidInline.slice(0, -1);
+		await page.evaluate(({ from, length }) => {
+			window.__mlpDebugEdit?.(from + 1 + length - 1, from + 1 + length, '');
+			window.__mlpDebugSetSelection?.(from + 1 + length - 1);
+		}, { from: originalInlineFrom, length: invalidInline.length });
+		await page.waitForFunction((label) => document.querySelector('.mlp-math-edit-preview .mlp-math')?.getAttribute('aria-label') === label, deletedInline);
+		const deletedState = await page.evaluate(() => ({ previewVisible: !(document.querySelector('.mlp-math-edit-preview') instanceof HTMLElement) ? false : !document.querySelector('.mlp-math-edit-preview').hidden, selection: window.__mlpDebugSelection?.() }));
+		assert(deletedState.previewVisible && deletedState.selection?.head === originalInlineFrom + 1 + deletedInline.length, 'deleting TeX disrupted the edit preview or selection', { deletedState, expected: originalInlineFrom + 1 + deletedInline.length });
+
+		const validInline = '\\frac{a}{b}';
+		await page.evaluate(({ from, oldBody, insert }) => {
+			window.__mlpDebugEdit?.(from + 1, from + 1 + oldBody.length, insert);
+			window.__mlpDebugSetSelection?.(from + 1 + insert.length - 1);
+		}, { from: originalInlineFrom, oldBody: deletedInline, insert: validInline });
+		await page.waitForFunction((label) => document.querySelector('.mlp-math-edit-preview .mlp-math')?.getAttribute('aria-label') === label, validInline);
+		const inlineDelta = validInline.length - 'x^2'.length;
+		const editedDisplayFrom = originalDisplayFrom + inlineDelta;
+		await page.evaluate((pos) => window.__mlpDebugSetSelection?.(pos), editedDisplayFrom + 3);
+		await page.waitForFunction(() => {
+			const preview = document.querySelector('.mlp-math-edit-preview');
+			return preview instanceof HTMLElement && !preview.hidden && preview.dataset.display === 'true' && Boolean(preview.querySelector('.mlp-math-display'));
+		});
+		const displaySource = '$$\ny = mx + b\n$$';
+		const displayTo = editedDisplayFrom + displaySource.length;
+		const displayPreview = await page.evaluate(({ from, to }) => {
+			const preview = document.querySelector('.mlp-math-edit-preview');
+			const math = preview?.querySelector('.mlp-math-display');
+			const rect = preview?.getBoundingClientRect();
+			const start = window.__mlpDebugCoordsAtPos?.(from, 1);
+			const end = window.__mlpDebugCoordsAtPos?.(to, -1);
+			return { label: math?.getAttribute('aria-label'), display: preview?.dataset.display, height: rect?.height ?? 0, top: rect?.top ?? 0, bottom: rect?.bottom ?? 0, sourceTop: start?.top ?? 0, sourceBottom: end?.bottom ?? 0 };
+		}, { from: editedDisplayFrom, to: displayTo });
+		assert(displayPreview.display === 'true' && displayPreview.label === 'y = mx + b' && displayPreview.height > 0, 'display-math edit preview did not render', { displayPreview });
+		assert(displayPreview.top >= displayPreview.sourceBottom - 1 || displayPreview.bottom <= displayPreview.sourceTop + 1, 'display edit preview covered its raw source lines', { displayPreview });
+
+		const invalidDisplay = '\\sqrt{';
+		const displayBodyFrom = editedDisplayFrom + 3;
+		const displayBody = 'y = mx + b';
+		await page.evaluate(({ from, oldBody, insert }) => {
+			window.__mlpDebugEdit?.(from, from + oldBody.length, insert);
+			window.__mlpDebugSetSelection?.(from + insert.length);
+		}, { from: displayBodyFrom, oldBody: displayBody, insert: invalidDisplay });
+		await page.waitForFunction((label) => document.querySelector('.mlp-math-edit-preview .mlp-math')?.getAttribute('aria-label') === label, invalidDisplay);
+
+		await page.evaluate(() => window.__mlpDebugSetSelection?.(0));
+		await page.waitForFunction(() => {
+			const preview = document.querySelector('.mlp-math-edit-preview');
+			return preview instanceof HTMLElement && preview.hidden && Boolean(document.querySelector('.cm-content .mlp-math-inline')) && Boolean(document.querySelector('.cm-content .mlp-math-display'));
+		});
+		const exited = await page.evaluate(() => ({
+			previewHidden: (document.querySelector('.mlp-math-edit-preview'))?.hidden ?? false,
+			inlineRendered: Boolean(document.querySelector('.cm-content .mlp-math-inline')),
+			displayRendered: Boolean(document.querySelector('.cm-content .mlp-math-display')),
+		}));
+		assert(exited.previewHidden && exited.inlineRendered && exited.displayRendered, 'leaving a formula did not restore normal KaTeX rendering', { exited });
+
+		const previewGeometry = [];
+		for (const percent of [70, 100, 200]) {
+			await page.evaluate((value) => window.dispatchEvent(new MessageEvent('message', { data: { type: 'setZoom', percent: value } })), percent);
+			await page.evaluate((pos) => window.__mlpDebugSetSelection?.(pos), originalInlineFrom + 1);
+			await page.waitForFunction(() => {
+				const preview = document.querySelector('.mlp-math-edit-preview');
+				return preview instanceof HTMLElement && !preview.hidden;
+			});
+			previewGeometry.push(await page.evaluate((value) => {
+				const preview = document.querySelector('.mlp-math-edit-preview')?.getBoundingClientRect();
+				const editor = document.querySelector('.cm-editor')?.getBoundingClientRect();
+				return { percent: value, preview: preview && { left: preview.left, top: preview.top, right: preview.right, bottom: preview.bottom, width: preview.width, height: preview.height }, editor: editor && { left: editor.left, top: editor.top, right: editor.right, bottom: editor.bottom } };
+			}, percent));
+		}
+		assert(previewGeometry.every(({ preview, editor }) => preview && editor && preview.width > 0 && preview.height > 0 && preview.left >= editor.left - 0.5 && preview.right <= editor.right + 0.5 && preview.top >= editor.top - 0.5 && preview.bottom <= editor.bottom + 0.5), 'edit preview geometry became unstable across document zoom levels', { previewGeometry });
+
+		const longEditSource = equationFixture(500);
+		const tailFormula = '$x_{499} + \\lambda_{2}$';
+		const tailFrom = longEditSource.lastIndexOf(tailFormula);
+		await init(page, longEditSource);
+		await page.evaluate((pos) => {
+			window.__mlpDebugScrollToPosition?.(pos);
+			window.__mlpDebugSetSelection?.(pos + 4);
+		}, tailFrom);
+		await page.waitForFunction(() => {
+			const preview = document.querySelector('.mlp-math-edit-preview');
+			return preview instanceof HTMLElement && !preview.hidden;
+		});
+		const longEdit = await page.evaluate(() => {
+			const preview = document.querySelector('.mlp-math-edit-preview')?.getBoundingClientRect();
+			const editor = document.querySelector('.cm-editor')?.getBoundingClientRect();
+			const snapshot = window.__mlpDebugSnapshot?.();
+			return {
+				preview: preview && { left: preview.left, top: preview.top, right: preview.right, bottom: preview.bottom },
+				editor: editor && { left: editor.left, top: editor.top, right: editor.right, bottom: editor.bottom },
+				domLineCount: snapshot?.domLineCount,
+				docLines: snapshot?.docLines,
+				scrollAtEnd: snapshot ? snapshot.scrollTop + snapshot.clientHeight >= snapshot.scrollHeight - 3 : false,
+			};
+		});
+		assert(longEdit.preview && longEdit.editor && longEdit.preview.left >= longEdit.editor.left - 0.5 && longEdit.preview.right <= longEdit.editor.right + 0.5 && longEdit.preview.top >= longEdit.editor.top - 0.5 && longEdit.preview.bottom <= longEdit.editor.bottom + 0.5 && longEdit.scrollAtEnd && (longEdit.domLineCount ?? Number.MAX_SAFE_INTEGER) < (longEdit.docLines ?? 0), 'long-document edit preview was not viewport-stable', { longEdit });
 		assert(pageErrors.length === 0, 'browser page errors occurred', { pageErrors });
 
 		const fontRequests = await page.evaluate(() => performance.getEntriesByType('resource').map((entry) => entry.name).filter((name) => name.includes('/media/fonts/')).length);
-		console.log(JSON.stringify({ ok: true, faceLoads, typography, colors, zoom, geometry, locality, shiftedClick, performanceRuns, fontRequests }, null, 2));
+		console.log(JSON.stringify({ ok: true, faceLoads, typography, colors, zoom, geometry, locality, shiftedClick, performanceRuns, inlinePreview, invalidState, deletedState, displayPreview, exited, previewGeometry, longEdit, fontRequests }, null, 2));
 	} finally {
 		await page.close();
 		await browser.close();

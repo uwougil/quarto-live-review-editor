@@ -22,6 +22,7 @@ import { installDebugView } from './debug';
 import { EditorSyncClient } from './syncClient';
 import { viewportSyntaxPlugin } from './viewportSyntax';
 import { mathDecorationsField } from './mathDecorations';
+import { mathEditPreview } from './mathEditPreview';
 import { createFootnoteMouseSelectionStyle, footnoteIndexField, footnoteNavigationField, moveVerticallyAvoidingFootnotes } from './footnotes';
 import { TypewriterModeController } from './typewriterMode';
 import { DocumentZoomController } from './documentZoom';
@@ -170,6 +171,7 @@ function createExtensions(dialect: DocumentDialect): Extension[] {
 		documentDialect.of(dialect),
 		mathRangesField,
 		mathDecorationsField,
+		mathEditPreview,
 		footnoteIndexField,
 		footnoteNavigationField,
 		EditorView.mouseSelectionStyle.of(createFootnoteMouseSelectionStyle()),
