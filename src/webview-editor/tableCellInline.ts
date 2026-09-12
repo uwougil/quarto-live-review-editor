@@ -1,5 +1,7 @@
 import { parser as baseMarkdownParser, Table, TaskList, Strikethrough, Autolink } from '@lezer/markdown';
 import type { SyntaxNode, Tree } from '@lezer/common';
+import katex from 'katex';
+import { findMathRanges } from '../quarto/math';
 
 // A table cell's content is plain text as far as CodeMirror is concerned — the
 // rich TableWidget builds its own DOM outside the editor, so the live-preview
@@ -29,6 +31,40 @@ const MARK_NODES = new Set(['EmphasisMark', 'StrikethroughMark', 'CodeMark', 'Li
 
 function appendText(parent: HTMLElement, text: string): void {
 	if (text) parent.appendChild(document.createTextNode(text));
+}
+
+/**
+ * Render math only in literal prose runs. Code spans, URLs, image targets and
+ * raw HTML are handled by their own syntax-node branches and never enter this
+ * helper, so a dollar sign in code or a link cannot accidentally become KaTeX.
+ */
+function appendInlineText(parent: HTMLElement, text: string): void {
+	if (!text) return;
+	const ranges = findMathRanges(text);
+	if (ranges.length === 0) {
+		appendText(parent, unescapePunctuation(text));
+		return;
+	}
+	let pos = 0;
+	for (const range of ranges) {
+		if (range.from > pos) appendText(parent, unescapePunctuation(text.slice(pos, range.from)));
+		const element = document.createElement(range.display ? 'div' : 'span');
+		element.className = range.display ? 'mlp-math mlp-math-display' : 'mlp-math mlp-math-inline';
+		element.setAttribute('role', 'math');
+		element.setAttribute('aria-label', range.tex);
+		try {
+			element.innerHTML = katex.renderToString(range.tex, {
+				displayMode: range.display,
+				throwOnError: false,
+				output: 'htmlAndMathml',
+			});
+		} catch {
+			element.textContent = range.tex;
+		}
+		parent.appendChild(element);
+		pos = range.to;
+	}
+	if (pos < text.length) appendText(parent, unescapePunctuation(text.slice(pos)));
 }
 
 /**
@@ -69,11 +105,11 @@ function readLinkParts(node: SyntaxNode, src: string): { label: string; url: str
 function renderChildren(parent: HTMLElement, node: SyntaxNode, src: string, hooks: CellInlineHooks): void {
 	let pos = node.from;
 	for (let child = node.firstChild; child; child = child.nextSibling) {
-		if (child.from > pos) appendText(parent, unescapePunctuation(src.slice(pos, child.from)));
+		if (child.from > pos) appendInlineText(parent, src.slice(pos, child.from));
 		renderNode(parent, child, src, hooks);
 		pos = child.to;
 	}
-	if (pos < node.to) appendText(parent, unescapePunctuation(src.slice(pos, node.to)));
+	if (pos < node.to) appendInlineText(parent, src.slice(pos, node.to));
 }
 
 function renderNode(parent: HTMLElement, node: SyntaxNode, src: string, hooks: CellInlineHooks): void {
@@ -158,7 +194,7 @@ function renderNode(parent: HTMLElement, node: SyntaxNode, src: string, hooks: C
 			// Structural containers (Document, Paragraph) and anything not modelled
 			// specially: descend when there are children, else emit literal text.
 			if (node.firstChild) renderChildren(parent, node, src, hooks);
-			else appendText(parent, unescapePunctuation(src.slice(node.from, node.to)));
+			else appendInlineText(parent, src.slice(node.from, node.to));
 			return;
 		}
 	}
