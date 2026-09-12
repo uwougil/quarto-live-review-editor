@@ -6,6 +6,8 @@ import {
 	READING_WIDTH_DEFAULT,
 	READING_WIDTH_FULL,
 	READING_WIDTH_MAX,
+	READING_WIDTH_MIN,
+	READING_WIDTH_STEP,
 	type ReadingWidthState,
 	normalizeReadingWidth,
 } from '../shared/documentZoom';
@@ -24,6 +26,15 @@ interface ZoomControllerOptions {
 }
 
 export type ZoomKeyAction = 'reset' | 'increaseWidth' | 'decreaseWidth' | 'resetWidth';
+
+export interface ReadingWidthGeometry {
+	width: number;
+	maxWidth: string;
+}
+
+export type ReadingWidthGeometryProbe = (state: ReadingWidthState) => ReadingWidthGeometry | undefined;
+
+const READING_WIDTH_VISUAL_EPSILON = 1;
 
 function isMacPlatform(platform: string): boolean {
 	return /Mac|iPhone|iPad|iPod/i.test(platform);
@@ -53,6 +64,91 @@ export function zoomKeyAction(
 	if (event.key === '+' || event.key === '=' || event.code === 'Equal' || event.code === 'NumpadAdd') return 'increaseWidth';
 	if (!event.shiftKey && (event.key === '-' || event.code === 'Minus' || event.code === 'NumpadSubtract')) return 'decreaseWidth';
 	return null;
+}
+
+function geometryChanged(a: ReadingWidthGeometry, b: ReadingWidthGeometry): boolean {
+	return Math.abs(a.width - b.width) >= READING_WIDTH_VISUAL_EPSILON;
+}
+
+function isAdaptedFiniteStep(a: ReadingWidthGeometry, b: ReadingWidthGeometry): boolean {
+	return a.maxWidth !== b.maxWidth;
+}
+
+/**
+ * Chooses the next reading-width state using the real rendered column geometry.
+ *
+ * 60–320% remains the persisted numeric state space, but finite-width themes can
+ * hit the current viewport before 320%. In that case invisible numeric steps are
+ * skipped: increasing enters Full as soon as the next step would reach/saturate
+ * the viewport, while decreasing searches backward for the first numeric step
+ * that visibly narrows the column. Unsupported/custom width rules keep the old
+ * purely numeric behavior because their computed max-width does not respond to
+ * the Live Preview scale variable.
+ */
+export function adjustReadingWidthForVisualGeometry(
+	current: unknown,
+	steps: number,
+	probe: ReadingWidthGeometryProbe,
+): ReadingWidthState {
+	const base = normalizeReadingWidth(current);
+	if (!Number.isFinite(steps) || steps === 0) return base;
+	const direction = Math.sign(Math.trunc(steps));
+	if (direction === 0) return base;
+
+	if (direction > 0) {
+		if (base === READING_WIDTH_FULL) return READING_WIDTH_FULL;
+		const next = adjustReadingWidth(base, 1);
+		if (next === READING_WIDTH_FULL) return READING_WIDTH_FULL;
+
+		const currentGeometry = probe(base);
+		const nextGeometry = probe(next);
+		if (!currentGeometry || !nextGeometry || !isAdaptedFiniteStep(currentGeometry, nextGeometry)) {
+			return next;
+		}
+
+		const fullGeometry = probe(READING_WIDTH_FULL);
+		if (!geometryChanged(currentGeometry, nextGeometry)) return READING_WIDTH_FULL;
+		if (fullGeometry && !geometryChanged(nextGeometry, fullGeometry)) return READING_WIDTH_FULL;
+		return next;
+	}
+
+	if (base === READING_WIDTH_FULL) {
+		const fullGeometry = probe(READING_WIDTH_FULL);
+		const maximumGeometry = probe(READING_WIDTH_MAX);
+		if (!fullGeometry || !maximumGeometry) return adjustReadingWidth(base, -1);
+
+		const lowerMaximum = READING_WIDTH_MAX - READING_WIDTH_STEP;
+		const lowerMaximumGeometry = probe(lowerMaximum);
+		if (!lowerMaximumGeometry || !isAdaptedFiniteStep(maximumGeometry, lowerMaximumGeometry)) {
+			return READING_WIDTH_MAX;
+		}
+
+		for (let candidate = READING_WIDTH_MAX; candidate >= READING_WIDTH_MIN; candidate -= READING_WIDTH_STEP) {
+			const candidateGeometry = probe(candidate);
+			if (candidateGeometry && geometryChanged(fullGeometry, candidateGeometry)) return candidate;
+		}
+		// The viewport is narrower than even the minimum numeric cap, so no
+		// decrement can produce a visible change. Keep Full rather than silently
+		// accumulating an invisible numeric state.
+		return READING_WIDTH_FULL;
+	}
+
+	const immediate = adjustReadingWidth(base, -1);
+	if (typeof immediate !== 'number' || immediate === base) return immediate;
+	const currentGeometry = probe(base);
+	const immediateGeometry = probe(immediate);
+	if (!currentGeometry || !immediateGeometry || !isAdaptedFiniteStep(currentGeometry, immediateGeometry)) {
+		return immediate;
+	}
+	if (geometryChanged(currentGeometry, immediateGeometry)) return immediate;
+
+	for (let candidate = immediate - READING_WIDTH_STEP; candidate >= READING_WIDTH_MIN; candidate -= READING_WIDTH_STEP) {
+		const candidateGeometry = probe(candidate);
+		if (candidateGeometry && geometryChanged(currentGeometry, candidateGeometry)) return candidate;
+	}
+	// As above, avoid changing only the hidden state when the viewport physically
+	// cannot become any narrower through this finite max-width scale.
+	return base;
 }
 
 /**
@@ -145,7 +241,12 @@ export class DocumentZoomController {
 	}
 
 	private changeReadingWidth(steps: number): void {
-		this.setReadingWidthInternal(adjustReadingWidth(this.readingWidthPercent, steps), true);
+		const next = adjustReadingWidthForVisualGeometry(
+			this.readingWidthPercent,
+			steps,
+			(state) => this.probeReadingWidthGeometry(state),
+		);
+		this.setReadingWidthInternal(next, true);
 	}
 
 	private setPercentInternal(next: number, notify: boolean): void {
@@ -175,16 +276,33 @@ export class DocumentZoomController {
 		if (notify) this.optionsOnReadingWidthChange?.(next);
 	}
 
+	private probeReadingWidthGeometry(state: ReadingWidthState): ReadingWidthGeometry | undefined {
+		const content = this.root.querySelector<HTMLElement>('.cm-content');
+		const window = this.root.ownerDocument.defaultView;
+		if (!content || !window) return undefined;
+
+		// Temporarily apply the candidate inside the same JS task, force layout by
+		// reading the rect/computed style, then restore the real state before the
+		// browser can paint. This makes the boundary responsive to viewport,
+		// sidebar/split width and theme baseline without persisting probe states.
+		this.applyReadingWidthCss(state);
+		const geometry = {
+			width: content.getBoundingClientRect().width,
+			maxWidth: window.getComputedStyle(content).maxWidth,
+		};
+		this.applyReadingWidthCss(this.readingWidthPercent);
+		return geometry;
+	}
+
 	private applyCss(): void {
 		this.root.style.setProperty('--mlp-document-zoom', String(this.percent / 100));
-		const isFull = this.readingWidthPercent === READING_WIDTH_FULL;
-		const readingWidthPercent = this.readingWidthPercent === READING_WIDTH_FULL
-			? READING_WIDTH_MAX
-			: this.readingWidthPercent;
-		this.root.style.setProperty(
-			'--mlp-reading-width',
-			String(readingWidthPercent / 100),
-		);
+		this.applyReadingWidthCss(this.readingWidthPercent);
+	}
+
+	private applyReadingWidthCss(state: ReadingWidthState): void {
+		const isFull = state === READING_WIDTH_FULL;
+		const readingWidthPercent = isFull ? READING_WIDTH_MAX : state;
+		this.root.style.setProperty('--mlp-reading-width', String(readingWidthPercent / 100));
 		if (isFull) {
 			// This variable is consumed only by finite max-width declarations that
 			// cssAdapter has proven to be the reading column. Unsupported/custom
@@ -193,7 +311,7 @@ export class DocumentZoomController {
 			this.root.dataset.mlpReadingWidth = READING_WIDTH_FULL;
 		} else {
 			this.root.style.removeProperty('--mlp-reading-column-max-width');
-			this.root.dataset.mlpReadingWidth = String(this.readingWidthPercent);
+			this.root.dataset.mlpReadingWidth = String(state);
 		}
 	}
 

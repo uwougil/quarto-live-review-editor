@@ -14,7 +14,12 @@ import {
 	READING_WIDTH_STEP,
 	normalizeReadingWidth,
 } from './documentZoom';
-import { wheelZoomSteps, zoomKeyAction } from '../webview-editor/documentZoom';
+import {
+	adjustReadingWidthForVisualGeometry,
+	wheelZoomSteps,
+	zoomKeyAction,
+	type ReadingWidthGeometry,
+} from '../webview-editor/documentZoom';
 
 describe('document zoom values', () => {
 	it('starts at 100% and normalizes malformed persisted values', () => {
@@ -52,6 +57,44 @@ describe('reading width values', () => {
 		expect(adjustReadingWidth(READING_WIDTH_FULL, -1)).toBe(READING_WIDTH_MAX);
 		expect(adjustReadingWidth(READING_WIDTH_FULL, -2)).toBe(310);
 		expect(adjustReadingWidth(READING_WIDTH_FULL, 1)).toBe(READING_WIDTH_FULL);
+	});
+
+	it('enters Full before invisible finite-width steps and shrinks immediately from Full', () => {
+		const probe = (state: number | typeof READING_WIDTH_FULL): ReadingWidthGeometry => {
+			if (state === READING_WIDTH_FULL) return { width: 2000, maxWidth: 'none' };
+			const finiteWidth = state * 9.8;
+			return {
+				width: Math.min(finiteWidth, 2000),
+				maxWidth: `${finiteWidth}px`,
+			};
+		};
+
+		expect(adjustReadingWidthForVisualGeometry(190, 1, probe)).toBe(200);
+		// 210% would already be clipped to the same width as Full, so the user
+		// should enter Full now instead of accumulating 210…320% invisible steps.
+		expect(adjustReadingWidthForVisualGeometry(200, 1, probe)).toBe(READING_WIDTH_FULL);
+		// One decrement from Full must visibly narrow the document again.
+		expect(adjustReadingWidthForVisualGeometry(READING_WIDTH_FULL, -1, probe)).toBe(200);
+		// A persisted/remote overshoot is collapsed on the first decrement too.
+		expect(adjustReadingWidthForVisualGeometry(READING_WIDTH_MAX, -1, probe)).toBe(200);
+	});
+
+	it('keeps numeric stepping for unsupported width rules that do not respond to the scale variable', () => {
+		const probe = (_state: number | typeof READING_WIDTH_FULL): ReadingWidthGeometry => ({
+			width: 900,
+			maxWidth: '100%',
+		});
+		expect(adjustReadingWidthForVisualGeometry(200, 1, probe)).toBe(210);
+		expect(adjustReadingWidthForVisualGeometry(READING_WIDTH_FULL, -1, probe)).toBe(READING_WIDTH_MAX);
+	});
+
+	it('does not accumulate hidden decrements when even 60% cannot fit the viewport', () => {
+		const probe = (state: number | typeof READING_WIDTH_FULL): ReadingWidthGeometry => {
+			if (state === READING_WIDTH_FULL) return { width: 500, maxWidth: 'none' };
+			return { width: 500, maxWidth: `${state * 10}px` };
+		};
+		expect(adjustReadingWidthForVisualGeometry(READING_WIDTH_FULL, -1, probe)).toBe(READING_WIDTH_FULL);
+		expect(adjustReadingWidthForVisualGeometry(300, -1, probe)).toBe(300);
 	});
 });
 
