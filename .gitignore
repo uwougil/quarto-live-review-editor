@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.vscode-test/
 .aidlc-rule-details/
 aidlc-docs/
 CLAUDE.md

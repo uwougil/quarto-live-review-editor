@@ -3,8 +3,10 @@ import type { TextChange } from '../shared/messages';
 
 export interface DocumentSyncPeer {
 	receiveDocumentChanges(changes: TextChange[], baseVersion: number, version: number): void;
+	receiveSavedSnapshot(text: string, version: number): void;
 	acknowledgeEdit(editId: number, version: number): void;
 	resync(rejectedEditId?: number): void;
+	requestSaveBarrier(barrierId: number): Promise<void>;
 	runHistoryCommand(command: 'undo' | 'redo'): Promise<void>;
 }
 
@@ -27,9 +29,15 @@ function changesKey(changes: readonly TextChange[]): string {
 export class DocumentSyncCoordinator implements vscode.Disposable {
 	private readonly peers = new Set<DocumentSyncPeer>();
 	private readonly changeListener: vscode.Disposable;
+	private readonly willSaveListener: vscode.Disposable;
+	private readonly didSaveListener: vscode.Disposable;
 	private queue: Promise<void> = Promise.resolve();
 	private readonly pendingMutations: PendingMutation[] = [];
+	private readonly pendingWaiters = new Set<() => void>();
+	private readonly saveBarrierWaiters = new Map<DocumentSyncPeer, Set<() => void>>();
 	private lastObservedVersion: number;
+	private saveInProgress = 0;
+	private nextSaveBarrierId = 1;
 	private disposed = false;
 
 	constructor(private readonly document: vscode.TextDocument) {
@@ -37,16 +45,49 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		this.changeListener = vscode.workspace.onDidChangeTextDocument((event) => {
 			if (event.document.uri.toString() === document.uri.toString()) this.handleDocumentChanged(event);
 		});
+		this.willSaveListener = vscode.workspace.onWillSaveTextDocument((event) => {
+			if (event.document.uri.toString() !== document.uri.toString() || this.saveInProgress > 0) return;
+			event.waitUntil(this.waitForSaveBarrier());
+		});
+		this.didSaveListener = vscode.workspace.onDidSaveTextDocument((savedDocument) => {
+			if (savedDocument.uri.toString() !== document.uri.toString()) return;
+			this.broadcastSavedSnapshot();
+		});
 	}
 
 	addPeer(peer: DocumentSyncPeer): void { this.peers.add(peer); }
 	removePeer(peer: DocumentSyncPeer): void {
 		this.peers.delete(peer);
+		const waiters = this.saveBarrierWaiters.get(peer);
+		if (waiters) {
+			for (const resolve of waiters) resolve();
+			this.saveBarrierWaiters.delete(peer);
+		}
 		for (let index = this.pendingMutations.length - 1; index >= 0; index--) {
 			if (this.pendingMutations[index].peer === peer) this.pendingMutations.splice(index, 1);
 		}
+		this.resolvePendingWaitersIfSettled();
 	}
 	get peerCount(): number { return this.peers.size; }
+
+	/** Test/support hook for callers that need the native queue fully settled. */
+	async waitForIdle(): Promise<void> {
+		await this.queue.catch(() => undefined);
+		await this.waitForPendingMutations();
+	}
+
+	/** Save after all edits already received from any webview have settled. */
+	requestSave(): Promise<void> {
+		return this.waitForSaveBarrier().then(() => this.enqueue(async () => {
+			await this.waitForPendingMutations();
+			this.saveInProgress++;
+			try {
+				await this.document.save();
+			} finally {
+				this.saveInProgress--;
+			}
+		}));
+	}
 
 	enqueueEdit(peer: DocumentSyncPeer, changes: TextChange[], baseVersion: number, editId: number): Promise<void> {
 		return this.enqueue(async () => {
@@ -146,6 +187,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 			if (this.peers.has(mutation.peer)) {
 				mutation.peer.acknowledgeEdit(mutation.editId, eventVersion);
 			}
+			this.resolvePendingWaitersIfSettled();
 		}
 
 		// A delayed event can arrive after a newer event has already been observed.
@@ -159,21 +201,92 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 			eventVersion > previousVersion ? Math.max(previousVersion, eventVersion - 1) : eventVersion - 1,
 		);
 		if (eventVersion > previousVersion) this.lastObservedVersion = eventVersion;
-		for (const peer of this.peers) {
-			if (peer !== mutation?.peer) peer.receiveDocumentChanges(changes, baseVersion, eventVersion);
+		// A webview-originated mutation is the save barrier: sibling panels keep
+		// their old snapshot until onDidSaveTextDocument. If its originating panel
+		// closed before a delayed change event arrived, remaining peers still need
+		// the committed host change.
+		if (!mutation || !this.peers.has(mutation.peer)) {
+			for (const peer of this.peers) peer.receiveDocumentChanges(changes, baseVersion, eventVersion);
 		}
+	}
+
+	private waitForSaveBarrier(): Promise<void> {
+		return this.queue.catch(() => undefined).then(async () => {
+			const peers = [...this.peers];
+			if (peers.length > 0) {
+				const barrierId = this.nextSaveBarrierId++;
+				// Ask every live panel to drain its local ChangeSets. The request is
+				// made only after the current host queue is idle so peer retries can
+				// enqueue work without waiting behind this barrier itself.
+				await Promise.all(peers.map((peer) => this.requestPeerSaveBarrier(peer, barrierId)));
+			}
+			// A peer acknowledges only after its final edit has been accepted by
+			// the host. Still wait for the coordinator queue and delayed VS Code
+			// change events before allowing the native save to write.
+			await this.queue.catch(() => undefined);
+			await this.waitForPendingMutations();
+		});
+	}
+
+	private requestPeerSaveBarrier(peer: DocumentSyncPeer, barrierId: number): Promise<void> {
+		return new Promise((resolve) => {
+			let waiters = this.saveBarrierWaiters.get(peer);
+			if (!waiters) {
+				waiters = new Set();
+				this.saveBarrierWaiters.set(peer, waiters);
+			}
+			let settled = false;
+			const settle = () => {
+				if (settled) return;
+				settled = true;
+				waiters!.delete(settle);
+				if (waiters!.size === 0) this.saveBarrierWaiters.delete(peer);
+				resolve();
+			};
+			waiters.add(settle);
+			try {
+				void peer.requestSaveBarrier(barrierId).then(settle, settle);
+			} catch {
+				settle();
+			}
+		});
+	}
+
+	private waitForPendingMutations(): Promise<void> {
+		if (this.pendingMutations.length === 0 || this.disposed) return Promise.resolve();
+		return new Promise((resolve) => this.pendingWaiters.add(resolve));
+	}
+
+	private resolvePendingWaitersIfSettled(): void {
+		if (this.pendingMutations.length !== 0) return;
+		for (const resolve of this.pendingWaiters) resolve();
+		this.pendingWaiters.clear();
+	}
+
+	private broadcastSavedSnapshot(): void {
+		const text = this.document.getText();
+		const version = this.document.version;
+		for (const peer of this.peers) peer.receiveSavedSnapshot(text, version);
 	}
 
 	private forgetPending(mutation: PendingMutation): void {
 		const index = this.pendingMutations.indexOf(mutation);
 		if (index >= 0) this.pendingMutations.splice(index, 1);
+		this.resolvePendingWaitersIfSettled();
 	}
 
 	dispose(): void {
 		if (this.disposed) return;
 		this.disposed = true;
 		this.peers.clear();
+		for (const waiters of this.saveBarrierWaiters.values()) {
+			for (const resolve of waiters) resolve();
+		}
+		this.saveBarrierWaiters.clear();
 		this.pendingMutations.length = 0;
+		this.resolvePendingWaitersIfSettled();
 		this.changeListener.dispose();
+		this.willSaveListener.dispose();
+		this.didSaveListener.dispose();
 	}
 }

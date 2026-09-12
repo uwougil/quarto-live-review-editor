@@ -15,28 +15,26 @@ import { createImagePasteHandler } from './imagePasteHandler';
 import { postToHost, onHostMessage } from './vscodeApi';
 import { setDrawioFilePoster, handleDrawioFileMessage, clearDrawioFileCache } from './drawioFileClient';
 import { adaptMarkdownCss } from '../shared/cssAdapter';
-import type { TextChange } from '../shared/messages';
 import { documentDialect, type DocumentDialect } from '../quarto/dialect';
 import { mathRangesField } from '../quarto/math';
 import { installDebugView } from './debug';
 import { EditorSyncClient } from './syncClient';
 import { viewportSyntaxPlugin } from './viewportSyntax';
 import { mathDecorationsField } from './mathDecorations';
-import { createFootnoteMouseHandler, footnoteIndexField, footnoteNavigationField, moveVerticallyAvoidingFootnotes } from './footnotes';
+import { createFootnoteMouseSelectionStyle, footnoteIndexField, footnoteNavigationField, moveVerticallyAvoidingFootnotes } from './footnotes';
 import { TypewriterModeController } from './typewriterMode';
 import { DocumentZoomController } from './documentZoom';
 
 const remoteChange = Annotation.define<boolean>();
-const FLUSH_DEBOUNCE_MS = 250;
 
 let view: EditorView | undefined;
 let documentZoom: DocumentZoomController | undefined;
 let syncClient: EditorSyncClient | undefined;
-let flushTimer: ReturnType<typeof setTimeout> | undefined;
 let nextImageRequestId = 1;
 let imageInFlight: number | undefined;
 const imageQueue: Array<{ requestId: number; atPos: number; mimeType: string; dataBase64: string; needsOwnParagraph: boolean }> = [];
 const controlQueue: Array<'undo' | 'redo'> = [];
+const saveBarriers = new Set<number>();
 let lastCodeTokenGeneration = 0;
 let typewriterMode: TypewriterModeController | undefined;
 let disposeFontMeasurement: (() => void) | undefined;
@@ -93,20 +91,10 @@ function watchKatexFontMeasurements(root: HTMLElement): () => void {
 }
 
 function flush() {
-	flushTimer = undefined;
 	drainOutbound();
 }
 
-function scheduleFlush() {
-	if (flushTimer) clearTimeout(flushTimer);
-	flushTimer = setTimeout(flush, FLUSH_DEBOUNCE_MS);
-}
-
 function flushNow() {
-	if (flushTimer) {
-		clearTimeout(flushTimer);
-		flushTimer = undefined;
-	}
 	flush();
 }
 
@@ -125,11 +113,28 @@ function drainOutbound(): void {
 		return;
 	}
 	while (controlQueue.length > 0) postToHost({ type: controlQueue.shift()! });
+	if (syncClient.takeSaveRequest()) postToHost({ type: 'save' });
+	if (saveBarriers.size === 0 || syncClient.hasOutstandingEdits || imageQueue.length > 0 || controlQueue.length > 0) return;
+	for (const barrierId of saveBarriers) postToHost({ type: 'saveBarrierAck', barrierId });
+	saveBarriers.clear();
 }
 
 function queueControl(type: 'undo' | 'redo'): boolean {
 	flushNow();
 	controlQueue.push(type);
+	drainOutbound();
+	return true;
+}
+
+function requestSave(): boolean {
+	flushNow();
+	if (!syncClient) {
+		postToHost({ type: 'save' });
+		return true;
+	}
+	// Keep Mod-S behind any stale-base resync/retry. The client will release
+	// this request from drainOutbound after its outstanding ChangeSet is acked.
+	syncClient.requestSave();
 	drainOutbound();
 	return true;
 }
@@ -162,7 +167,7 @@ function createExtensions(dialect: DocumentDialect): Extension[] {
 		mathDecorationsField,
 		footnoteIndexField,
 		footnoteNavigationField,
-		createFootnoteMouseHandler(),
+		EditorView.mouseSelectionStyle.of(createFootnoteMouseSelectionStyle()),
 		markdownSupport,
 		viewportSyntaxPlugin,
 		lineDecorationsField,
@@ -192,6 +197,7 @@ function createExtensions(dialect: DocumentDialect): Extension[] {
 			{ key: 'Mod-z', run: () => queueControl('undo') },
 			{ key: 'Mod-y', run: () => queueControl('redo') },
 			{ key: 'Mod-Shift-z', run: () => queueControl('redo') },
+			{ key: 'Mod-s', run: requestSave },
 			{ key: 'Mod-b', run: toggleEmphasisCommand('**') },
 			{ key: 'Mod-i', run: toggleEmphasisCommand('*') },
 			indentWithTab,
@@ -204,7 +210,7 @@ function createExtensions(dialect: DocumentDialect): Extension[] {
 			if (!update.docChanged) return;
 			for (const image of imageQueue) image.atPos = update.changes.mapPos(image.atPos, 1);
 			syncClient?.recordLocal(update.changes);
-			scheduleFlush();
+			drainOutbound();
 		}),
 		EditorView.domEventHandlers({
 			blur: () => flushNow(),
@@ -267,10 +273,6 @@ function resetView(text: string, dialect: DocumentDialect, zoomPercent: unknown,
 		createView(text, dialect, zoomPercent, readingWidthPercent);
 		return;
 	}
-	if (flushTimer) {
-		clearTimeout(flushTimer);
-		flushTimer = undefined;
-	}
 	documentZoom?.setPercent(zoomPercent);
 	documentZoom?.setReadingWidthPercent(readingWidthPercent);
 	view.setState(initialStateFor(text, dialect));
@@ -300,6 +302,11 @@ onHostMessage((message) => {
 			clearDrawioFileCache();
 			resetView(message.text, message.dialect, message.zoomPercent, message.readingWidthPercent);
 			typewriterMode?.setEnabled(message.typewriterMode);
+			drainOutbound();
+			break;
+		case 'saveBarrier':
+			saveBarriers.add(message.barrierId);
+			drainOutbound();
 			break;
 		case 'ackEdit':
 			if (!syncClient) return;
@@ -323,6 +330,13 @@ onHostMessage((message) => {
 		case 'resync': {
 			if (!view || !syncClient) return;
 			const transition = syncClient.receiveResync(message);
+			if (!transition.viewChanges.empty) view.dispatch({ changes: transition.viewChanges, annotations: remoteChange.of(true) });
+			drainOutbound();
+			break;
+		}
+		case 'savedSnapshot': {
+			if (!view || !syncClient) return;
+			const transition = syncClient.receiveSavedSnapshot(message);
 			if (!transition.viewChanges.empty) view.dispatch({ changes: transition.viewChanges, annotations: remoteChange.of(true) });
 			drainOutbound();
 			break;
