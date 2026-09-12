@@ -13,6 +13,7 @@ import {
 	normalizeDocumentZoom,
 	READING_WIDTH_DEFAULT,
 	normalizeReadingWidth,
+	type ReadingWidthState,
 } from '../shared/documentZoom';
 
 /**
@@ -64,8 +65,8 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 		private readonly onDocumentZoomChange: (percent: number) => void = () => undefined,
 		coordinator?: DocumentSyncCoordinator,
 		private readonly getTypewriterMode: () => boolean = () => false,
-		private readonly getReadingWidth: () => number = () => READING_WIDTH_DEFAULT,
-		private readonly onReadingWidthChange: (percent: number) => void = () => undefined,
+		private readonly getReadingWidth: () => ReadingWidthState = () => READING_WIDTH_DEFAULT,
+		private readonly onReadingWidthChange: (state: ReadingWidthState) => void = () => undefined,
 	) {
 		this.ownsCoordinator = !coordinator;
 		this.coordinator = coordinator ?? new DocumentSyncCoordinator(document);
@@ -458,8 +459,8 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 		this.post({ type: 'setZoom', percent: normalizeDocumentZoom(percent) });
 	}
 
-	notifyReadingWidthChanged(percent: number): void {
-		this.post({ type: 'setReadingWidth', percent: normalizeReadingWidth(percent) });
+	notifyReadingWidthChanged(state: ReadingWidthState): void {
+		this.post({ type: 'setReadingWidth', percent: normalizeReadingWidth(state) });
 	}
 
 	getDocument(): vscode.TextDocument {

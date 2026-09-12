@@ -15,6 +15,8 @@ export const READING_WIDTH_MIN = 60;
 export const READING_WIDTH_MAX = 180;
 export const READING_WIDTH_DEFAULT = 100;
 export const READING_WIDTH_STEP = 10;
+export const READING_WIDTH_FULL = 'full' as const;
+export type ReadingWidthState = number | typeof READING_WIDTH_FULL;
 
 /** Normalizes persisted or message-supplied zoom to the supported step grid. */
 export function normalizeDocumentZoom(value: unknown): number {
@@ -31,15 +33,22 @@ export function adjustDocumentZoom(current: unknown, steps: number): number {
 }
 
 /** Normalizes persisted or message-supplied reading width to its step grid. */
-export function normalizeReadingWidth(value: unknown): number {
+export function normalizeReadingWidth(value: unknown): ReadingWidthState {
+	if (value === READING_WIDTH_FULL) return READING_WIDTH_FULL;
 	if (typeof value !== 'number' || !Number.isFinite(value)) return READING_WIDTH_DEFAULT;
 	const stepped = Math.round(value / READING_WIDTH_STEP) * READING_WIDTH_STEP;
 	return Math.min(READING_WIDTH_MAX, Math.max(READING_WIDTH_MIN, stepped));
 }
 
-/** Applies signed 10% steps while preserving the reading-width bounds. */
-export function adjustReadingWidth(current: unknown, steps: number): number {
+/** Applies signed 10% steps, entering Full after 180% and leaving it at 180%. */
+export function adjustReadingWidth(current: unknown, steps: number): ReadingWidthState {
 	const base = normalizeReadingWidth(current);
 	if (!Number.isFinite(steps) || steps === 0) return base;
-	return normalizeReadingWidth(base + Math.trunc(steps) * READING_WIDTH_STEP);
+	const delta = Math.trunc(steps) * READING_WIDTH_STEP;
+	if (base === READING_WIDTH_FULL) {
+		if (delta >= 0) return READING_WIDTH_FULL;
+		return normalizeReadingWidth(READING_WIDTH_MAX + delta + READING_WIDTH_STEP);
+	}
+	const next = base + delta;
+	return next > READING_WIDTH_MAX ? READING_WIDTH_FULL : normalizeReadingWidth(next);
 }

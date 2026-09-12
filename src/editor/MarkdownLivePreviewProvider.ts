@@ -9,6 +9,7 @@ import {
 	normalizeDocumentZoom,
 	READING_WIDTH_DEFAULT,
 	normalizeReadingWidth,
+	type ReadingWidthState,
 } from '../shared/documentZoom';
 import { buildEditorWebviewCsp } from './webviewCsp';
 
@@ -20,7 +21,7 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 	private readonly sessions = new Set<DocumentSyncSession>();
 	private readonly coordinators = new Map<string, DocumentSyncCoordinator>();
 	private documentZoomPercent: number;
-	private readingWidthPercent: number;
+	private readingWidthPercent: ReadingWidthState;
 
 	private constructor(
 		private readonly context: vscode.ExtensionContext,
@@ -66,8 +67,8 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 		let coordinator = this.coordinators.get(uriKey);
 		if (!coordinator) {
 			coordinator = new DocumentSyncCoordinator(document);
-				this.coordinators.set(uriKey, coordinator);
-			}
+			this.coordinators.set(uriKey, coordinator);
+		}
 		const session = new DocumentSyncSession(
 			document,
 			webviewPanel,
@@ -115,7 +116,7 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 	}
 
 	/** Updates and broadcasts the independent reading-width preference. */
-	private setReadingWidth(percent: number): void {
+	private setReadingWidth(percent: ReadingWidthState): void {
 		const next = normalizeReadingWidth(percent);
 		this.readingWidthPercent = next;
 		this.context.globalState.update(MarkdownLivePreviewProvider.READING_WIDTH_STATE_KEY, next).then(undefined, () => undefined);

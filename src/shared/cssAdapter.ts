@@ -121,7 +121,10 @@ const FINITE_MAX_WIDTH_RE = /^((?:0|(?:\d+(?:\.\d*)?|\.\d+)(?:px|rem|em|ex|ch|ca
 function scaledFiniteMaxWidth(value: string): string | undefined {
 	const match = FINITE_MAX_WIDTH_RE.exec(value.trim());
 	if (!match) return undefined;
-	return `calc(${match[1]} * var(--mlp-reading-width, 1))${match[2] ?? ''}`;
+	// Only declarations proven to belong to the reading column receive this
+	// fallback. Full mode can set the custom property to `none` without
+	// rewriting arbitrary theme selectors or unsupported width expressions.
+	return `var(--mlp-reading-column-max-width, calc(${match[1]} * var(--mlp-reading-width, 1)))${match[2] ?? ''}`;
 }
 
 function scaleReadingColumnBody(body: string): string {

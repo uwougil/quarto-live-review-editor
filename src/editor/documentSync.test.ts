@@ -65,14 +65,15 @@ vi.mock('vscode', () => {
 
 import * as vscode from 'vscode';
 import { DocumentSyncSession } from './documentSync';
+import { READING_WIDTH_FULL, type ReadingWidthState } from '../shared/documentZoom';
 
 function createSession(
 	version = 1,
 	text = 'abc',
 	zoomPercent = 100,
 	onZoomChange: (percent: number) => void = () => undefined,
-	readingWidthPercent = 100,
-	onReadingWidthChange: (percent: number) => void = () => undefined,
+	readingWidthPercent: ReadingWidthState = 100,
+	onReadingWidthChange: (state: ReadingWidthState) => void = () => undefined,
 ) {
 	const document = {
 		uri: vscode.Uri.file('/notes/example.qmd'),
@@ -160,16 +161,34 @@ describe('DocumentSyncSession document zoom', () => {
 	});
 
 	it('includes the shared reading width in init and forwards independent local changes', async () => {
-		let requestedWidth = 100;
-		const session = createSession(1, 'abc', 140, () => undefined, 160, (percent: number) => { requestedWidth = percent; });
+		let requestedWidth: ReadingWidthState = 100;
+		const session = createSession(1, 'abc', 140, () => undefined, 160, (state: ReadingWidthState) => { requestedWidth = state; });
 
 		await send(session, { type: 'ready' });
 		expect(mockState.posts).toContainEqual(expect.objectContaining({ type: 'init', zoomPercent: 140, readingWidthPercent: 160 }));
 		await send(session, { type: 'setReadingWidth', percent: 180 });
 		expect(requestedWidth).toBe(180);
+		await send(session, { type: 'setReadingWidth', percent: READING_WIDTH_FULL });
+		expect(requestedWidth).toBe(READING_WIDTH_FULL);
 		session.notifyReadingWidthChanged(60);
 		expect(mockState.posts).toContainEqual({ type: 'setReadingWidth', percent: 60 });
 		session.dispose();
+	});
+
+	it('broadcasts Full reading width to each open panel', () => {
+		const first = createSession();
+		const second = createSession();
+
+		first.notifyReadingWidthChanged(READING_WIDTH_FULL);
+		second.notifyReadingWidthChanged(READING_WIDTH_FULL);
+
+		expect(mockState.posts.filter((message) => (message as { type?: string }).type === 'setReadingWidth'))
+			.toEqual([
+				{ type: 'setReadingWidth', percent: READING_WIDTH_FULL },
+				{ type: 'setReadingWidth', percent: READING_WIDTH_FULL },
+			]);
+		first.dispose();
+		second.dispose();
 	});
 
 	it('normalizes an invalid zoom request before handing it to the provider', async () => {
@@ -182,8 +201,8 @@ describe('DocumentSyncSession document zoom', () => {
 	});
 
 	it('normalizes an invalid reading-width request before handing it to the provider', async () => {
-		let requestedWidth = 0;
-		const session = createSession(1, 'abc', 100, () => undefined, 100, (percent: number) => { requestedWidth = percent; });
+		let requestedWidth: ReadingWidthState = 0;
+		const session = createSession(1, 'abc', 100, () => undefined, 100, (state: ReadingWidthState) => { requestedWidth = state; });
 
 		await send(session, { type: 'setReadingWidth', percent: 999 });
 		expect(requestedWidth).toBe(180);

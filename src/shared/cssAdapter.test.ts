@@ -36,9 +36,9 @@ describe('adaptMarkdownCss', () => {
 			@media (min-width: 900px) { body { max-width: 70rem !important; } }
 			main { max-width: 720px; }
 		`);
-		expect(out).toContain('max-width: calc(980px * var(--mlp-reading-width, 1))');
-		expect(out).toContain('max-width: calc(60rem * var(--mlp-reading-width, 1))');
-		expect(out).toContain('max-width: calc(70rem * var(--mlp-reading-width, 1)) !important');
+		expect(out).toContain('max-width: var(--mlp-reading-column-max-width, calc(980px * var(--mlp-reading-width, 1)))');
+		expect(out).toContain('max-width: var(--mlp-reading-column-max-width, calc(60rem * var(--mlp-reading-width, 1)))');
+		expect(out).toContain('max-width: var(--mlp-reading-column-max-width, calc(70rem * var(--mlp-reading-width, 1))) !important');
 		expect(out).toContain('max-width: 720px');
 	});
 
@@ -57,7 +57,7 @@ describe('adaptMarkdownCss', () => {
 		expect(out).toContain('max-width: min(100%, 980px)');
 		expect(out).toContain('max-width: clamp(40rem, 80vw, 980px)');
 		expect(out).toContain('max-width: 980');
-		expect(out).not.toContain('var(--mlp-reading-width');
+		expect(out).not.toContain('var(--mlp-reading-column-max-width');
 	});
 
 	it('does not scale max-width on arbitrary or mixed selectors', () => {

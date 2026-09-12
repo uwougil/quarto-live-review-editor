@@ -8,6 +8,7 @@ import {
 	normalizeDocumentZoom,
 	adjustReadingWidth,
 	READING_WIDTH_DEFAULT,
+	READING_WIDTH_FULL,
 	READING_WIDTH_MAX,
 	READING_WIDTH_MIN,
 	READING_WIDTH_STEP,
@@ -39,13 +40,18 @@ describe('reading width values', () => {
 		expect(normalizeReadingWidth(75)).toBe(80);
 		expect(normalizeReadingWidth(55)).toBe(READING_WIDTH_MIN);
 		expect(normalizeReadingWidth(185)).toBe(READING_WIDTH_MAX);
+		expect(normalizeReadingWidth(READING_WIDTH_FULL)).toBe(READING_WIDTH_FULL);
 	});
 
-	it('changes in 10% steps and stays at both boundaries', () => {
+	it('changes in 10% steps, enters Full, and leaves Full at 180%', () => {
 		expect(adjustReadingWidth(READING_WIDTH_DEFAULT, 1)).toBe(READING_WIDTH_DEFAULT + READING_WIDTH_STEP);
 		expect(adjustReadingWidth(READING_WIDTH_DEFAULT, -1)).toBe(READING_WIDTH_DEFAULT - READING_WIDTH_STEP);
 		expect(adjustReadingWidth(READING_WIDTH_MIN, -1)).toBe(READING_WIDTH_MIN);
-		expect(adjustReadingWidth(READING_WIDTH_MAX, 1)).toBe(READING_WIDTH_MAX);
+		expect(adjustReadingWidth(170, 1)).toBe(READING_WIDTH_MAX);
+		expect(adjustReadingWidth(READING_WIDTH_MAX, 1)).toBe(READING_WIDTH_FULL);
+		expect(adjustReadingWidth(READING_WIDTH_FULL, -1)).toBe(READING_WIDTH_MAX);
+		expect(adjustReadingWidth(READING_WIDTH_FULL, -2)).toBe(170);
+		expect(adjustReadingWidth(READING_WIDTH_FULL, 1)).toBe(READING_WIDTH_FULL);
 	});
 });
 

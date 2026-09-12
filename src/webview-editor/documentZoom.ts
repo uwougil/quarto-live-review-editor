@@ -4,16 +4,20 @@ import {
 	normalizeDocumentZoom,
 	adjustReadingWidth,
 	READING_WIDTH_DEFAULT,
+	READING_WIDTH_FULL,
+	READING_WIDTH_MAX,
+	type ReadingWidthState,
 	normalizeReadingWidth,
 } from '../shared/documentZoom';
 
 export type DocumentZoomChange = (percent: number) => void;
+export type ReadingWidthChange = (state: ReadingWidthState) => void;
 
 interface ZoomControllerOptions {
 	initialPercent?: unknown;
 	onChange?: DocumentZoomChange;
 	initialReadingWidthPercent?: unknown;
-	onReadingWidthChange?: DocumentZoomChange;
+	onReadingWidthChange?: ReadingWidthChange;
 	onApplied?: () => void;
 	/** Supplied explicitly by tests; production uses the current browser platform. */
 	platform?: string;
@@ -60,7 +64,7 @@ export function zoomKeyAction(
  */
 export class DocumentZoomController {
 	private percent: number;
-	private readingWidthPercent: number;
+	private readingWidthPercent: ReadingWidthState;
 	private readonly mac: boolean;
 	private readonly onWheel: (event: WheelEvent) => void;
 	private readonly onKeydown: (event: KeyboardEvent) => void;
@@ -114,7 +118,7 @@ export class DocumentZoomController {
 		return this.percent;
 	}
 
-	get readingWidthPercentValue(): number {
+	get readingWidthPercentValue(): ReadingWidthState {
 		return this.readingWidthPercent;
 	}
 
@@ -156,14 +160,6 @@ export class DocumentZoomController {
 		if (notify) this.optionsOnChange?.(next);
 	}
 
-	private setReadingWidthInternal(next: number, notify: boolean): void {
-		if (next === this.readingWidthPercent) return;
-		this.readingWidthPercent = next;
-		this.applyCss();
-		this.notifyApplied();
-		if (notify) this.optionsOnReadingWidthChange?.(next);
-	}
-
 	private notifyApplied(): void {
 		if (!this.optionsOnApplied) return;
 		const window = this.root.ownerDocument.defaultView;
@@ -171,16 +167,41 @@ export class DocumentZoomController {
 		else this.optionsOnApplied();
 	}
 
+	private setReadingWidthInternal(next: ReadingWidthState, notify: boolean): void {
+		if (next === this.readingWidthPercent) return;
+		this.readingWidthPercent = next;
+		this.applyCss();
+		this.notifyApplied();
+		if (notify) this.optionsOnReadingWidthChange?.(next);
+	}
+
 	private applyCss(): void {
 		this.root.style.setProperty('--mlp-document-zoom', String(this.percent / 100));
-		this.root.style.setProperty('--mlp-reading-width', String(this.readingWidthPercent / 100));
+		const isFull = this.readingWidthPercent === READING_WIDTH_FULL;
+		const readingWidthPercent = this.readingWidthPercent === READING_WIDTH_FULL
+			? READING_WIDTH_MAX
+			: this.readingWidthPercent;
+		this.root.style.setProperty(
+			'--mlp-reading-width',
+			String(readingWidthPercent / 100),
+		);
+		if (isFull) {
+			// This variable is consumed only by finite max-width declarations that
+			// cssAdapter has proven to be the reading column. Unsupported/custom
+			// selectors never see a Full override.
+			this.root.style.setProperty('--mlp-reading-column-max-width', 'none');
+			this.root.dataset.mlpReadingWidth = READING_WIDTH_FULL;
+		} else {
+			this.root.style.removeProperty('--mlp-reading-column-max-width');
+			this.root.dataset.mlpReadingWidth = String(this.readingWidthPercent);
+		}
 	}
 
 	private get optionsOnChange(): DocumentZoomChange | undefined {
 		return this.options.onChange;
 	}
 
-	private get optionsOnReadingWidthChange(): DocumentZoomChange | undefined {
+	private get optionsOnReadingWidthChange(): ReadingWidthChange | undefined {
 		return this.options.onReadingWidthChange;
 	}
 

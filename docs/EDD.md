@@ -122,8 +122,9 @@ Webview Editor
 - 文档字号范围为 70% 至 200%，默认值和步进均为 100%/10%；边界操作仍取消浏览器默认缩放，但不越界。
 - 正文阅读区宽度范围为 60% 至 180%，默认值和步进均为 100%/10%；`Ctrl/Mod +` 增大、`Ctrl/Mod -` 减小、`Ctrl/Mod + Shift + 0` 重置为 100%，边界操作仍取消浏览器默认缩放但不越界。
 - `Ctrl/Mod`+滚轮只改变字号；`Ctrl/Mod + 0` 只重置字号。两套动作由同一个事件 owner 分派。
-- 宿主分别通过 `mdLivePreview.documentZoomPercent` 和 `mdLivePreview.readingWidthPercent` 保存全局值，并向所有已打开的 `DocumentSyncSession` 广播；webview 的本地交互分别回传 `setZoom`/`setReadingWidth`。
+- 宿主分别通过 `mdLivePreview.documentZoomPercent` 和 `mdLivePreview.readingWidthPercent` 保存全局值，并向所有已打开的 `DocumentSyncSession` 广播；reading width 的状态为 60%–180% 的 10% 步进数值或持久化的 `full` 哨兵，webview 的本地交互分别回传 `setZoom`/`setReadingWidth`。
 - `adaptMarkdownCss` 仅在严格识别的 reading-column selector 上，把单一 finite CSS length 的 `max-width` 改写为乘以 `--mlp-reading-width`；百分比、`none`、viewport 单位、函数值、混合 selector 和无法安全解析的规则原样保留。没有 finite `max-width` 的主题不被基底 CSS 强制限制。
+- Full 仅把适配器已经证明属于 reading column 的 finite `max-width` 通过 `--mlp-reading-column-max-width: none` 释放；未适配 selector 和不支持的宽度表达式不引用该变量，因而继续使用主题原值。根节点维持 viewport 响应式布局和侧边留白。
 - 两个缩放值使用 CSS 自定义属性参与字体、间距或安全适配的列宽，不使用 `transform: scale`，不改变 CodeMirror 文档、选区或源文本；任一值变化后调用 `requestMeasure`。
 
 详细的 feature 级验收和历史任务映射见 [`milestones/reading-width.md`](milestones/reading-width.md)。
