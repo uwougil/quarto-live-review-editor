@@ -102,6 +102,19 @@ describe('renderInlineInto', () => {
 		});
 	});
 
+	describe('math', () => {
+		it('renders inline formulas in table prose', () => {
+			const html = render('energy $E=mc^2$ done');
+			expect(html).toContain('energy ');
+			expect(html).toContain('class="mlp-math mlp-math-inline"');
+			expect(html).toContain(' done');
+		});
+
+		it('does not render dollar-delimited text inside inline code', () => {
+			expect(render('`$x$`')).toBe('<code class="mlp-inline-code">$x$</code>');
+		});
+	});
+
 	describe('inline HTML', () => {
 		it('honours <br> so a cell can hold a line break', () => {
 			expect(render('x<br>y')).toBe('x<br>y');
