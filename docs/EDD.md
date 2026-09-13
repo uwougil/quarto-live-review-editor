@@ -51,10 +51,13 @@ Webview Editor
 │   └── 文档首部 YAML front matter 检测、解析和 widget
 ├── src/webview-editor/documentZoom.ts
 │   └── Live Preview 文档字号/阅读区宽度事件边界、快捷键和 CSS 状态
+├── src/webview-editor/mathPasteHandler.ts
+│   └── 粘贴时的 LaTeX 分隔符规范化（单次编辑事务内完成）
 └── src/quarto/
     ├── dialect.ts：按路径区分 Markdown/Quarto
     ├── fence.ts：普通 Markdown 围栏与 Quarto/Pandoc 属性
-    └── math.ts：数学范围扫描和 StateField 缓存
+    ├── math.ts：数学范围扫描和 StateField 缓存
+    └── normalizeMathDelimiters.ts：粘贴片段的分隔符改写与受保护范围
 ```
 
 ## 3. 数据流与编辑模型
@@ -94,6 +97,16 @@ Webview Editor
 - 目标位置在文档开头或结尾不可达时使用 `scrollTop` 上下界钳制；文档短于视口时保持现有滚动位置。
 - 鼠标/指针点击、滚轮、原生滚动和宿主驱动的 `jumpToLine`/`setCursor` 会暂停自动定位，避免和用户主动浏览或显式导航竞争。
 - 控制器必须只挂在当前 `EditorView`，销毁时移除监听器；不得通过 `scrollIntoView` 事务制造二次编辑更新或同步循环。
+
+### 3.3 粘贴时数学分隔符规范化
+
+- 纯逻辑位于 `src/quarto/normalizeMathDelimiters.ts`，复用 `fence.ts` 的围栏扫描与 `math.ts` 的行内代码/既有数学掩码，不依赖 DOM，可在 Node 环境下由 Vitest 覆盖。
+- webview 通过 `EditorView.domEventHandlers` 的 `paste` 处理器拦截并改写内容，改写与内置粘贴同属一次 `changeByRange` 派发：粘贴和规范化是同一个事务，宿主只收到一条 `edit`，一次 Undo 即可整体撤销。
+- 只改写 `\(...\)` 与 `\[...\]` 两处分隔符，公式内部的空格、换行和 LaTeX 环境逐字保留；块公式统一为独占行的 `$$` 形式。
+- 未命中（开关关闭、剪贴板不含 LaTeX 分隔符、改写后文本不变）时返回 `false`，完整交回 CodeMirror 内置粘贴，保留整行复制与「每选区一行」等既有语义。
+- fenced code block、行内代码和既有 `$...$` / `$$...$$` 范围内的分隔符不改写；光标位于文档中已有围栏内时同样不改写，该判断基于源文本围栏扫描，不依赖语法树是否已解析到该位置。
+- 找不到配对闭合符的开头分隔符按原样保留，避免生成孤立 `$` 把后续无关文本吞进数学范围。
+- 改写走 `state.changeByRange`，因此每个选区都会得到同一份规范化文本。当前编辑器未启用 `EditorState.allowMultipleSelections`，CodeMirror 会把多选区折叠为单光标；改用多选区时该路径无需修改。
 
 ## 4. 装饰与源码回退规则
 
@@ -154,9 +167,10 @@ npm run test:browser:typewriter
 npm run test:browser:arrow-scroll
 npm run test:browser:zoom
 npm run test:browser:math
+npm run test:browser:paste-math
 ```
 
-CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`VS Code Extension Host Integration` job 使用真实 VS Code Extension Host、TextDocument、WorkspaceEdit 和保存事件执行同步契约；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行七个浏览器命令。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。
+CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`VS Code Extension Host Integration` job 使用真实 VS Code Extension Host、TextDocument、WorkspaceEdit 和保存事件执行同步契约；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行八个浏览器命令。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。
 
 ## 8. Issue 与 PR 交付契约
 
