@@ -70,7 +70,6 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 		private readonly getTypewriterMode: () => boolean = () => false,
 		private readonly getReadingWidth: () => ReadingWidthState = () => READING_WIDTH_DEFAULT,
 		private readonly onReadingWidthChange: (state: ReadingWidthState) => void = () => undefined,
-		private readonly getNormalizeMathOnPaste: () => boolean = () => false,
 	) {
 		this.ownsCoordinator = !coordinator;
 		this.coordinator = coordinator ?? new DocumentSyncCoordinator(document);
@@ -385,7 +384,6 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 			dialect: documentDialectForPath(this.document.uri.path),
 			baseUri: `${this.webviewPanel.webview.asWebviewUri(docDir).toString()}/`,
 			typewriterMode: this.getTypewriterMode(),
-			normalizeMathOnPaste: this.getNormalizeMathOnPaste(),
 			zoomPercent: normalizeDocumentZoom(this.getDocumentZoom()),
 			readingWidthPercent: normalizeReadingWidth(this.getReadingWidth()),
 			syncTrace: this.coordinator.traceEnabled,
@@ -488,10 +486,6 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 
 	notifyTypewriterModeChanged() {
 		this.post({ type: 'typewriterModeChanged', enabled: this.getTypewriterMode() });
-	}
-
-	notifyNormalizeMathOnPasteChanged() {
-		this.post({ type: 'normalizeMathOnPasteChanged', enabled: this.getNormalizeMathOnPaste() });
 	}
 
 	notifyDocumentZoomChanged(percent: number): void {

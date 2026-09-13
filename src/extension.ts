@@ -164,7 +164,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 		context,
 		() => styleStore.getCombinedCssSync(),
 		() => vscode.workspace.getConfiguration('mdLivePreview').get<boolean>('typewriterMode', false),
-		() => vscode.workspace.getConfiguration('mdLivePreview').get<boolean>('normalizeMathOnPaste', false),
 	);
 	context.subscriptions.push(providerDisposable);
 	context.subscriptions.push(styleStore.onDidChange(() => provider.broadcastCssChanged()));
@@ -220,9 +219,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 			}
 			if (e.affectsConfiguration('mdLivePreview.typewriterMode')) {
 				provider.broadcastTypewriterModeChanged();
-			}
-			if (e.affectsConfiguration('mdLivePreview.normalizeMathOnPaste')) {
-				provider.broadcastNormalizeMathOnPasteChanged();
 			}
 		}),
 	);

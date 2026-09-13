@@ -12,7 +12,6 @@ import { headingSpaceInputHandler } from './headingSpacePlugin';
 import { backtickInputHandler } from './backtickPairPlugin';
 import { toggleEmphasisCommand } from './emphasisShortcuts';
 import { createImagePasteHandler } from './imagePasteHandler';
-import { createMathPasteHandler } from './mathPasteHandler';
 import { postToHost, onHostMessage } from './vscodeApi';
 import { setDrawioFilePoster, handleDrawioFileMessage, clearDrawioFileCache } from './drawioFileClient';
 import { adaptMarkdownCss } from '../shared/cssAdapter';
@@ -38,10 +37,6 @@ const controlQueue: Array<'undo' | 'redo'> = [];
 const saveBarriers = new Set<number>();
 let lastCodeTokenGeneration = 0;
 let typewriterMode: TypewriterModeController | undefined;
-// Read as a module-level flag rather than a StateField because it never takes
-// part in a transaction: `createExtensions` is rebuilt on every `init`, and the
-// handler closure reads this variable, so it always sees the current setting.
-let normalizeMathOnPaste = false;
 let disposeFontMeasurement: (() => void) | undefined;
 
 function requestMeasureAfterLayout(): void {
@@ -191,10 +186,6 @@ function createExtensions(dialect: DocumentDialect): Extension[] {
 		codeHighlightExtension,
 		createLinkClickHandler((href) => postToHost({ type: 'openLink', href })),
 		createImagePasteHandler(queueImage),
-		// Registered after the image handler so an image paste still wins: that
-		// handler returns true for image files, and this one returns false for
-		// everything it does not rewrite.
-		createMathPasteHandler(() => normalizeMathOnPaste),
 		keymap.of([
 			{ key: 'ArrowUp', run: moveVerticallyAvoidingFootnotes(false) },
 			{ key: 'ArrowDown', run: moveVerticallyAvoidingFootnotes(true) },
@@ -311,7 +302,6 @@ onHostMessage((message) => {
 			clearDrawioFileCache();
 			resetView(message.text, message.dialect, message.zoomPercent, message.readingWidthPercent);
 			typewriterMode?.setEnabled(message.typewriterMode);
-			normalizeMathOnPaste = message.normalizeMathOnPaste;
 			drainOutbound();
 			break;
 		case 'saveBarrier':
@@ -366,9 +356,6 @@ onHostMessage((message) => {
 			break;
 		case 'typewriterModeChanged':
 			typewriterMode?.setEnabled(message.enabled);
-			break;
-		case 'normalizeMathOnPasteChanged':
-			normalizeMathOnPaste = message.enabled;
 			break;
 		case 'setZoom':
 			documentZoom?.setPercent(message.percent);
