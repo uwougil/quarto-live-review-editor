@@ -30,8 +30,8 @@ Quarto Live Review Editor 是一个 VS Code 扩展，为 Markdown 和 Quarto (`.
 4. 将文档开头的 YAML front matter 显示为可读表格，并在需要编辑时恢复源码。
 5. 提供 VS Code、Dark、GitHub Light、GitHub Dark 和 Claude 内置主题，以及用户 CSS 主题管理。
 6. 通过单元测试和真实 Chromium 回归测试保护长文档、几何布局和交互行为。
-7. 提供可选的 Typewriter Mode，在输入或上下移动光标时把主光标保持在编辑器视口约 40% 的位置，同时把鼠标滚动和显式导航交还给用户。
-8. 提供独立于 VS Code 全局缩放的 Live Preview 文档字号缩放和正文阅读区宽度缩放；两者在所有文档间共享并持久化。
+7. 提供默认开启的 Typewriter Mode，在输入、写作型键盘交互或普通单击定位后把主光标保持在编辑器视口约 50% 的位置，同时把鼠标滚动、拖选和显式导航交还给用户。
+8. 提供独立于 VS Code 全局缩放的 Live Preview 文档字号缩放，并在所有文档间共享和持久化。
 9. 提供可选的粘贴规范化，把从 ChatGPT 等来源复制的 `\(...\)` 与 `\[...\]` 静默转换为 Markdown 的 `$...$` 与 `$$...$$`，让复制来的公式可以直接进入现有数学渲染流程。
 
 ### 3.2 非目标
@@ -53,7 +53,7 @@ Quarto Live Review Editor 是一个 VS Code 扩展，为 Markdown 和 Quarto (`.
 | FR-7 | 用户 CSS 主题和 VS Code 颜色主题必须能影响编辑器外观，而不破坏文档几何和源码交互。 | P1 |
 | FR-8 | 大文档必须使用视口化渲染和受控的语法解析，不能因打开文档而无条件解析整篇文档或创建全量 DOM。 | P0 |
 | FR-9 | 扩展必须提供文档大纲、图片粘贴、表格编辑和实时保存能力。 | P1 |
-| FR-10 | 用户可启用 Typewriter Mode；输入、删除、Enter 和上下移动光标时，主光标应尽量保持在编辑器视口约 40% 的位置，且不改写文档内容。 | P1 |
+| FR-10 | Typewriter Mode 默认开启且可关闭；输入、删除、Enter、上下移动光标或普通单击定位后，主光标应尽量保持在编辑器视口约 50% 的位置，且不改写文档内容。 | P1 |
 | FR-11 | Live Preview 必须支持 70% 至 200% 的文档字号缩放，使用 10% 步进、快捷键与 Ctrl/Mod+滚轮，并共享持久化设置。 | P1 |
 | FR-12 | Live Preview 必须支持独立的 60% 至 320% 正文阅读区宽度缩放，并在 320% 后提供响应式 Full 状态；全范围使用 10% 步进、快捷键并共享持久化设置。只有主题声明的 finite reading-column 宽度可被安全适配，Full 不得强行改写不受支持的主题 selector。 | P1 |
 | FR-13 | 用户可启用粘贴规范化；启用后所有粘贴必须在同一次编辑事务内把 `\(...\)` 改写为 `$...$`、把 `\[...\]` 改写为相对目标文档独占行的 `$$...$$`，保留公式内部原文，并且不改写代码围栏、行内代码、既有 `$` 数学范围或受保护的粘贴目标。 | P1 |
@@ -64,7 +64,7 @@ Quarto Live Review Editor 是一个 VS Code 扩展，为 Markdown 和 Quarto (`.
 - 初始打开 front matter 文档时应直接显示表格；点击或将光标移入表格范围后可编辑原始 YAML。
 - 缺失或重复脚注定义、代码围栏、行内代码、未实现的 Quarto 扩展语法不得被错误地转换为虚假渲染结果。
 - 主题切换、长段落软换行、上下键移动和脚注定位不得造成光标跳跃、隐藏源码意外展开或 CodeMirror 几何异常。
-- Typewriter Mode 默认关闭；启用后只跟随写作型键盘/输入交互，目标位置不可达时在文档首尾自然钳制；鼠标点击、滚轮滚动和宿主驱动的显式跳转必须暂停自动定位。
+- Typewriter Mode 默认开启且可从侧边栏关闭；开启后普通单击会在 caret 到达后立即定位到约 50%，写作型键盘/输入交互会恢复定位，目标位置不可达时在文档首尾自然钳制；拖选、滚轮滚动和宿主驱动的显式跳转必须暂停自动定位。
 - 文档字号缩放只作用于获得焦点的 Live Preview 内容，必须同步更新段落、标题、列表、代码、表格、front matter、脚注和数学布局；缩放不得移动光标、改变选区或修改源文本。
 - `Ctrl/Mod +` 与 `Ctrl/Mod -` 只调整正文阅读区宽度，`Ctrl/Mod + 0` 只重置字号，`Ctrl/Mod + Shift + 0` 只重置正文阅读区宽度；Ctrl/Mod+滚轮只调整字号。
 - 阅读区从 60% 到 320% 全程按 10% 步进；在 320% 再按增加键进入 Full，Full 使用可用预览视口并保留合理侧边留白，再按增加键保持 Full，减少键回到 320%。
@@ -76,7 +76,7 @@ Quarto Live Review Editor 是一个 VS Code 扩展，为 Markdown 和 Quarto (`.
 
 - 支持的运行时和验证命令以 [`docs/EDD.md`](EDD.md) 与 [`AGENTS.md`](../AGENTS.md) 为准。
 - 当前已完成的 front matter 功能验收记录在 [`docs/milestones/frontmatter-preview.md`](milestones/frontmatter-preview.md)。
-- Typewriter Mode（Issue #14）的实现和验收映射记录在 [`docs/milestones/typewriter-mode.md`](milestones/typewriter-mode.md)。
-- Issue #28 的字号/正文阅读区宽度拆分、CSS 安全边界和回归证据记录在 [`docs/milestones/reading-width.md`](milestones/reading-width.md)。
-- 粘贴时数学分隔符规范化（Issue #53）的实现和验收映射记录在 [`docs/milestones/normalize-math-on-paste.md`](milestones/normalize-math-on-paste.md)。
+ - Typewriter Mode（Issue #14 的初版及 Issue #27 的产品 follow-up）的实现和验收映射记录在 [`docs/milestones/typewriter-mode.md`](milestones/typewriter-mode.md)。
+ - Issue #28 的字号/正文阅读区宽度拆分、CSS 安全边界和回归证据记录在 [`docs/milestones/reading-width.md`](milestones/reading-width.md)。
+ - 粘贴时数学分隔符规范化（Issue #53）的实现和验收映射记录在 [`docs/milestones/normalize-math-on-paste.md`](milestones/normalize-math-on-paste.md)。
 - 仓库再整理的验收记录在 [`docs/milestones/2026-09-repository-rebootstrap.md`](milestones/2026-09-repository-rebootstrap.md)。

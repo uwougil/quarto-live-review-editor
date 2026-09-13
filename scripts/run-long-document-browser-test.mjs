@@ -568,6 +568,29 @@ async function runPointerCaretRegression(page, text) {
 }
 
 async function runTypewriterInteraction(page, sourceLength, marker) {
+	const caretCenter = (item) => {
+		const selection = item?.selection;
+		return selection?.y === null || selection?.y === undefined
+			? null
+			: selection.y + selection.defaultLineHeight / 2;
+	};
+	const nearTarget = (item, ratio = 0.5) => {
+		const center = caretCenter(item);
+		const height = item?.snapshot?.clientHeight || 0;
+		const lineHeight = item?.selection?.defaultLineHeight || 20;
+		return center !== null && Math.abs(center - height * ratio) <= Math.max(24, lineHeight * 2);
+	};
+	const linePoint = async (needle) => page.evaluate((value) => {
+		const line = [...document.querySelectorAll('.cm-line')].find((candidate) => candidate.textContent?.includes(value));
+		if (!line) return null;
+		const rect = line.getBoundingClientRect();
+		return {
+			x: Math.min(rect.right - 3, rect.left + 30),
+			dragStartX: rect.left + 40,
+			dragEndX: Math.min(rect.right - 10, rect.left + 260),
+			y: rect.top + Math.min(10, Math.max(2, rect.height / 2)),
+		};
+	}, needle);
 	const target = await page.evaluate((needle) => {
 		const source = window.__mlpTestSourceText || '';
 		const pos = source.indexOf(needle);
@@ -584,34 +607,147 @@ async function runTypewriterInteraction(page, sourceLength, marker) {
 		scroller.scrollTop = Math.min(scroller.scrollTop + 320, scroller.scrollHeight - scroller.clientHeight);
 	});
 	await page.waitForTimeout(80);
-	const beforeClick = await page.evaluate((needle) => {
-		const line = [...document.querySelectorAll('.cm-line')].find((candidate) => candidate.textContent?.includes(needle));
-		if (!line) return null;
-		const rect = line.getBoundingClientRect();
-		return { x: Math.min(rect.right - 3, rect.left + 30), y: (rect.top + rect.bottom) / 2 };
-	}, marker);
+	const beforeClick = await linePoint(marker);
 	if (!beforeClick) throw new Error('typewriter target line is not visible');
 	await page.mouse.click(beforeClick.x, beforeClick.y);
-	await page.waitForTimeout(50);
-	const before = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+	await page.waitForTimeout(100);
+	const afterClick = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+	const scrollBeforeWheel = afterClick.snapshot?.scrollTop ?? 0;
+	await page.mouse.wheel(0, 200);
+	await page.waitForTimeout(100);
+	const afterWheel = await page.evaluate(() => window.__mlpDebugSnapshot?.());
+
+	// A direct scrollTop mutation stands in for scrollbar dragging. It must not
+	// be pulled back to the caret until the next writing interaction.
+	const scrollBeforeManual = afterWheel?.scrollTop ?? 0;
+	await page.evaluate(() => {
+		const scroller = document.querySelector('.cm-scroller');
+		if (!(scroller instanceof HTMLElement)) throw new Error('editor scroller not found');
+		scroller.scrollTop = Math.min(scroller.scrollTop + 160, scroller.scrollHeight - scroller.clientHeight);
+	});
+	await page.waitForTimeout(100);
+	const afterManualScroll = await page.evaluate(() => window.__mlpDebugSnapshot?.());
+
+	// Reposition the probe line and drag across one visual row. The final
+	// non-empty selection proves that the gesture was not mistaken for a click.
+	const targetPosition = await page.evaluate((needle) => (window.__mlpTestSourceText || '').indexOf(needle), marker);
+	await page.evaluate((pos) => {
+		window.__mlpDebugSetSelection?.(pos);
+		window.__mlpDebugScrollToPosition?.(pos);
+	}, targetPosition);
+	await page.waitForTimeout(100);
+	const dragPoint = await linePoint(marker);
+	if (!dragPoint) throw new Error('typewriter drag line is not visible');
+	const scrollBeforeDrag = (await page.evaluate(() => window.__mlpDebugSnapshot?.()))?.scrollTop ?? 0;
+	await page.mouse.move(dragPoint.dragStartX, dragPoint.y);
+	await page.mouse.down();
+	await page.mouse.move(dragPoint.dragEndX, dragPoint.y, { steps: 8 });
+	await page.mouse.up();
+	await page.waitForTimeout(100);
+	const afterDrag = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+
+	// Collapse the selection with a second ordinary click; this also verifies
+	// that a click after a drag resumes positioning without changing the text.
+	const recenterPoint = await linePoint(marker);
+	if (!recenterPoint) throw new Error('typewriter recenter line is not visible');
+	await page.mouse.click(recenterPoint.x, recenterPoint.y);
+	await page.waitForTimeout(100);
+	const afterDragClick = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+
+	const lengthBeforeTyping = afterDragClick.snapshot?.docLength ?? 0;
 	await page.keyboard.type('x');
 	await page.waitForTimeout(120);
-	const after = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
-	const targetCenter = (after.snapshot?.clientHeight || 0) * 0.4;
-	const beforeCenter = before.selection?.y === null || before.selection?.y === undefined ? null : before.selection.y + before.selection.defaultLineHeight / 2;
-	const afterCenter = after.selection?.y === null || after.selection?.y === undefined ? null : after.selection.y + after.selection.defaultLineHeight / 2;
-	const scrollBeforeWheel = after.snapshot?.scrollTop ?? 0;
-	await page.mouse.wheel(0, 200);
+	const afterTyping = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+	await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'setZoom', percent: 150 } })));
+	await page.waitForTimeout(180);
+	const afterZoom = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+	await page.keyboard.press('ArrowUp');
+	await page.waitForTimeout(100);
+	const afterArrowUp = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+	await page.keyboard.press('ArrowDown');
+	await page.waitForTimeout(100);
+	const afterArrowDown = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+	const lengthBeforeEnter = afterArrowDown.snapshot?.docLength ?? 0;
+	await page.keyboard.press('Enter');
+	await page.waitForTimeout(120);
+	const afterEnter = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+
+	const bottomLength = afterEnter.snapshot?.docLength ?? 0;
+	await page.evaluate((length) => {
+		window.__mlpDebugSetSelection?.(length);
+		window.__mlpDebugScrollToPosition?.(length);
+	}, bottomLength);
 	await page.waitForTimeout(80);
-	const afterWheel = await page.evaluate(() => window.__mlpDebugSnapshot?.());
+	await page.keyboard.press('ArrowDown');
+	await page.waitForTimeout(120);
+	const afterBottom = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+	await page.evaluate(() => {
+		window.__mlpDebugSetSelection?.(0);
+		window.__mlpDebugScrollTo?.(0);
+	});
+	await page.waitForTimeout(80);
+	await page.keyboard.press('ArrowUp');
+	await page.waitForTimeout(120);
+	const afterTop = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+
+	// Host-driven navigation is represented by the same message the extension
+	// sends for outline/anchor jumps. It may choose its own reveal position, but
+	// Typewriter must not snap it again until writing resumes.
+	await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'jumpToLine', line: 150 } })));
+	await page.waitForTimeout(100);
+	const afterNavigation = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+	await page.waitForTimeout(140);
+	const afterNavigationSettled = await page.evaluate(() => window.__mlpDebugSnapshot?.());
+	await page.keyboard.press('ArrowDown');
+	await page.waitForTimeout(120);
+	const afterNavigationWriting = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+
+	// Turn the mode off at runtime and keep a caret deliberately low in the
+	// viewport. A writing key should then use ordinary CodeMirror reveal and not
+	// recenter to 50%.
+	const beforeOff = await page.evaluate(() => {
+		const scroller = document.querySelector('.cm-scroller');
+		const selection = window.__mlpDebugSelection?.();
+		if (!(scroller instanceof HTMLElement) || !selection?.y) return null;
+		const rect = scroller.getBoundingClientRect();
+		const desired = rect.top + scroller.clientHeight * 0.78;
+		scroller.scrollTop = Math.max(0, Math.min(scroller.scrollHeight - scroller.clientHeight, scroller.scrollTop + selection.y - desired));
+		return { snapshot: window.__mlpDebugSnapshot?.(), selection: window.__mlpDebugSelection?.() };
+	});
+	await page.waitForTimeout(80);
+	await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'typewriterModeChanged', enabled: false } })));
+	await page.keyboard.press('ArrowDown');
+	await page.waitForTimeout(120);
+	const afterOff = await page.evaluate(() => ({ selection: window.__mlpDebugSelection?.(), snapshot: window.__mlpDebugSnapshot?.() }));
+
+	const afterClickCenter = caretCenter(afterClick);
+	const afterTypingCenter = caretCenter(afterTyping);
+	const targetCenter = (afterClick.snapshot?.clientHeight || 0) * 0.5;
 	const checks = {
-		typingChangedDocument: after.snapshot?.docLength === sourceLength + 1,
-		caretStayedVisible: afterCenter !== null && afterCenter > 0 && afterCenter < (after.snapshot?.clientHeight || 0),
-		caretMovedTowardTarget: beforeCenter !== null && afterCenter !== null && Math.abs(afterCenter - targetCenter) < Math.abs(beforeCenter - targetCenter),
-		caretNearTarget: afterCenter !== null && Math.abs(afterCenter - targetCenter) <= Math.max(24, (after.selection?.defaultLineHeight || 20) * 2),
-		wheelRemainsUserOwned: afterWheel?.scrollTop !== undefined && Math.abs(afterWheel.scrollTop - scrollBeforeWheel) > 1,
+		singleClickCollapsed: afterClick.selection?.from === afterClick.selection?.to,
+		singleClickRecentered: nearTarget(afterClick),
+		manualWheelRemainsUserOwned: afterWheel?.scrollTop !== undefined && Math.abs(afterWheel.scrollTop - scrollBeforeWheel) > 1,
+		manualScrollRemainsUserOwned: afterManualScroll?.scrollTop !== undefined && Math.abs(afterManualScroll.scrollTop - scrollBeforeManual) > 1,
+		dragKeepsSelection: afterDrag.selection?.from !== afterDrag.selection?.to,
+		dragKeepsViewport: Math.abs((afterDrag.snapshot?.scrollTop ?? 0) - scrollBeforeDrag) <= 3,
+		typingChangedDocument: afterTyping.snapshot?.docLength === lengthBeforeTyping + 1,
+		typingRecentered: nearTarget(afterTyping),
+		arrowUpRecentered: nearTarget(afterArrowUp),
+		arrowDownRecentered: nearTarget(afterArrowDown),
+		enterChangedDocument: afterEnter.snapshot?.docLength === lengthBeforeEnter + 1,
+		enterRecentered: nearTarget(afterEnter),
+		// Zoom changes line metrics and may legitimately adjust scrollTop to keep
+		// the same document area visible. The Typewriter contract is that this
+		// layout change alone must not schedule a fresh 50% snap.
+		zoomDoesNotRecenter: caretCenter(afterZoom) !== null && Math.abs((caretCenter(afterZoom) ?? 0) - targetCenter) > 50,
+		bottomClamp: afterBottom.snapshot?.scrollTop !== undefined && afterBottom.snapshot?.scrollHeight !== undefined && afterBottom.snapshot?.clientHeight !== undefined
+			&& afterBottom.snapshot.scrollTop >= afterBottom.snapshot.scrollHeight - afterBottom.snapshot.clientHeight - 3,
+		topClamp: (afterTop.snapshot?.scrollTop ?? 1) <= 3,
+		explicitNavigationStable: Math.abs((afterNavigation.snapshot?.scrollTop ?? 0) - (afterNavigationSettled?.scrollTop ?? 0)) <= 3,
+		writingAfterNavigationRecentered: nearTarget(afterNavigationWriting),
+		offDoesNotRecenter: Boolean(beforeOff && afterOff.snapshot && Math.abs((caretCenter(afterOff) ?? 0) - (caretCenter(beforeOff) ?? 0)) <= Math.max(24, (afterOff.selection?.defaultLineHeight || 20) * 2) && Math.abs((caretCenter(afterOff) ?? 0) - targetCenter) > 50),
 	};
-	return { ok: Object.values(checks).every(Boolean), checks, before, after, afterWheel, targetCenter };
+	return { ok: Object.values(checks).every(Boolean), checks, afterClick, afterManualScroll, afterDrag, afterTyping, afterZoom, afterArrowUp, afterArrowDown, afterEnter, afterBottom, afterTop, afterNavigation, afterNavigationWriting, afterOff, targetCenter };
 }
 
 async function runArrowScroll(page, text) {

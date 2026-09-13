@@ -4,6 +4,7 @@ import { StyleManagerViewProvider } from './sidebar/StyleManagerViewProvider';
 import { StyleStore } from './sidebar/styleStore';
 import { OutlineViewProvider } from './sidebar/OutlineViewProvider';
 import { setGrammarRoot } from './editor/shikiHost';
+import { DEFAULT_TYPEWRITER_MODE } from './shared/typewriterMode';
 import { runDocumentSyncIntegration } from './editor/documentSyncIntegration';
 import {
 	reconcileInspectedEditorAssociations,
@@ -163,7 +164,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const { disposable: providerDisposable, provider } = MarkdownLivePreviewProvider.register(
 		context,
 		() => styleStore.getCombinedCssSync(),
-		() => vscode.workspace.getConfiguration('mdLivePreview').get<boolean>('typewriterMode', false),
+		() => vscode.workspace.getConfiguration('mdLivePreview').get<boolean>('typewriterMode', DEFAULT_TYPEWRITER_MODE),
 		() => vscode.workspace.getConfiguration('mdLivePreview').get<boolean>('normalizeMathOnPaste', false),
 	);
 	context.subscriptions.push(providerDisposable);
