@@ -1,6 +1,6 @@
 # Milestone: Typewriter Mode
 
-状态：Issue #27 已完成（本地验证通过，待 CI）
+状态：Issue #27 已完成（本地与 GitHub CI 验证通过）
 
 ## 来源与目标
 
@@ -28,17 +28,32 @@
 - [x] 普通单击立即定位；拖选、滚轮滚动和宿主驱动的跳转不会被自动定位抢回。
 - [x] Typewriter Mode 不创建文档变更，不改变宿主的编辑同步协议。
 - [x] 纯计算逻辑已有 Vitest 覆盖。
-- [x] 本地真实 Chromium 回归通过，并确认单击、拖选、50% 定位和滚轮优先级没有回归；CI 待 PR 运行。
+- [x] 本地真实 Chromium 回归通过，并确认单击、拖选、50% 定位和滚轮优先级没有回归；PR #60 的 GitHub required checks 已全部通过。
 
 ## 验证记录
 
-Issue #27 本地验证记录：
+Issue #27 验证记录：
+
+- 更新基线：`github/main` / `ce71eb69a3a63c7ed3bb1d75f7ec1ccad015793c`
+- CI 验证提交：`609b719fec4950824d574a9a92913ea3aadd71cf`
 
 ```powershell
 npm run typecheck
 npm test
 npm run compile
+npm run test:integration
+npm run test:browser
+npm run test:browser:geometry
+npm run test:browser:inline
+npm run test:browser:inline-interaction
+npm run test:browser:footnote-caret
 npm run test:browser:typewriter
+npm run test:browser:arrow-scroll
+npm run test:browser:zoom
+npm run test:browser:math
+npm run test:browser:paste-math
 ```
 
-PR #23 的 CI 还通过了长文档、geometry、inline interaction 和 document zoom 浏览器回归。
+本地结果：`npm ci`、Chromium 安装、类型检查、526 个单元测试、编译、集成测试及上述全部浏览器回归均通过；Typewriter 场景的 18 项检查全部通过。
+
+GitHub Actions run `34766823464`：`Core`、`VS Code Extension Host Integration`、`Browser Regression` 均为 success。
