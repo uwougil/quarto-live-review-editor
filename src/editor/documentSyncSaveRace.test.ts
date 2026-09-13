@@ -160,6 +160,30 @@ describe('save race ownership', () => {
 		coordinator.dispose();
 	});
 
+	it('coalesces a native disk write with the overlapping webview save request', async () => {
+		const doc = document('abc');
+		const coordinator = new DocumentSyncCoordinator(doc as any);
+		const active = peer(true);
+		const gate = deferred();
+		active.requestSaveBarrier = () => {
+			active.barrierRequests++;
+			return gate.promise;
+		};
+		coordinator.addPeer(active);
+
+		const webviewSave = coordinator.requestSave();
+		const nativeSave = emitWillSave(doc).then(() => doc.save());
+		await tick();
+		expect(active.barrierRequests).toBe(1);
+		expect(doc.save).not.toHaveBeenCalled();
+
+		gate.resolve();
+		await Promise.all([webviewSave, nativeSave]);
+		expect(doc.save).toHaveBeenCalledTimes(1);
+		expect(active.snapshots).toEqual(['abc']);
+		coordinator.dispose();
+	});
+
 	it('does not let a hidden retained panel hold the active save', async () => {
 		const doc = document('abc');
 		const coordinator = new DocumentSyncCoordinator(doc as any);

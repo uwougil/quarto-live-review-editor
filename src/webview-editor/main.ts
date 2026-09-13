@@ -102,7 +102,7 @@ function drainOutbound(): void {
 	if (!syncClient || imageInFlight !== undefined) return;
 	const edit = syncClient.takeNextEdit();
 	if (edit) {
-		postToHost({ type: 'edit', ...edit });
+		postToHost({ type: 'edit', ...edit, syncState: syncClient.debugState() });
 		return;
 	}
 	if (syncClient.hasOutstandingEdits) return;
@@ -113,9 +113,9 @@ function drainOutbound(): void {
 		return;
 	}
 	while (controlQueue.length > 0) postToHost({ type: controlQueue.shift()! });
-	if (syncClient.takeSaveRequest()) postToHost({ type: 'save' });
+	if (syncClient.takeSaveRequest()) postToHost({ type: 'save', syncState: syncClient.debugState() });
 	if (saveBarriers.size === 0 || syncClient.hasOutstandingEdits || imageQueue.length > 0 || controlQueue.length > 0) return;
-	for (const barrierId of saveBarriers) postToHost({ type: 'saveBarrierAck', barrierId });
+	for (const barrierId of saveBarriers) postToHost({ type: 'saveBarrierAck', barrierId, syncState: syncClient.debugState() });
 	saveBarriers.clear();
 }
 
@@ -311,7 +311,7 @@ onHostMessage((message) => {
 		case 'ackEdit':
 			if (!syncClient) return;
 			if (syncClient.acknowledge(message.editId, message.version).resyncRequired) {
-				postToHost({ type: 'requestResync' });
+				postToHost({ type: 'requestResync', syncState: syncClient.debugState() });
 				return;
 			}
 			drainOutbound();
@@ -320,7 +320,7 @@ onHostMessage((message) => {
 			if (!view || !syncClient) return;
 			const transition = syncClient.receiveExternal(message);
 			if (transition.resyncRequired) {
-				postToHost({ type: 'requestResync' });
+				postToHost({ type: 'requestResync', syncState: syncClient.debugState() });
 				return;
 			}
 			if (!transition.viewChanges.empty) view.dispatch({ changes: transition.viewChanges, annotations: remoteChange.of(true) });

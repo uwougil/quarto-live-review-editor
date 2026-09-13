@@ -71,6 +71,10 @@ export class EditorSyncClient {
 	private version: number;
 	private pending: ChangeSet | null = null;
 	private inFlight: InFlightEdit | null = null;
+	// A canonical saved snapshot can settle an edit before its explicit ack
+	// message reaches the webview. Keep that identity long enough to treat the
+	// delayed ack as an idempotent confirmation instead of requesting a resync.
+	private readonly settledEditIds = new Set<number>();
 	private saveRequested = false;
 	private nextEditId = 1;
 
@@ -89,6 +93,18 @@ export class EditorSyncClient {
 
 	get hasInFlightEdit(): boolean {
 		return this.inFlight !== null;
+	}
+
+	get hasPendingEdits(): boolean {
+		return this.pending !== null && !this.pending.empty;
+	}
+
+	get inFlightEditId(): number | undefined {
+		return this.inFlight?.editId;
+	}
+
+	debugState(): { pending: boolean; inFlightEditId?: number; hostVersion: number } {
+		return { pending: this.hasPendingEdits, inFlightEditId: this.inFlightEditId, hostVersion: this.version };
 	}
 
 	get hasPendingSave(): boolean {
@@ -127,6 +143,9 @@ export class EditorSyncClient {
 	}
 
 	acknowledge(editId: number, version: number): { resyncRequired: boolean } {
+		if (this.settledEditIds.delete(editId)) {
+			return { resyncRequired: version > this.version };
+		}
 		if (!this.inFlight || this.inFlight.editId !== editId || this.inFlight.needsRetry) {
 			return { resyncRequired: true };
 		}
@@ -176,6 +195,35 @@ export class EditorSyncClient {
 		if (message.version < this.version) {
 			const length = this.outstandingChanges()?.newLength ?? this.confirmed.length;
 			return { viewChanges: ChangeSet.of([], length), resyncRequired: false };
+		}
+
+		const local = this.outstandingChanges();
+		if (local) {
+			// The snapshot is canonical, but it may already contain the local edit
+			// whose ack is still in flight. Feeding that snapshot through the normal
+			// resync path would diff `confirmed -> snapshot` and then map the same
+			// local ChangeSet over it, inserting the edit twice. Exact text equality
+			// proves that every outstanding local change is already represented.
+			const optimistic = local.apply(this.confirmed);
+			if (optimistic.toString() === message.text) {
+				if (this.inFlight) this.settledEditIds.add(this.inFlight.editId);
+				this.confirmed = asText(message.text);
+				this.version = message.version;
+				this.inFlight = null;
+				this.pending = null;
+				return { viewChanges: ChangeSet.of([], optimistic.length), resyncRequired: false };
+			}
+
+			// The host may have saved the in-flight prefix while a later local edit
+			// is still pending in CodeMirror. Confirm only that prefix and leave the
+			// later ChangeSet relative to the new canonical text for the next retry.
+			if (this.inFlight && this.inFlight.changes.apply(this.confirmed).toString() === message.text) {
+				this.settledEditIds.add(this.inFlight.editId);
+				this.confirmed = asText(message.text);
+				this.version = message.version;
+				this.inFlight = null;
+				return { viewChanges: ChangeSet.of([], optimistic.length), resyncRequired: false };
+			}
 		}
 		return this.receiveResync(message);
 	}

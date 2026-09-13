@@ -1,9 +1,13 @@
 import * as vscode from 'vscode';
 import type { TextChange } from '../shared/messages';
+import { createSyncTrace, snapshotFields, type SyncTrace } from './syncTrace';
+
+export type SaveSource = 'webview' | 'native' | 'coordinator';
 
 export interface DocumentSyncPeer {
 	/** Whether this peer is the currently active editor. Undefined keeps test/legacy peers active. */
 	readonly active?: boolean;
+	readonly panelId?: string;
 	receiveDocumentChanges(changes: TextChange[], baseVersion: number, version: number): void;
 	receiveSavedSnapshot(text: string, version: number): void;
 	acknowledgeEdit(editId: number, version: number): void;
@@ -42,28 +46,46 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	private nextSaveBarrierId = 1;
 	private saveBarrierInFlight: Promise<void> | undefined;
 	private disposed = false;
+	private readonly trace: SyncTrace;
 
 	constructor(private readonly document: vscode.TextDocument) {
+		this.trace = createSyncTrace(document.uri.toString());
+		this.log('coordinator-created');
 		this.lastObservedVersion = document.version;
 		this.changeListener = vscode.workspace.onDidChangeTextDocument((event) => {
 			if (event.document.uri.toString() === document.uri.toString()) this.handleDocumentChanged(event);
 		});
 		this.willSaveListener = vscode.workspace.onWillSaveTextDocument((event) => {
-			if (event.document.uri.toString() !== document.uri.toString() || this.saveInProgress > 0) return;
+			if (event.document.uri.toString() !== document.uri.toString()) return;
+			if (this.saveInProgress > 0) {
+				this.log('willSave-skipped', { source: 'native', reason: 'coordinator-save-in-progress' });
+				return;
+			}
 			// Native/Workbench saves share the same in-flight barrier as a webview
 			// Mod-S request. Cursor can route one physical Ctrl+S through both paths;
 			// coalescing here keeps that from doubling the peer round-trip.
-			event.waitUntil(this.waitForSaveBarrier());
+			this.log('willSave', { source: 'native' });
+			event.waitUntil(this.waitForSaveBarrier('native'));
 		});
 		this.didSaveListener = vscode.workspace.onDidSaveTextDocument((savedDocument) => {
 			if (savedDocument.uri.toString() !== document.uri.toString()) return;
+			this.log('didSave', { source: this.saveInProgress > 0 ? 'coordinator' : 'native', ...snapshotFields(this.document.getText()), savedSnapshotVersion: this.document.version });
 			this.broadcastSavedSnapshot();
 		});
 	}
 
-	addPeer(peer: DocumentSyncPeer): void { this.peers.add(peer); }
+	get traceEnabled(): boolean { return this.trace.enabled; }
+	get traceId(): number { return this.trace.id; }
+	get syncTrace(): SyncTrace { return this.trace; }
+	get pendingMutationCount(): number { return this.pendingMutations.length; }
+
+	addPeer(peer: DocumentSyncPeer): void {
+		this.peers.add(peer);
+		this.log('peer-added', { panelId: peer.panelId, panelActive: peer.active !== false });
+	}
 	removePeer(peer: DocumentSyncPeer): void {
 		this.peers.delete(peer);
+		this.log('peer-removed', { panelId: peer.panelId });
 		const waiters = this.saveBarrierWaiters.get(peer);
 		if (waiters) {
 			for (const resolve of waiters) resolve();
@@ -84,12 +106,14 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 
 	/** Save after edits already accepted by the host and the active peer have settled. */
 	requestSave(): Promise<void> {
-		return this.waitForSaveBarrier().then(() => this.enqueue(async () => {
+		this.log('save-request', { source: 'webview' });
+		return this.waitForSaveBarrier('webview').then(() => this.enqueue(async () => {
 			await this.waitForPendingMutations();
 			// If a concurrent native/Workbench save already completed while this
 			// request was waiting at the shared barrier, there is nothing left to
 			// write. This also avoids a second onDidSave/savedSnapshot cycle.
 			if (this.document.isDirty === false) return;
+			this.log('document-save', { source: 'coordinator' });
 			this.saveInProgress++;
 			try {
 				await this.document.save();
@@ -100,6 +124,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	}
 
 	enqueueEdit(peer: DocumentSyncPeer, changes: TextChange[], baseVersion: number, editId: number): Promise<void> {
+		this.log('enqueue-mutation', { panelId: peer.panelId, panelActive: peer.active !== false, editId, baseVersion });
 		return this.enqueue(async () => {
 			if (!this.peers.has(peer)) return;
 			if (baseVersion !== this.document.version) {
@@ -199,6 +224,12 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 			}
 			this.resolvePendingWaitersIfSettled();
 		}
+		this.log('document-change', {
+			matchedEditId: mutation?.editId,
+			baseVersion: mutation?.baseVersion ?? Math.max(0, eventVersion - 1),
+			version: eventVersion,
+			pendingMutationCount: this.pendingMutations.length,
+		});
 
 		// A delayed event can arrive after a newer event has already been observed.
 		// Never move an unmatched mutation's expected version: its resulting version
@@ -220,8 +251,9 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		}
 	}
 
-	private waitForSaveBarrier(): Promise<void> {
+	private waitForSaveBarrier(source: SaveSource): Promise<void> {
 		if (this.saveBarrierInFlight) return this.saveBarrierInFlight;
+		this.log('save-barrier-start', { source });
 
 		const barrier = this.queue.catch(() => undefined).then(async () => {
 			// Only the active custom editor is allowed to flush webview-local input
@@ -230,8 +262,10 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 			// the active editor. Their local state remains intact and can be rebased/
 			// sent later, at which point the document becomes dirty again normally.
 			const activePeers = [...this.peers].filter((peer) => peer.active !== false);
+			this.log('save-barrier-peers', { source, activePeerCount: activePeers.length, pendingMutationCount: this.pendingMutations.length });
 			if (activePeers.length > 0) {
 				const barrierId = this.nextSaveBarrierId++;
+				this.log('save-barrier-request', { source, barrierId, activePeerCount: activePeers.length });
 				// Request the barrier only after the current host queue is idle so an
 				// active peer's retry can enqueue work without waiting behind itself.
 				await Promise.all(activePeers.map((peer) => this.requestPeerSaveBarrier(peer, barrierId)));
@@ -240,6 +274,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 			// regardless of which panel originated them.
 			await this.queue.catch(() => undefined);
 			await this.waitForPendingMutations();
+			this.log('save-barrier-settled', { source, barrierId: activePeers.length > 0 ? this.nextSaveBarrierId - 1 : undefined });
 		});
 
 		let tracked!: Promise<void>;
@@ -251,6 +286,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	}
 
 	private requestPeerSaveBarrier(peer: DocumentSyncPeer, barrierId: number): Promise<void> {
+		this.log('peer-save-barrier', { panelId: peer.panelId, panelActive: peer.active !== false, barrierId });
 		return new Promise((resolve) => {
 			let waiters = this.saveBarrierWaiters.get(peer);
 			if (!waiters) {
@@ -263,6 +299,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 				settled = true;
 				waiters!.delete(settle);
 				if (waiters!.size === 0) this.saveBarrierWaiters.delete(peer);
+				this.log('peer-save-barrier-settled', { panelId: peer.panelId, panelActive: peer.active !== false, barrierId });
 				resolve();
 			};
 			waiters.add(settle);
@@ -288,6 +325,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	private broadcastSavedSnapshot(): void {
 		const text = this.document.getText();
 		const version = this.document.version;
+		this.log('saved-snapshot-broadcast', { savedSnapshotVersion: version, ...snapshotFields(text) });
 		for (const peer of this.peers) peer.receiveSavedSnapshot(text, version);
 	}
 
@@ -295,6 +333,15 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		const index = this.pendingMutations.indexOf(mutation);
 		if (index >= 0) this.pendingMutations.splice(index, 1);
 		this.resolvePendingWaitersIfSettled();
+	}
+
+	private log(type: string, fields: Record<string, boolean | number | string | undefined> = {}): void {
+		this.trace.event(type, {
+			docVersion: this.document.version,
+			dirty: this.document.isDirty,
+			pendingMutations: this.pendingMutations.length,
+			...fields,
+		});
 	}
 
 	dispose(): void {
