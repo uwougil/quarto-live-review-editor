@@ -9,6 +9,7 @@ import { findMarkdownAnchorLine } from '../shared/headings';
 import { TokenizationGate } from './tokenizationGuard';
 import { DocumentSyncCoordinator, type DocumentSyncPeer } from './documentSyncCoordinator';
 import { createSyncPanelId, snapshotFields } from './syncTrace';
+import { hostOffsetFromCanonicalOffset, normalizeLineEndings } from '../shared/textCoordinates';
 import {
 	DOCUMENT_ZOOM_DEFAULT,
 	normalizeDocumentZoom,
@@ -298,7 +299,8 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 		const fail = (error: string) => {
 			this.post({ type: 'imageResult', requestId: message.requestId, ok: false, error });
 		};
-		if (message.baseVersion !== this.document.version || message.atPos < 0 || message.atPos > this.document.getText().length) {
+		const hostText = this.document.getText();
+		if (message.baseVersion !== this.document.version || message.atPos < 0 || message.atPos > normalizeLineEndings(hostText).length) {
 			this.sendResync();
 			fail('文档已变化，请重试图片插入。');
 			return;
@@ -351,7 +353,7 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 		// blank line separates the image into its own paragraph instead of
 		// running it straight onto the table's last line.
 		const insertText = message.needsOwnParagraph ? `\n\n![](assets/${fileName})` : `![](assets/${fileName})`;
-		const position = this.document.positionAt(message.atPos);
+		const position = this.document.positionAt(hostOffsetFromCanonicalOffset(hostText, message.atPos));
 		const edit = new vscode.WorkspaceEdit();
 		edit.insert(this.document.uri, position, insertText);
 		let applied = false;
@@ -375,7 +377,7 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 		const docDir = vscode.Uri.joinPath(this.document.uri, '..');
 		this.post({
 			type: 'init',
-			text: this.document.getText(),
+			text: normalizeLineEndings(this.document.getText()),
 			version: this.document.version,
 			css: this.getCss(),
 			codeTheme: pickCodeTheme(),
@@ -389,7 +391,7 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 	}
 
 	private sendResync(rejectedEditId?: number): void {
-		this.post({ type: 'resync', text: this.document.getText(), version: this.document.version, rejectedEditId });
+		this.post({ type: 'resync', text: normalizeLineEndings(this.document.getText()), version: this.document.version, rejectedEditId });
 	}
 
 	receiveDocumentChanges(changes: TextChange[], baseVersion: number, version: number): void {

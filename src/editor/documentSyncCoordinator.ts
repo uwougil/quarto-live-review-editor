@@ -1,5 +1,10 @@
 import * as vscode from 'vscode';
 import type { TextChange } from '../shared/messages';
+import {
+	canonicalOffsetFromHostOffset,
+	hostOffsetFromCanonicalOffset,
+	normalizeLineEndings,
+} from '../shared/textCoordinates';
 import { createSyncTrace, snapshotFields, type SyncTrace } from './syncTrace';
 
 export type SaveSource = 'webview' | 'native' | 'coordinator';
@@ -26,9 +31,20 @@ interface PendingMutation {
 }
 
 function changesKey(changes: readonly TextChange[]): string {
-	return JSON.stringify([...changes].sort((a, b) => (
+	return JSON.stringify(changes.map((change) => ({
+		...change,
+		insert: normalizeLineEndings(change.insert),
+	})).sort((a, b) => (
 		a.from - b.from || a.to - b.to || a.insert.localeCompare(b.insert)
 	)));
+}
+
+function peerIsActive(peer: DocumentSyncPeer): boolean {
+	try {
+		return peer.active !== false;
+	} catch {
+		return false;
+	}
 }
 
 /** The single mutation and change-dispatch boundary for one TextDocument URI. */
@@ -42,6 +58,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	private readonly pendingWaiters = new Set<() => void>();
 	private readonly saveBarrierWaiters = new Map<DocumentSyncPeer, Set<() => void>>();
 	private lastObservedVersion: number;
+	private lastObservedText: string;
 	private saveInProgress = 0;
 	private nextSaveBarrierId = 1;
 	private saveBarrierInFlight: Promise<void> | undefined;
@@ -52,6 +69,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		this.trace = createSyncTrace(document.uri.toString());
 		this.log('coordinator-created');
 		this.lastObservedVersion = document.version;
+		this.lastObservedText = document.getText();
 		this.changeListener = vscode.workspace.onDidChangeTextDocument((event) => {
 			if (event.document.uri.toString() === document.uri.toString()) this.handleDocumentChanged(event);
 		});
@@ -85,7 +103,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 
 	addPeer(peer: DocumentSyncPeer): void {
 		this.peers.add(peer);
-		this.log('peer-added', { panelId: peer.panelId, panelActive: peer.active !== false });
+		this.log('peer-added', { panelId: peer.panelId, panelActive: peerIsActive(peer) });
 	}
 	removePeer(peer: DocumentSyncPeer): void {
 		this.peers.delete(peer);
@@ -140,14 +158,17 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 				return;
 			}
 
+			const hostText = this.document.getText();
+			const canonicalLength = normalizeLineEndings(hostText).length;
 			const edit = new vscode.WorkspaceEdit();
 			for (const change of changes) {
-				if (change.from < 0 || change.to < change.from || change.to > this.document.getText().length) {
+				if (change.from < 0 || change.to < change.from || change.to > canonicalLength) {
 					peer.resync(editId);
 					return;
 				}
 				edit.replace(this.document.uri, new vscode.Range(
-					this.document.positionAt(change.from), this.document.positionAt(change.to),
+					this.document.positionAt(hostOffsetFromCanonicalOffset(hostText, change.from)),
+					this.document.positionAt(hostOffsetFromCanonicalOffset(hostText, change.to)),
 				), change.insert);
 			}
 
@@ -211,10 +232,11 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		if (event.contentChanges.length === 0) return;
 		const eventVersion = event.document.version;
 		const previousVersion = this.lastObservedVersion;
+		const previousText = this.lastObservedText;
 		const changes = event.contentChanges.map((change) => ({
-			from: change.rangeOffset,
-			to: change.rangeOffset + change.rangeLength,
-			insert: change.text,
+			from: canonicalOffsetFromHostOffset(previousText, change.rangeOffset),
+			to: canonicalOffsetFromHostOffset(previousText, change.rangeOffset + change.rangeLength),
+			insert: normalizeLineEndings(change.text),
 		}));
 		const eventKey = changesKey(changes);
 		const mutationIndex = this.pendingMutations.findIndex((pending) => (
@@ -245,7 +267,10 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 			0,
 			eventVersion > previousVersion ? Math.max(previousVersion, eventVersion - 1) : eventVersion - 1,
 		);
-		if (eventVersion > previousVersion) this.lastObservedVersion = eventVersion;
+		if (eventVersion > previousVersion) {
+			this.lastObservedVersion = eventVersion;
+			this.lastObservedText = event.document.getText();
+		}
 		// A webview-originated mutation is the save barrier: sibling panels keep
 		// their old snapshot until onDidSaveTextDocument. If its originating panel
 		// closed before a delayed change event arrived, remaining peers still need
@@ -265,7 +290,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 			// unsent ChangeSets; flushing them here makes Ctrl+S appear to roll back
 			// the active editor. Their local state remains intact and can be rebased/
 			// sent later, at which point the document becomes dirty again normally.
-			const activePeers = [...this.peers].filter((peer) => peer.active !== false);
+			const activePeers = [...this.peers].filter(peerIsActive);
 			this.log('save-barrier-peers', { source, activePeerCount: activePeers.length, pendingMutationCount: this.pendingMutations.length });
 			if (activePeers.length > 0) {
 				const barrierId = this.nextSaveBarrierId++;
@@ -290,7 +315,8 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	}
 
 	private requestPeerSaveBarrier(peer: DocumentSyncPeer, barrierId: number): Promise<void> {
-		this.log('peer-save-barrier', { panelId: peer.panelId, panelActive: peer.active !== false, barrierId });
+		const panelActive = peerIsActive(peer);
+		this.log('peer-save-barrier', { panelId: peer.panelId, panelActive, barrierId });
 		return new Promise((resolve) => {
 			let waiters = this.saveBarrierWaiters.get(peer);
 			if (!waiters) {
@@ -303,7 +329,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 				settled = true;
 				waiters!.delete(settle);
 				if (waiters!.size === 0) this.saveBarrierWaiters.delete(peer);
-				this.log('peer-save-barrier-settled', { panelId: peer.panelId, panelActive: peer.active !== false, barrierId });
+				this.log('peer-save-barrier-settled', { panelId: peer.panelId, panelActive, barrierId });
 				resolve();
 			};
 			waiters.add(settle);
@@ -327,7 +353,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	}
 
 	private broadcastSavedSnapshot(): void {
-		const text = this.document.getText();
+		const text = normalizeLineEndings(this.document.getText());
 		const version = this.document.version;
 		this.log('saved-snapshot-broadcast', {
 			savedSnapshotVersion: version,

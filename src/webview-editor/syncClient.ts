@@ -1,5 +1,6 @@
 import { ChangeSet, Text, type ChangeSpec } from '@codemirror/state';
 import type { TextChange } from '../shared/messages';
+import { normalizeLineEndings } from '../shared/textCoordinates';
 
 export interface OutboundEdit {
 	editId: number;
@@ -33,7 +34,7 @@ interface InFlightEdit {
 const MAX_SETTLED_EDIT_IDS = 32;
 
 function asText(value: string): Text {
-	return Text.of(value.split('\n'));
+	return Text.of(normalizeLineEndings(value).split('\n'));
 }
 
 function toSpecs(changes: TextChange[]): ChangeSpec[] {
@@ -49,6 +50,7 @@ function toTextChanges(changes: ChangeSet): TextChange[] {
 }
 
 function diffAsChangeSet(before: Text, after: string): ChangeSet {
+	after = normalizeLineEndings(after);
 	const oldValue = before.toString();
 	if (oldValue === after) return ChangeSet.of([], before.length);
 	let prefix = 0;
