@@ -180,6 +180,11 @@
           "type": "boolean",
           "default": false,
           "description": "输入中将主光标保持在编辑器视口约 40% 的位置；默认关闭，也可从侧边栏切换。"
+        },
+        "mdLivePreview.normalizeMathOnPaste": {
+          "type": "boolean",
+          "default": false,
+          "description": "粘贴时把 LaTeX 风格分隔符 \\(...\\) 和 \\[...\\] 规范为 Markdown 的 $...$ 和 $$...$$；默认关闭，也可从侧边栏切换。"
         }
       }
     }
@@ -198,6 +203,7 @@
     "test:browser:zoom": "node scripts/run-document-zoom-browser-test.mjs",
     "test:browser:math": "node scripts/run-math-browser-test.mjs",
     "test:integration": "npm run compile && node scripts/run-document-sync-integration.mjs",
+    "test:browser:paste-math": "node scripts/run-paste-normalization-browser-test.mjs",
     "test:watch": "vitest",
     "generate:long-fixtures": "node scripts/generate-long-fixtures.mjs",
     "watch:esbuild": "node esbuild.js --watch",

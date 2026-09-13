@@ -10,7 +10,8 @@ export interface MathRange {
 	tex: string;
 }
 
-function isEscaped(text: string, position: number): boolean {
+/** True when the character at `position` is preceded by an odd run of backslashes. */
+export function isEscaped(text: string, position: number): boolean {
 	let backslashes = 0;
 	for (let i = position - 1; i >= 0 && text[i] === '\\'; i--) backslashes++;
 	return backslashes % 2 === 1;
@@ -34,7 +35,12 @@ function ignoredMask(text: string): Uint8Array {
 	return ignored;
 }
 
-function codeSpanMask(text: string, ignored: Uint8Array): Uint8Array {
+/**
+ * Marks every inline-code span. `ignored` marks regions that are already
+ * protected (front matter, fenced code) and is never scanned for backticks.
+ * Exported so other source-safe scanners can reuse the same inline-code rules.
+ */
+export function codeSpanMask(text: string, ignored: Uint8Array): Uint8Array {
 	const code = new Uint8Array(text.length);
 	for (const line of scanSourceLines(text)) {
 		let i = line.from;

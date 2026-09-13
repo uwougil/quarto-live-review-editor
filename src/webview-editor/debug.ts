@@ -33,6 +33,7 @@ interface DebugWindow extends Window {
 	__mlpDebugLineBlock?: (pos: number) => { from: number; length: number; top: number; height: number } | null;
 	__mlpDebugSetSelection?: (anchor: number, head?: number) => void;
 	__mlpDebugEdit?: (from: number, to: number, insert: string) => void;
+	__mlpDebugDocText?: () => string | null;
 }
 
 let debugView: EditorView | undefined;
@@ -127,4 +128,5 @@ export function installDebugView(view: EditorView): void {
 		const length = debugView.state.doc.length;
 		debugView.dispatch({ changes: { from: Math.max(0, Math.min(from, length)), to: Math.max(0, Math.min(to, length)), insert } });
 	};
+	debugWindow.__mlpDebugDocText = () => (debugView ? debugView.state.doc.toString() : null);
 }
