@@ -223,6 +223,11 @@ function buildSettings(settings: SidebarSettings): HTMLElement {
 			post({ type: 'setSetting', key: 'typewriterMode', value: checked }),
 		),
 	);
+	section.appendChild(
+		buildCheckbox('Normalize math on paste（粘贴时把 \\(...\\) / \\[...\\] 规范为 $...$ / $$...$$）', settings.normalizeMathOnPaste, (checked) =>
+			post({ type: 'setSetting', key: 'normalizeMathOnPaste', value: checked }),
+		),
+	);
 
 	return section;
 }
