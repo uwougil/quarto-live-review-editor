@@ -90,5 +90,3 @@ jobs:
         run: npm run test:browser:zoom
       - name: KaTeX typography regression
         run: npm run test:browser:math
-      - name: Paste math normalization regression
-        run: npm run test:browser:paste-math

@@ -24,8 +24,7 @@ export class StyleManagerViewProvider implements vscode.WebviewViewProvider {
 				if (
 					e.affectsConfiguration(`${CONFIG_SECTION}.defaultEditor`) ||
 					e.affectsConfiguration(`${CONFIG_SECTION}.codeTheme`) ||
-					e.affectsConfiguration(`${CONFIG_SECTION}.typewriterMode`) ||
-					e.affectsConfiguration(`${CONFIG_SECTION}.normalizeMathOnPaste`)
+					e.affectsConfiguration(`${CONFIG_SECTION}.typewriterMode`)
 				) {
 					void this.pushStyles();
 				}
@@ -113,7 +112,6 @@ export class StyleManagerViewProvider implements vscode.WebviewViewProvider {
 			defaultEditor: config.get<string>('defaultEditor', 'prompt'),
 			codeTheme: config.get<string>('codeTheme', 'auto'),
 			typewriterMode: config.get<boolean>('typewriterMode', false),
-			normalizeMathOnPaste: config.get<boolean>('normalizeMathOnPaste', false),
 		};
 	}
 
