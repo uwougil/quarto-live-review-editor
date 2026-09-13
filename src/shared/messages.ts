@@ -8,6 +8,12 @@ export interface TextChange {
 	insert: string;
 }
 
+export interface SyncStateDiagnostic {
+	pending: boolean;
+	inFlightEditId?: number;
+	hostVersion: number;
+}
+
 export interface CodeToken {
 	from: number;
 	to: number;
@@ -35,6 +41,7 @@ export type HostToEditorMessage =
 		typewriterMode: boolean;
 		zoomPercent: number;
 		readingWidthPercent: ReadingWidthState;
+		syncTrace?: boolean;
 	}
 	| { type: 'externalUpdate'; changes: TextChange[]; baseVersion: number; version: number }
 	| { type: 'ackEdit'; editId: number; version: number }
@@ -57,10 +64,10 @@ export type HostToEditorMessage =
 
 export type EditorToHostMessage =
 	| { type: 'ready' }
-	| { type: 'edit'; editId: number; baseVersion: number; changes: TextChange[] }
-	| { type: 'requestResync' }
-	| { type: 'save' }
-	| { type: 'saveBarrierAck'; barrierId: number }
+	| { type: 'edit'; editId: number; baseVersion: number; changes: TextChange[]; syncState?: SyncStateDiagnostic }
+	| { type: 'requestResync'; syncState?: SyncStateDiagnostic }
+	| { type: 'save'; syncState?: SyncStateDiagnostic }
+	| { type: 'saveBarrierAck'; barrierId: number; syncState?: SyncStateDiagnostic }
 	| { type: 'undo' }
 	| { type: 'redo' }
 	| { type: 'openLink'; href: string }

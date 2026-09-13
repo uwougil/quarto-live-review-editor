@@ -8,6 +8,8 @@ import { documentDialectForPath } from '../quarto/dialect';
 import { findMarkdownAnchorLine } from '../shared/headings';
 import { TokenizationGate } from './tokenizationGuard';
 import { DocumentSyncCoordinator, type DocumentSyncPeer } from './documentSyncCoordinator';
+import { createSyncPanelId, snapshotFields } from './syncTrace';
+import { hostOffsetFromCanonicalOffset, normalizeLineEndings } from '../shared/textCoordinates';
 import {
 	DOCUMENT_ZOOM_DEFAULT,
 	normalizeDocumentZoom,
@@ -47,6 +49,7 @@ const REHIGHLIGHT_DEBOUNCE_MS = 150;
  * history extension is intentionally not used in the webview).
  */
 export class DocumentSyncSession implements DocumentSyncPeer {
+	readonly panelId = createSyncPanelId();
 	private disposables: vscode.Disposable[] = [];
 	private readonly pendingSaveBarriers = new Map<number, () => void>();
 	private webviewReady = false;
@@ -86,6 +89,16 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 	}
 
 	private handleMessage(message: EditorToHostMessage) {
+		const syncState = 'syncState' in message ? message.syncState : undefined;
+		this.log('webview-message', {
+			eventType: message.type,
+			editId: 'editId' in message ? message.editId : undefined,
+			baseVersion: 'baseVersion' in message ? message.baseVersion : undefined,
+			barrierId: 'barrierId' in message ? message.barrierId : undefined,
+			webviewPending: syncState?.pending,
+			webviewInFlight: syncState?.inFlightEditId,
+			webviewVersion: syncState?.hostVersion,
+		});
 		switch (message.type) {
 			case 'ready':
 				this.webviewReady = true;
@@ -286,7 +299,8 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 		const fail = (error: string) => {
 			this.post({ type: 'imageResult', requestId: message.requestId, ok: false, error });
 		};
-		if (message.baseVersion !== this.document.version || message.atPos < 0 || message.atPos > this.document.getText().length) {
+		const hostText = this.document.getText();
+		if (message.baseVersion !== this.document.version || message.atPos < 0 || message.atPos > normalizeLineEndings(hostText).length) {
 			this.sendResync();
 			fail('文档已变化，请重试图片插入。');
 			return;
@@ -339,7 +353,7 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 		// blank line separates the image into its own paragraph instead of
 		// running it straight onto the table's last line.
 		const insertText = message.needsOwnParagraph ? `\n\n![](assets/${fileName})` : `![](assets/${fileName})`;
-		const position = this.document.positionAt(message.atPos);
+		const position = this.document.positionAt(hostOffsetFromCanonicalOffset(hostText, message.atPos));
 		const edit = new vscode.WorkspaceEdit();
 		edit.insert(this.document.uri, position, insertText);
 		let applied = false;
@@ -363,7 +377,7 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 		const docDir = vscode.Uri.joinPath(this.document.uri, '..');
 		this.post({
 			type: 'init',
-			text: this.document.getText(),
+			text: normalizeLineEndings(this.document.getText()),
 			version: this.document.version,
 			css: this.getCss(),
 			codeTheme: pickCodeTheme(),
@@ -372,24 +386,31 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 			typewriterMode: this.getTypewriterMode(),
 			zoomPercent: normalizeDocumentZoom(this.getDocumentZoom()),
 			readingWidthPercent: normalizeReadingWidth(this.getReadingWidth()),
+			syncTrace: this.coordinator.traceEnabled,
 		});
 	}
 
 	private sendResync(rejectedEditId?: number): void {
-		this.post({ type: 'resync', text: this.document.getText(), version: this.document.version, rejectedEditId });
+		this.post({ type: 'resync', text: normalizeLineEndings(this.document.getText()), version: this.document.version, rejectedEditId });
 	}
 
 	receiveDocumentChanges(changes: TextChange[], baseVersion: number, version: number): void {
+		this.log('external-update', { baseVersion, version, changeCount: changes.length });
 		this.post({ type: 'externalUpdate', changes, baseVersion, version });
 		this.scheduleRehighlight();
 	}
 
 	receiveSavedSnapshot(text: string, version: number): void {
+		this.log('saved-snapshot-received', {
+			savedSnapshotVersion: version,
+			...(this.coordinator.traceEnabled ? snapshotFields(text) : {}),
+		});
 		this.post({ type: 'savedSnapshot', text, version });
 		this.scheduleRehighlight();
 	}
 
 	acknowledgeEdit(editId: number, version: number): void {
+		this.log('mutation-ack', { editId, version });
 		this.post({ type: 'ackEdit', editId, version });
 		this.scheduleRehighlight();
 	}
@@ -397,6 +418,7 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 	resync(rejectedEditId?: number): void { this.sendResync(rejectedEditId); }
 
 	requestSaveBarrier(barrierId: number): Promise<void> {
+		this.log('save-barrier-received', { barrierId });
 		return new Promise((resolve) => {
 			if (this.disposed || !this.webviewReady) {
 				resolve();
@@ -424,7 +446,18 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 		const resolve = this.pendingSaveBarriers.get(barrierId);
 		if (!resolve) return;
 		this.pendingSaveBarriers.delete(barrierId);
+		this.log('save-barrier-ack', { barrierId });
 		resolve();
+	}
+
+	private log(type: string, fields: Record<string, boolean | number | string | undefined> = {}): void {
+		this.coordinator.syncTrace.event(type, {
+			docVersion: this.document.version,
+			dirty: this.document.isDirty,
+			panelId: this.panelId,
+			panelActive: this.webviewPanel.active,
+			...fields,
+		});
 	}
 
 	private scheduleRehighlight(immediate = false) {
