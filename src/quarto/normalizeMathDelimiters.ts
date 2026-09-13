@@ -1,5 +1,11 @@
 import { findFenceSpans } from './fence';
+import { findFrontmatterRange } from './frontmatter';
 import { codeSpanMask, findMathRanges, isEscaped } from './math';
+
+export interface NormalizedMathPaste {
+	text: string;
+	displayRanges: Array<{ from: number; to: number }>;
+}
 
 /**
  * Mask covering fenced code blocks.
@@ -21,6 +27,41 @@ function mathMask(text: string): Uint8Array {
 	return mask;
 }
 
+/** Mask covering front matter and fenced code in a complete destination document. */
+function destinationIgnoredMask(text: string, fenced: Uint8Array): Uint8Array {
+	const ignored = new Uint8Array(text.length);
+	const frontmatter = findFrontmatterRange(text);
+	if (frontmatter) {
+		let to = frontmatter.to;
+		if (text[to] === '\r' && text[to + 1] === '\n') to += 2;
+		else if (text[to] === '\n' || text[to] === '\r') to++;
+		ignored.fill(1, frontmatter.from, Math.min(to, text.length));
+	}
+	for (let i = 0; i < fenced.length; i++) if (fenced[i]) ignored[i] = 1;
+	return ignored;
+}
+
+/**
+ * Returns whether a caret or replacement range is inside a source-protected
+ * destination context. A non-empty selection is rejected when it intersects
+ * any protected range, so one multi-selection paste cannot normalize only some
+ * of its targets.
+ */
+export function isProtectedPasteTarget(text: string, from: number, to = from): boolean {
+	const start = Math.max(0, Math.min(from, text.length));
+	const end = Math.max(start, Math.min(to, text.length));
+	const fenced = fenceMask(text);
+	const ignored = destinationIgnoredMask(text, fenced);
+	const code = codeSpanMask(text, ignored);
+	const math = mathMask(text);
+	const protectedAt = (position: number): boolean => Boolean(ignored[position] || code[position] || math[position]);
+	if (start === end) return protectedAt(start);
+	for (let position = start; position < end; position++) {
+		if (protectedAt(position)) return true;
+	}
+	return findMathRanges(text).some((range) => range.from < end && start < range.to);
+}
+
 /** True when `pos` falls inside a fenced code block (including an unclosed one). */
 export function isInsideFence(text: string, pos: number): boolean {
 	return findFenceSpans(text).some((span) => span.from <= pos && pos < span.to);
@@ -40,8 +81,8 @@ export function isInsideFence(text: string, pos: number): boolean {
  * being closed at the end of the fragment: a half-pasted formula is better left
  * as source than turned into a stray `$` that swallows unrelated text.
  */
-export function normalizeMathDelimiters(text: string): string {
-	if (!text.includes('\\(') && !text.includes('\\[')) return text;
+export function normalizeMathDelimitersWithMetadata(text: string): NormalizedMathPaste {
+	if (!text.includes('\\(') && !text.includes('\\[')) return { text, displayRanges: [] };
 
 	const fenced = fenceMask(text);
 	const code = codeSpanMask(text, fenced);
@@ -54,6 +95,7 @@ export function normalizeMathDelimiters(text: string): string {
 	const end = text.length - 1;
 	let out = '';
 	let copied = 0;
+	const displayRanges: Array<{ from: number; to: number }> = [];
 	for (let i = 0; i < end; i++) {
 		if (protectedAt(i) || text[i] !== '\\' || isEscaped(text, i)) continue;
 		const opener = text[i + 1];
@@ -72,15 +114,22 @@ export function normalizeMathDelimiters(text: string): string {
 
 		const inner = text.slice(i + 2, close);
 		out += text.slice(copied, i);
-		out += opener === '('
+		const replacement = opener === '('
 			? `$${inner}$`
 			// A block formula always occupies its own lines, even when it was
 			// pasted as `\[E\]`; only one line break is stripped on each side so
 			// deliberate blank lines inside the formula survive.
 			: `$$${lineBreak}${inner.replace(/^\r?\n/, '').replace(/\r?\n$/, '')}${lineBreak}$$`;
+		const replacementFrom = out.length;
+		out += replacement;
+		if (opener === '[') displayRanges.push({ from: replacementFrom, to: out.length });
 		copied = close + 2;
 		// Continue past the closing delimiter so replacements never overlap.
 		i = close + 1;
 	}
-	return out + text.slice(copied);
+	return { text: out + text.slice(copied), displayRanges };
+}
+
+export function normalizeMathDelimiters(text: string): string {
+	return normalizeMathDelimitersWithMetadata(text).text;
 }

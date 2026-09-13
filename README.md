@@ -14,7 +14,7 @@
 - 代码块语法高亮、图片粘贴、文档大纲和 CSS 主题管理。
 - 内置 CSS 主题：VS Code、Dark、GitHub Light、Claude 和 GitHub Dark；主题之间互相独立，可在侧栏切换。
 - 可选 Typewriter Mode：输入时将主光标保持在编辑器视口约 40% 的位置，鼠标滚动和显式导航仍由用户控制。
-- 可选 Normalize math on paste：粘贴时把 ChatGPT 常见的 LaTeX 分隔符 `\(...\)`、`\[...\]` 静默规范为 `$...$`、`$$...$$`，代码围栏、行内代码和既有公式保持原样。
+- 可选 Normalize math on paste：粘贴时把 ChatGPT 常见的 LaTeX 分隔符 `\(...\)`、`\[...\]` 静默规范为 `$...$`、`$$...$$`，代码围栏、行内代码、既有公式和受保护目标保持原样；显示数学分隔符会按目标上下文保持独占行。
 - ` ```{python} `、` ```{r} `、` ```{julia} ` 和 ` ```{.python} ` 使用统一的 Quarto/Pandoc 围栏解析入口，并交给现有 Shiki 高亮体系。
 - Live Preview 支持独立于 VS Code 全局缩放的文档字号和正文阅读区宽度缩放：聚焦预览后使用 `Ctrl/Cmd + 滚轮` 调整字号，使用 `Ctrl/Cmd + +`、`Ctrl/Cmd + -` 调整阅读区宽度，使用 `Ctrl/Cmd + 0` 重置字号、`Ctrl/Cmd + Shift + 0` 重置阅读区宽度。字号范围为 70%–200%；阅读区宽度为 60%–320% 的 10% 步进，320% 后可进入响应式 Full 状态；两者独立共享并持久化。
 
@@ -81,7 +81,7 @@ Quarto 特有的 callout、shortcode、citation、cross-reference 和代码单�
 | `mdLivePreview.enabledStyles` | 当前启用的 CSS 主题。 |
 | `mdLivePreview.defaultEditor` | `prompt` 使用普通编辑器，`livePreview` 默认使用实时预览，`default` 使用普通编辑器。 |
 | `mdLivePreview.typewriterMode` | 输入时将主光标保持在编辑器视口约 40% 的位置。默认关闭，也可从侧边栏切换。 |
-| `mdLivePreview.normalizeMathOnPaste` | 粘贴时把 `\(...\)` 与 `\[...\]` 规范为 `$...$` 与 `$$...$$`。默认关闭，也可从侧边栏切换。 |
+| `mdLivePreview.normalizeMathOnPaste` | 粘贴时把 `\(...\)` 与 `\[...\]` 规范为 `$...$` 与独占行的 `$$...$$`，并保护代码/既有数学目标。默认关闭，也可从侧边栏切换。 |
 
 ## 项目规范文档
 

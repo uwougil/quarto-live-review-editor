@@ -173,7 +173,8 @@ async function main() {
 		await paste(page, '\\[E = mc^2\\]');
 		await settle(page);
 		const block = await readState(page);
-		assert(insertedText(block) === '$$\nE = mc^2\n$$', 'display delimiters were not normalized', { inserted: insertedText(block) });
+		assert(insertedText(block) === '$$\nE = mc^2\n$$\n', 'display delimiters were not normalized', { inserted: insertedText(block) });
+		assert(block.doc === 'A\n$$\nE = mc^2\n$$\nB', 'display paste at a line start must isolate the closing delimiter', { doc: block.doc });
 		results.block = insertedText(block);
 
 		// 4. Enabled, but the caret sits inside an existing code fence: stay literal.
@@ -186,7 +187,77 @@ async function main() {
 		assert(insertedText(fenced) === '\\(x\\)', 'paste inside a fenced code block must stay literal', { inserted: insertedText(fenced) });
 		results.insideFence = insertedText(fenced);
 
-		// 5. Pastes without LaTeX delimiters keep CodeMirror's own behavior.
+		// 5. Every protected destination context keeps the pasted delimiters literal.
+		const protectedDestinations = [
+			{
+				name: 'inlineCode',
+				source: 'Use `HERE` as the input string.',
+				position: 'Use `HERE` as the input string.'.indexOf('HERE'),
+			},
+			{
+				name: 'inlineMath',
+				source: '$a HERE b$',
+				position: '$a HERE b$'.indexOf('HERE'),
+			},
+			{
+				name: 'displayMath',
+				source: '$$\na HERE b\n$$',
+				position: '$$\na HERE b\n$$'.indexOf('HERE'),
+			},
+		];
+		for (const destination of protectedDestinations) {
+			await init(page, destination.source, true);
+			await page.evaluate((pos) => window.__mlpDebugSetSelection?.(pos), destination.position);
+			await paste(page, '\\(x\\)');
+			await settle(page);
+			const protectedState = await readState(page);
+			assert(insertedText(protectedState) === '\\(x\\)', `${destination.name} destination must keep paste literal`, { inserted: insertedText(protectedState) });
+			assert(protectedState.doc === destination.source.slice(0, destination.position) + '\\(x\\)' + destination.source.slice(destination.position), `${destination.name} destination changed unexpectedly`, { doc: protectedState.doc });
+			results[destination.name] = insertedText(protectedState);
+		}
+
+		// 6. Display math pasted in prose must have standalone delimiter lines.
+		const midLineSource = 'foo HERE bar';
+		const midLinePosition = midLineSource.indexOf('HERE');
+		await init(page, midLineSource, true);
+		await page.evaluate((pos) => window.__mlpDebugSetSelection?.(pos, pos + 4), midLinePosition);
+		await paste(page, '\\[E = mc^2\\]');
+		await settle(page);
+		const midLine = await readState(page);
+		const expectedMidLine = 'foo \n$$\nE = mc^2\n$$\n bar';
+		assert(midLine.doc === expectedMidLine, 'mid-line display paste must isolate both $$ delimiters on their own lines', { doc: midLine.doc });
+		assert(insertedText(midLine) === '\n$$\nE = mc^2\n$$\n', 'display paste should include only the contextual boundary newlines in its edit payload', { inserted: insertedText(midLine) });
+		results.midLineDisplay = midLine.doc;
+
+		// 7. Existing line boundaries must not gain unnecessary blank lines.
+		const displayBoundaryCases = [
+			{ name: 'lineStart', source: 'bar', position: 0, expected: '$$\nE\n$$\nbar' },
+			{ name: 'lineEnd', source: 'foo ', position: 4, expected: 'foo \n$$\nE\n$$' },
+			{ name: 'emptyLine', source: 'before\n\nafter', position: 'before\n'.length, expected: 'before\n$$\nE\n$$\nafter' },
+		];
+		for (const testCase of displayBoundaryCases) {
+			await init(page, testCase.source, true);
+			await page.evaluate((pos) => window.__mlpDebugSetSelection?.(pos), testCase.position);
+			await paste(page, '\\[E\\]');
+			await settle(page);
+			const boundary = await readState(page);
+			assert(editCount(boundary) === 1, `${testCase.name} display paste must produce exactly one edit`, { edits: boundary.messages.filter((message) => message.type === 'edit') });
+			assert(boundary.doc === testCase.expected, `${testCase.name} display paste has incorrect line boundaries`, { doc: boundary.doc });
+			results[testCase.name] = boundary.doc;
+		}
+
+		// 8. Replacing a prose selection uses the same source-safe placement rule.
+		const replacementSource = 'foo HERE bar';
+		await init(page, replacementSource, true);
+		await page.evaluate((pos) => window.__mlpDebugSetSelection?.(pos, pos + 4), replacementSource.indexOf('HERE'));
+		await paste(page, '\\[E\\]');
+		await settle(page);
+		const replacement = await readState(page);
+		assert(editCount(replacement) === 1, 'display replacement paste must produce exactly one edit', { edits: replacement.messages.filter((message) => message.type === 'edit') });
+		assert(replacement.doc === 'foo \n$$\nE\n$$\n bar', 'mid-line replacement display paste must isolate delimiters', { doc: replacement.doc });
+		results.replacementDisplay = replacement.doc;
+
+		// 9. Pastes without LaTeX delimiters keep CodeMirror's own behavior.
 		await init(page, 'A\nB', true);
 		await page.evaluate(() => window.__mlpDebugSetSelection?.(2));
 		await paste(page, 'plain $x$ text');

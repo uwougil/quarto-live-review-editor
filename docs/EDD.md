@@ -100,13 +100,13 @@ Webview Editor
 
 ### 3.3 粘贴时数学分隔符规范化
 
-- 纯逻辑位于 `src/quarto/normalizeMathDelimiters.ts`，复用 `fence.ts` 的围栏扫描与 `math.ts` 的行内代码/既有数学掩码，不依赖 DOM，可在 Node 环境下由 Vitest 覆盖。
-- webview 通过 `EditorView.domEventHandlers` 的 `paste` 处理器拦截并改写内容，改写与内置粘贴同属一次 `changeByRange` 派发：粘贴和规范化是同一个事务，宿主只收到一条 `edit`，一次 Undo 即可整体撤销。
+- 纯逻辑位于 `src/quarto/normalizeMathDelimiters.ts`，复用 `fence.ts` 的围栏扫描与 `math.ts` 的行内代码/既有数学掩码，不依赖 DOM，可在 Node 环境下由 Vitest 覆盖；完整文档目标还保护 front matter。
+- webview 通过 `EditorView.domEventHandlers` 的 `paste` 处理器拦截并改写内容，改写与内置粘贴同属一次 `changeByRange` 派发：粘贴和规范化是同一个事务，宿主只收到一条 `edit`。这验证了 Issue #53 当前可独立证明的事务边界；Live Preview 全链路 Ctrl+Z/Undo 仍由 Issue #34 负责。
 - 只改写 `\(...\)` 与 `\[...\]` 两处分隔符，公式内部的空格、换行和 LaTeX 环境逐字保留；块公式统一为独占行的 `$$` 形式。
-- 未命中（开关关闭、剪贴板不含 LaTeX 分隔符、改写后文本不变）时返回 `false`，完整交回 CodeMirror 内置粘贴，保留整行复制与「每选区一行」等既有语义。
-- fenced code block、行内代码和既有 `$...$` / `$$...$$` 范围内的分隔符不改写；光标位于文档中已有围栏内时同样不改写，该判断基于源文本围栏扫描，不依赖语法树是否已解析到该位置。
+- 未命中（开关关闭、剪贴板不含 LaTeX 分隔符、改写后文本不变或目标处于受保护范围）时返回 `false`，完整交回 CodeMirror 内置粘贴，保留整行复制与「每选区一行」等既有语义。
+- fenced code block、行内代码、既有 `$...$` / `$$...$$` 范围和 front matter 内的目标不改写；目标判断覆盖整个替换选区，并基于源文本扫描，不依赖语法树是否已解析到该位置。多选区中任一目标不安全时整次粘贴走默认路径，避免部分规范化。
 - 找不到配对闭合符的开头分隔符按原样保留，避免生成孤立 `$` 把后续无关文本吞进数学范围。
-- 改写走 `state.changeByRange`，因此每个选区都会得到同一份规范化文本。当前编辑器未启用 `EditorState.allowMultipleSelections`，CodeMirror 会把多选区折叠为单光标；改用多选区时该路径无需修改。
+- 改写走 `state.changeByRange`，每个安全选区根据其原始目标行边界生成插入文本，并作为同一事务派发。显示数学粘贴在目标文档行中间时，paste/edit 层只补齐使两个 `$$` 分隔符独占行所需的换行；行首、行尾、空行和已有换行相邻时不补重复空行，并沿用目标文档的 CRLF/LF 语义。当前编辑器未启用 `EditorState.allowMultipleSelections`，CodeMirror 会把多选区折叠为单光标；保护逻辑仍对未来多选区保持整次回退语义。
 
 ## 4. 装饰与源码回退规则
 
@@ -170,7 +170,7 @@ npm run test:browser:math
 npm run test:browser:paste-math
 ```
 
-CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`VS Code Extension Host Integration` job 使用真实 VS Code Extension Host、TextDocument、WorkspaceEdit 和保存事件执行同步契约；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行八个浏览器命令。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。
+CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`VS Code Extension Host Integration` job 使用真实 VS Code Extension Host、TextDocument、WorkspaceEdit 和保存事件执行同步契约；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行十个浏览器命令（含 `test:browser:paste-math`）。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。
 
 ## 8. Issue 与 PR 交付契约
 

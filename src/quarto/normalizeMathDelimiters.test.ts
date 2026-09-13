@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isInsideFence, normalizeMathDelimiters } from './normalizeMathDelimiters';
+import { isInsideFence, isProtectedPasteTarget, normalizeMathDelimiters } from './normalizeMathDelimiters';
 
 describe('normalizeMathDelimiters — inline math', () => {
 	it('converts \\(...\\) to $...$', () => {
@@ -108,5 +108,38 @@ describe('isInsideFence', () => {
 		const text = '```\ncode';
 		expect(isInsideFence(text, text.indexOf('code'))).toBe(true);
 		expect(isInsideFence(text, text.length - 1)).toBe(true);
+	});
+});
+
+describe('isProtectedPasteTarget', () => {
+	it('protects inline code destinations', () => {
+		const text = 'Use `HERE` as the input string.';
+		expect(isProtectedPasteTarget(text, text.indexOf('HERE'))).toBe(true);
+		expect(isProtectedPasteTarget(text, text.indexOf('input'))).toBe(false);
+	});
+
+	it('protects existing inline and display math destinations', () => {
+		const inline = '$a HERE b$';
+		const display = '$$\na HERE b\n$$';
+		expect(isProtectedPasteTarget(inline, inline.indexOf('HERE'))).toBe(true);
+		expect(isProtectedPasteTarget(display, display.indexOf('HERE'))).toBe(true);
+	});
+
+	it('protects fenced-code destinations and leaves ordinary prose available', () => {
+		const fenced = ['before', '```', 'code HERE', '```', 'after'].join('\n');
+		expect(isProtectedPasteTarget(fenced, fenced.indexOf('HERE'))).toBe(true);
+		expect(isProtectedPasteTarget('ordinary HERE prose', 9)).toBe(false);
+	});
+
+	it('protects front matter destinations in a complete document', () => {
+		const text = ['---', 'title: HERE', '---', 'body'].join('\n');
+		expect(isProtectedPasteTarget(text, text.indexOf('HERE'))).toBe(true);
+	});
+
+	it('rejects a replacement selection that intersects protected math', () => {
+		const text = 'prefix $a HERE b$ suffix';
+		const from = text.indexOf('HERE') - 2;
+		expect(isProtectedPasteTarget(text, from, from + 8)).toBe(true);
+		expect(isProtectedPasteTarget('ordinary HERE prose', 9, 13)).toBe(false);
 	});
 });
