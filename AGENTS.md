@@ -7,6 +7,20 @@
 - 执行意图：[`docs/milestones/`](docs/milestones/)
 - `specs/frontmatter-preview/` 和 `doc/` 保存历史设计草稿，仅用于追溯；新的产品或工程决策应更新 `docs/` 中的 canonical 文档。
 
+## Agent startup preflight
+
+每个新任务开始时，在修改仓库之前先完成一次简短自检。该规则适用于功能开发、bug 修复、重构、review、CI 修复、发布工作、会改变仓库工作流的文档修改，以及额外 worktree 中的任务。
+
+- 先完整读取当前作用域内的 `AGENTS.md`、任务说明，以及关联的 Issue / PR；确认本次 scope、non-goals 和验收边界。
+- 检查当前 Agent 环境实际提供的 coding capabilities，包括 skills、tools、MCP/plugins 与仓库脚本。遵循 **inspect broadly, load narrowly**：先盘点能力，再只加载/使用仓库基线能力与当前任务相关的能力，不为完成 checklist 而加载无关 skill。
+- 每次都确认 Git / repository workflow、实现或编辑、测试与回归、review、CI/GitHub 状态诊断这些基线能力是否足以完成当前任务；浏览器交互、VS Code Extension Host、文档维护、打包/发布等能力按任务需要启用。
+- 开始修改前检查 current branch、预期 base branch、worktree、dirty/uncommitted state，以及关联 Issue / PR 是否与当前 scope 一致；保留无关的未提交工作。
+- 如果完成任务所必需的 capability 缺失、不可用或与当前环境不兼容，在修改代码之前停止并明确报告 blocker；不要静默降级成明显不满足仓库要求的实现。
+- 已经可用的 capability 不需要再要求用户重复确认。正常情况下 preflight 在内部完成；除非发现 blocker，不要把启动 checklist 变成长篇用户输出。
+- `AGENTS.md` 是仓库级 canonical Agent policy。若某个 Agent 平台需要自己的入口文件才能发现仓库指令，该入口只应指向本文件，不复制一份会漂移的完整政策。
+
+**Do not begin implementation until the startup preflight is complete.**
+
 ## Issue 与 PR 交付规范
 
 - GitHub Issue 是后续工作的持久 Work Contract；功能、缺陷和会改变工程行为的文档工作，正常情况下都应先有对应 Issue。
