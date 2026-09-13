@@ -69,7 +69,11 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		});
 		this.didSaveListener = vscode.workspace.onDidSaveTextDocument((savedDocument) => {
 			if (savedDocument.uri.toString() !== document.uri.toString()) return;
-			this.log('didSave', { source: this.saveInProgress > 0 ? 'coordinator' : 'native', ...snapshotFields(this.document.getText()), savedSnapshotVersion: this.document.version });
+			this.log('didSave', {
+				source: this.saveInProgress > 0 ? 'coordinator' : 'native',
+				...(this.trace.enabled ? snapshotFields(this.document.getText()) : {}),
+				savedSnapshotVersion: this.document.version,
+			});
 			this.broadcastSavedSnapshot();
 		});
 	}
@@ -325,7 +329,10 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	private broadcastSavedSnapshot(): void {
 		const text = this.document.getText();
 		const version = this.document.version;
-		this.log('saved-snapshot-broadcast', { savedSnapshotVersion: version, ...snapshotFields(text) });
+		this.log('saved-snapshot-broadcast', {
+			savedSnapshotVersion: version,
+			...(this.trace.enabled ? snapshotFields(text) : {}),
+		});
 		for (const peer of this.peers) peer.receiveSavedSnapshot(text, version);
 	}
 

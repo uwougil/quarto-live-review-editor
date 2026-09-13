@@ -30,6 +30,8 @@ interface InFlightEdit {
 	needsRetry: boolean;
 }
 
+const MAX_SETTLED_EDIT_IDS = 32;
+
 function asText(value: string): Text {
 	return Text.of(value.split('\n'));
 }
@@ -59,6 +61,36 @@ function diffAsChangeSet(before: Text, after: string): ChangeSet {
 		newSuffix--;
 	}
 	return ChangeSet.of({ from: prefix, to: oldSuffix, insert: after.slice(prefix, newSuffix) }, before.length);
+}
+
+interface ChangeRange {
+	from: number;
+	to: number;
+}
+
+function outputRanges(changes: ChangeSet): ChangeRange[] {
+	const ranges: ChangeRange[] = [];
+	changes.iterChanges((_fromA, _toA, fromB, toB) => ranges.push({ from: fromB, to: toB }));
+	return ranges;
+}
+
+function touchesOutputRange(changes: ChangeSet, ranges: ChangeRange[]): boolean {
+	let touches = false;
+	changes.iterChanges((fromA, toA) => {
+		if (touches) return;
+		touches = ranges.some(({ from, to }) => {
+			if (from === to) return fromA === from;
+			if (fromA === toA) return fromA > from && fromA < to;
+			return fromA < to && toA > from;
+		});
+	});
+	return touches;
+}
+
+function snapshotPreservesChanges(base: Text, local: ChangeSet, snapshot: string): { changes: ChangeSet; preservesLocal: boolean } {
+	const localDocument = local.apply(base);
+	const changes = diffAsChangeSet(localDocument, snapshot);
+	return { changes, preservesLocal: !touchesOutputRange(changes, outputRanges(local)) };
 }
 
 /**
@@ -155,6 +187,15 @@ export class EditorSyncClient {
 		return { resyncRequired: false };
 	}
 
+	private rememberSettledEdit(editId: number): void {
+		this.settledEditIds.add(editId);
+		while (this.settledEditIds.size > MAX_SETTLED_EDIT_IDS) {
+			const oldest = this.settledEditIds.values().next().value;
+			if (oldest === undefined) return;
+			this.settledEditIds.delete(oldest);
+		}
+	}
+
 	receiveExternal(message: ExternalUpdateInput): SyncTransition {
 		const local = this.outstandingChanges();
 		const currentLength = local?.newLength ?? this.confirmed.length;
@@ -199,30 +240,35 @@ export class EditorSyncClient {
 
 		const local = this.outstandingChanges();
 		if (local) {
-			// The snapshot is canonical, but it may already contain the local edit
-			// whose ack is still in flight. Feeding that snapshot through the normal
-			// resync path would diff `confirmed -> snapshot` and then map the same
-			// local ChangeSet over it, inserting the edit twice. Exact text equality
-			// proves that every outstanding local change is already represented.
-			const optimistic = local.apply(this.confirmed);
-			if (optimistic.toString() === message.text) {
-				if (this.inFlight) this.settledEditIds.add(this.inFlight.editId);
+			// Rebase the snapshot from the optimistic local document. If its
+			// operational delta does not touch any output range produced by the
+			// outstanding local ChangeSet, the snapshot has preserved those edits
+			// and only advances canonical state around them.
+			const allLocal = snapshotPreservesChanges(this.confirmed, local, message.text);
+			if (allLocal.preservesLocal) {
+				if (this.inFlight) this.rememberSettledEdit(this.inFlight.editId);
 				this.confirmed = asText(message.text);
 				this.version = message.version;
 				this.inFlight = null;
 				this.pending = null;
-				return { viewChanges: ChangeSet.of([], optimistic.length), resyncRequired: false };
+				return { viewChanges: allLocal.changes, resyncRequired: false };
 			}
 
 			// The host may have saved the in-flight prefix while a later local edit
 			// is still pending in CodeMirror. Confirm only that prefix and leave the
 			// later ChangeSet relative to the new canonical text for the next retry.
-			if (this.inFlight && this.inFlight.changes.apply(this.confirmed).toString() === message.text) {
-				this.settledEditIds.add(this.inFlight.editId);
+			if (this.inFlight) {
+				const inFlightSnapshot = snapshotPreservesChanges(this.confirmed, this.inFlight.changes, message.text);
+				if (!inFlightSnapshot.preservesLocal) return this.receiveResync(message);
+				const pending = this.pending;
+				const viewChanges = pending ? inFlightSnapshot.changes.map(pending, true) : inFlightSnapshot.changes;
+				const rebased = pending ? pending.map(inFlightSnapshot.changes) : null;
+				this.rememberSettledEdit(this.inFlight.editId);
 				this.confirmed = asText(message.text);
 				this.version = message.version;
 				this.inFlight = null;
-				return { viewChanges: ChangeSet.of([], optimistic.length), resyncRequired: false };
+				this.pending = rebased && !rebased.empty ? rebased : null;
+				return { viewChanges, resyncRequired: false };
 			}
 		}
 		return this.receiveResync(message);

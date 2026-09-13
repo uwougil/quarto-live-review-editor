@@ -69,4 +69,22 @@ describe('EditorSyncClient save races', () => {
 		expect(viewText).toBe('abcH');
 		expect(hidden.acknowledge(edit.editId, 2).resyncRequired).toBe(false);
 	});
+
+	it('retires an in-flight edit when a saved snapshot also contains an unrelated remote edit', () => {
+		const hidden = new EditorSyncClient('abc', 1);
+		hidden.recordLocal(ChangeSet.of({ from: 3, insert: 'H' }, 3));
+		const edit = hidden.takeNextEdit()!;
+		let viewText = 'abcH';
+
+		// H reached the host, then an unrelated active/host edit A was applied
+		// before the canonical snapshot arrived. The ack for H is still delayed.
+		const transition = hidden.receiveSavedSnapshot({ text: 'abcHA', version: 3 });
+		viewText = apply(viewText, transition.viewChanges);
+
+		expect(transition.resyncRequired).toBe(false);
+		expect(viewText).toBe('abcHA');
+		expect(hidden.hasOutstandingEdits).toBe(false);
+		expect(hidden.hostVersion).toBe(3);
+		expect(hidden.acknowledge(edit.editId, 3).resyncRequired).toBe(false);
+	});
 });

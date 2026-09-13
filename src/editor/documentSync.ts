@@ -399,7 +399,10 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 	}
 
 	receiveSavedSnapshot(text: string, version: number): void {
-		this.log('saved-snapshot-received', { savedSnapshotVersion: version, ...snapshotFields(text) });
+		this.log('saved-snapshot-received', {
+			savedSnapshotVersion: version,
+			...(this.coordinator.traceEnabled ? snapshotFields(text) : {}),
+		});
 		this.post({ type: 'savedSnapshot', text, version });
 		this.scheduleRehighlight();
 	}
