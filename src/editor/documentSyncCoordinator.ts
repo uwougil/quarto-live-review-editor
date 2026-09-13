@@ -1,7 +1,18 @@
 import * as vscode from 'vscode';
 import type { TextChange } from '../shared/messages';
+import {
+	canonicalOffsetFromHostOffset,
+	hostOffsetFromCanonicalOffset,
+	normalizeLineEndings,
+} from '../shared/textCoordinates';
+import { createSyncTrace, snapshotFields, type SyncTrace } from './syncTrace';
+
+export type SaveSource = 'webview' | 'native' | 'coordinator';
 
 export interface DocumentSyncPeer {
+	/** Whether this peer is the currently active editor. Undefined keeps test/legacy peers active. */
+	readonly active?: boolean;
+	readonly panelId?: string;
 	receiveDocumentChanges(changes: TextChange[], baseVersion: number, version: number): void;
 	receiveSavedSnapshot(text: string, version: number): void;
 	acknowledgeEdit(editId: number, version: number): void;
@@ -20,9 +31,27 @@ interface PendingMutation {
 }
 
 function changesKey(changes: readonly TextChange[]): string {
-	return JSON.stringify([...changes].sort((a, b) => (
+	return JSON.stringify(changes.map((change) => ({
+		...change,
+		insert: normalizeLineEndings(change.insert),
+	})).sort((a, b) => (
 		a.from - b.from || a.to - b.to || a.insert.localeCompare(b.insert)
 	)));
+}
+
+function peerIsActive(peer: DocumentSyncPeer): boolean {
+	try {
+		return peer.active !== false;
+	} catch {
+		return false;
+	}
+}
+
+function applyHostChanges(text: string, changes: readonly vscode.TextDocumentContentChangeEvent[]): string {
+	for (const change of [...changes].sort((a, b) => b.rangeOffset - a.rangeOffset)) {
+		text = text.slice(0, change.rangeOffset) + change.text + text.slice(change.rangeOffset + change.rangeLength);
+	}
+	return text;
 }
 
 /** The single mutation and change-dispatch boundary for one TextDocument URI. */
@@ -36,28 +65,58 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	private readonly pendingWaiters = new Set<() => void>();
 	private readonly saveBarrierWaiters = new Map<DocumentSyncPeer, Set<() => void>>();
 	private lastObservedVersion: number;
+	private lastObservedText: string;
+	private readonly hostTextByVersion = new Map<number, string>();
 	private saveInProgress = 0;
 	private nextSaveBarrierId = 1;
+	private saveBarrierInFlight: Promise<void> | undefined;
 	private disposed = false;
+	private readonly trace: SyncTrace;
 
 	constructor(private readonly document: vscode.TextDocument) {
+		this.trace = createSyncTrace(document.uri.toString());
+		this.log('coordinator-created');
 		this.lastObservedVersion = document.version;
+		this.lastObservedText = document.getText();
+		this.hostTextByVersion.set(document.version, this.lastObservedText);
 		this.changeListener = vscode.workspace.onDidChangeTextDocument((event) => {
 			if (event.document.uri.toString() === document.uri.toString()) this.handleDocumentChanged(event);
 		});
 		this.willSaveListener = vscode.workspace.onWillSaveTextDocument((event) => {
-			if (event.document.uri.toString() !== document.uri.toString() || this.saveInProgress > 0) return;
-			event.waitUntil(this.waitForSaveBarrier());
+			if (event.document.uri.toString() !== document.uri.toString()) return;
+			if (this.saveInProgress > 0) {
+				this.log('willSave-skipped', { source: 'native', reason: 'coordinator-save-in-progress' });
+				return;
+			}
+			// Native/Workbench saves share the same in-flight barrier as a webview
+			// Mod-S request. Cursor can route one physical Ctrl+S through both paths;
+			// coalescing here keeps that from doubling the peer round-trip.
+			this.log('willSave', { source: 'native' });
+			event.waitUntil(this.waitForSaveBarrier('native'));
 		});
 		this.didSaveListener = vscode.workspace.onDidSaveTextDocument((savedDocument) => {
 			if (savedDocument.uri.toString() !== document.uri.toString()) return;
+			this.log('didSave', {
+				source: this.saveInProgress > 0 ? 'coordinator' : 'native',
+				...(this.trace.enabled ? snapshotFields(this.document.getText()) : {}),
+				savedSnapshotVersion: this.document.version,
+			});
 			this.broadcastSavedSnapshot();
 		});
 	}
 
-	addPeer(peer: DocumentSyncPeer): void { this.peers.add(peer); }
+	get traceEnabled(): boolean { return this.trace.enabled; }
+	get traceId(): number { return this.trace.id; }
+	get syncTrace(): SyncTrace { return this.trace; }
+	get pendingMutationCount(): number { return this.pendingMutations.length; }
+
+	addPeer(peer: DocumentSyncPeer): void {
+		this.peers.add(peer);
+		this.log('peer-added', { panelId: peer.panelId, panelActive: peerIsActive(peer) });
+	}
 	removePeer(peer: DocumentSyncPeer): void {
 		this.peers.delete(peer);
+		this.log('peer-removed', { panelId: peer.panelId });
 		const waiters = this.saveBarrierWaiters.get(peer);
 		if (waiters) {
 			for (const resolve of waiters) resolve();
@@ -76,10 +135,16 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		await this.waitForPendingMutations();
 	}
 
-	/** Save after all edits already received from any webview have settled. */
+	/** Save after edits already accepted by the host and the active peer have settled. */
 	requestSave(): Promise<void> {
-		return this.waitForSaveBarrier().then(() => this.enqueue(async () => {
+		this.log('save-request', { source: 'webview' });
+		return this.waitForSaveBarrier('webview').then(() => this.enqueue(async () => {
 			await this.waitForPendingMutations();
+			// If a concurrent native/Workbench save already completed while this
+			// request was waiting at the shared barrier, there is nothing left to
+			// write. This also avoids a second onDidSave/savedSnapshot cycle.
+			if (this.document.isDirty === false) return;
+			this.log('document-save', { source: 'coordinator' });
 			this.saveInProgress++;
 			try {
 				await this.document.save();
@@ -90,6 +155,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	}
 
 	enqueueEdit(peer: DocumentSyncPeer, changes: TextChange[], baseVersion: number, editId: number): Promise<void> {
+		this.log('enqueue-mutation', { panelId: peer.panelId, panelActive: peer.active !== false, editId, baseVersion });
 		return this.enqueue(async () => {
 			if (!this.peers.has(peer)) return;
 			if (baseVersion !== this.document.version) {
@@ -101,14 +167,17 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 				return;
 			}
 
+			const hostText = this.document.getText();
+			const canonicalLength = normalizeLineEndings(hostText).length;
 			const edit = new vscode.WorkspaceEdit();
 			for (const change of changes) {
-				if (change.from < 0 || change.to < change.from || change.to > this.document.getText().length) {
+				if (change.from < 0 || change.to < change.from || change.to > canonicalLength) {
 					peer.resync(editId);
 					return;
 				}
 				edit.replace(this.document.uri, new vscode.Range(
-					this.document.positionAt(change.from), this.document.positionAt(change.to),
+					this.document.positionAt(hostOffsetFromCanonicalOffset(hostText, change.from)),
+					this.document.positionAt(hostOffsetFromCanonicalOffset(hostText, change.to)),
 				), change.insert);
 			}
 
@@ -126,6 +195,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 			let applyResult: Thenable<boolean>;
 			try {
 				applyResult = vscode.workspace.applyEdit(edit);
+				this.rememberCurrentDocumentText(pending.expectedVersion);
 			} catch {
 				this.forgetPending(pending);
 				if (this.peers.has(peer)) peer.resync(editId);
@@ -134,6 +204,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 			let applied = false;
 			try {
 				applied = await applyResult;
+				this.rememberCurrentDocumentText(pending.expectedVersion);
 			} catch {
 				applied = false;
 			}
@@ -172,11 +243,15 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		if (event.contentChanges.length === 0) return;
 		const eventVersion = event.document.version;
 		const previousVersion = this.lastObservedVersion;
+		const previousText = this.hostTextByVersion.get(eventVersion - 1) ?? this.lastObservedText;
 		const changes = event.contentChanges.map((change) => ({
-			from: change.rangeOffset,
-			to: change.rangeOffset + change.rangeLength,
-			insert: change.text,
+			from: canonicalOffsetFromHostOffset(previousText, change.rangeOffset),
+			to: canonicalOffsetFromHostOffset(previousText, change.rangeOffset + change.rangeLength),
+			insert: normalizeLineEndings(change.text),
 		}));
+		const eventText = eventVersion === this.document.version
+			? this.document.getText()
+			: applyHostChanges(previousText, event.contentChanges);
 		const eventKey = changesKey(changes);
 		const mutationIndex = this.pendingMutations.findIndex((pending) => (
 			pending.expectedVersion === eventVersion && pending.changesKey === eventKey
@@ -189,6 +264,12 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 			}
 			this.resolvePendingWaitersIfSettled();
 		}
+		this.log('document-change', {
+			matchedEditId: mutation?.editId,
+			baseVersion: mutation?.baseVersion ?? Math.max(0, eventVersion - 1),
+			version: eventVersion,
+			pendingMutationCount: this.pendingMutations.length,
+		});
 
 		// A delayed event can arrive after a newer event has already been observed.
 		// Never move an unmatched mutation's expected version: its resulting version
@@ -200,7 +281,11 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 			0,
 			eventVersion > previousVersion ? Math.max(previousVersion, eventVersion - 1) : eventVersion - 1,
 		);
-		if (eventVersion > previousVersion) this.lastObservedVersion = eventVersion;
+		if (eventVersion > previousVersion) {
+			this.lastObservedVersion = eventVersion;
+			this.lastObservedText = eventText;
+		}
+		this.rememberHostText(eventVersion, eventText);
 		// A webview-originated mutation is the save barrier: sibling panels keep
 		// their old snapshot until onDidSaveTextDocument. If its originating panel
 		// closed before a delayed change event arrived, remaining peers still need
@@ -210,25 +295,61 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		}
 	}
 
-	private waitForSaveBarrier(): Promise<void> {
-		return this.queue.catch(() => undefined).then(async () => {
-			const peers = [...this.peers];
-			if (peers.length > 0) {
-				const barrierId = this.nextSaveBarrierId++;
-				// Ask every live panel to drain its local ChangeSets. The request is
-				// made only after the current host queue is idle so peer retries can
-				// enqueue work without waiting behind this barrier itself.
-				await Promise.all(peers.map((peer) => this.requestPeerSaveBarrier(peer, barrierId)));
+	private rememberCurrentDocumentText(version: number): void {
+		if (this.document.version === version) this.rememberHostText(version, this.document.getText());
+	}
+
+	private rememberHostText(version: number, text: string): void {
+		this.hostTextByVersion.set(version, text);
+		const retainedVersions = new Set<number>([
+			this.lastObservedVersion,
+			...this.pendingMutations.flatMap((pending) => [pending.baseVersion, pending.expectedVersion]),
+		]);
+		const historyFloor = Math.max(0, this.lastObservedVersion - 32);
+		for (const knownVersion of this.hostTextByVersion.keys()) {
+			if (knownVersion < historyFloor && !retainedVersions.has(knownVersion)) {
+				this.hostTextByVersion.delete(knownVersion);
 			}
-			// A peer acknowledges only after its final edit has been accepted by
-			// the host. Still wait for the coordinator queue and delayed VS Code
-			// change events before allowing the native save to write.
+		}
+	}
+
+	private waitForSaveBarrier(source: SaveSource): Promise<void> {
+		if (this.saveBarrierInFlight) return this.saveBarrierInFlight;
+		this.log('save-barrier-start', { source });
+
+		const barrier = this.queue.catch(() => undefined).then(async () => {
+			// Only the active custom editor is allowed to flush webview-local input
+			// into this save. Hidden retained webviews can legitimately contain stale
+			// unsent ChangeSets; flushing them here makes Ctrl+S appear to roll back
+			// the active editor. Their local state remains intact and can be rebased/
+			// sent later, at which point the document becomes dirty again normally.
+			const activePeers = [...this.peers].filter(peerIsActive);
+			this.log('save-barrier-peers', { source, activePeerCount: activePeers.length, pendingMutationCount: this.pendingMutations.length });
+			if (activePeers.length > 0) {
+				const barrierId = this.nextSaveBarrierId++;
+				this.log('save-barrier-request', { source, barrierId, activePeerCount: activePeers.length });
+				// Request the barrier only after the current host queue is idle so an
+				// active peer's retry can enqueue work without waiting behind itself.
+				await Promise.all(activePeers.map((peer) => this.requestPeerSaveBarrier(peer, barrierId)));
+			}
+			// Edits already accepted by the host still belong to the canonical save,
+			// regardless of which panel originated them.
 			await this.queue.catch(() => undefined);
 			await this.waitForPendingMutations();
+			this.log('save-barrier-settled', { source, barrierId: activePeers.length > 0 ? this.nextSaveBarrierId - 1 : undefined });
 		});
+
+		let tracked!: Promise<void>;
+		tracked = barrier.finally(() => {
+			if (this.saveBarrierInFlight === tracked) this.saveBarrierInFlight = undefined;
+		});
+		this.saveBarrierInFlight = tracked;
+		return tracked;
 	}
 
 	private requestPeerSaveBarrier(peer: DocumentSyncPeer, barrierId: number): Promise<void> {
+		const panelActive = peerIsActive(peer);
+		this.log('peer-save-barrier', { panelId: peer.panelId, panelActive, barrierId });
 		return new Promise((resolve) => {
 			let waiters = this.saveBarrierWaiters.get(peer);
 			if (!waiters) {
@@ -241,6 +362,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 				settled = true;
 				waiters!.delete(settle);
 				if (waiters!.size === 0) this.saveBarrierWaiters.delete(peer);
+				this.log('peer-save-barrier-settled', { panelId: peer.panelId, panelActive, barrierId });
 				resolve();
 			};
 			waiters.add(settle);
@@ -264,8 +386,12 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	}
 
 	private broadcastSavedSnapshot(): void {
-		const text = this.document.getText();
+		const text = normalizeLineEndings(this.document.getText());
 		const version = this.document.version;
+		this.log('saved-snapshot-broadcast', {
+			savedSnapshotVersion: version,
+			...(this.trace.enabled ? snapshotFields(text) : {}),
+		});
 		for (const peer of this.peers) peer.receiveSavedSnapshot(text, version);
 	}
 
@@ -273,6 +399,15 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		const index = this.pendingMutations.indexOf(mutation);
 		if (index >= 0) this.pendingMutations.splice(index, 1);
 		this.resolvePendingWaitersIfSettled();
+	}
+
+	private log(type: string, fields: Record<string, boolean | number | string | undefined> = {}): void {
+		this.trace.event(type, {
+			docVersion: this.document.version,
+			dirty: this.document.isDirty,
+			pendingMutations: this.pendingMutations.length,
+			...fields,
+		});
 	}
 
 	dispose(): void {

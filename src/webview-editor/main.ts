@@ -12,6 +12,7 @@ import { headingSpaceInputHandler } from './headingSpacePlugin';
 import { backtickInputHandler } from './backtickPairPlugin';
 import { toggleEmphasisCommand } from './emphasisShortcuts';
 import { createImagePasteHandler } from './imagePasteHandler';
+import { createMathPasteHandler } from './mathPasteHandler';
 import { postToHost, onHostMessage } from './vscodeApi';
 import { setDrawioFilePoster, handleDrawioFileMessage, clearDrawioFileCache } from './drawioFileClient';
 import { adaptMarkdownCss } from '../shared/cssAdapter';
@@ -37,6 +38,10 @@ const controlQueue: Array<'undo' | 'redo'> = [];
 const saveBarriers = new Set<number>();
 let lastCodeTokenGeneration = 0;
 let typewriterMode: TypewriterModeController | undefined;
+// Read as a module-level flag rather than a StateField because it never takes
+// part in a transaction: `createExtensions` is rebuilt on every `init`, and the
+// handler closure reads this variable, so it always sees the current setting.
+let normalizeMathOnPaste = false;
 let disposeFontMeasurement: (() => void) | undefined;
 
 function requestMeasureAfterLayout(): void {
@@ -102,7 +107,7 @@ function drainOutbound(): void {
 	if (!syncClient || imageInFlight !== undefined) return;
 	const edit = syncClient.takeNextEdit();
 	if (edit) {
-		postToHost({ type: 'edit', ...edit });
+		postToHost({ type: 'edit', ...edit, syncState: syncClient.debugState() });
 		return;
 	}
 	if (syncClient.hasOutstandingEdits) return;
@@ -113,9 +118,9 @@ function drainOutbound(): void {
 		return;
 	}
 	while (controlQueue.length > 0) postToHost({ type: controlQueue.shift()! });
-	if (syncClient.takeSaveRequest()) postToHost({ type: 'save' });
+	if (syncClient.takeSaveRequest()) postToHost({ type: 'save', syncState: syncClient.debugState() });
 	if (saveBarriers.size === 0 || syncClient.hasOutstandingEdits || imageQueue.length > 0 || controlQueue.length > 0) return;
-	for (const barrierId of saveBarriers) postToHost({ type: 'saveBarrierAck', barrierId });
+	for (const barrierId of saveBarriers) postToHost({ type: 'saveBarrierAck', barrierId, syncState: syncClient.debugState() });
 	saveBarriers.clear();
 }
 
@@ -186,6 +191,10 @@ function createExtensions(dialect: DocumentDialect): Extension[] {
 		codeHighlightExtension,
 		createLinkClickHandler((href) => postToHost({ type: 'openLink', href })),
 		createImagePasteHandler(queueImage),
+		// Registered after the image handler so an image paste still wins: that
+		// handler returns true for image files, and this one returns false for
+		// everything it does not rewrite.
+		createMathPasteHandler(() => normalizeMathOnPaste),
 		keymap.of([
 			{ key: 'ArrowUp', run: moveVerticallyAvoidingFootnotes(false) },
 			{ key: 'ArrowDown', run: moveVerticallyAvoidingFootnotes(true) },
@@ -237,7 +246,7 @@ function initialStateFor(text: string, dialect: DocumentDialect): EditorState {
 	return state.update({ selection: { anchor } }).state;
 }
 
-function createView(text: string, dialect: DocumentDialect, zoomPercent: unknown) {
+function createView(text: string, dialect: DocumentDialect, zoomPercent: unknown, readingWidthPercent: unknown) {
 	const root = document.getElementById('mlp-root')!;
 	disposeFontMeasurement?.();
 	disposeFontMeasurement = watchKatexFontMeasurements(root);
@@ -246,7 +255,9 @@ function createView(text: string, dialect: DocumentDialect, zoomPercent: unknown
 	// zoom, while the controller still owns all later event and layout updates.
 	documentZoom = new DocumentZoomController(root, {
 		initialPercent: zoomPercent,
+		initialReadingWidthPercent: readingWidthPercent,
 		onChange: (percent) => postToHost({ type: 'setZoom', percent }),
+		onReadingWidthChange: (percent) => postToHost({ type: 'setReadingWidth', percent }),
 		// Font-size changes affect both visible line boxes and replaced widgets.
 		// Wait one animation frame so CodeMirror measures the committed layout,
 		// preserving caret, hit-test and scroll geometry after every step.
@@ -266,12 +277,13 @@ function createView(text: string, dialect: DocumentDialect, zoomPercent: unknown
 	typewriterMode = new TypewriterModeController(view);
 }
 
-function resetView(text: string, dialect: DocumentDialect, zoomPercent: unknown) {
+function resetView(text: string, dialect: DocumentDialect, zoomPercent: unknown, readingWidthPercent: unknown) {
 	if (!view) {
-		createView(text, dialect, zoomPercent);
+		createView(text, dialect, zoomPercent, readingWidthPercent);
 		return;
 	}
 	documentZoom?.setPercent(zoomPercent);
+	documentZoom?.setReadingWidthPercent(readingWidthPercent);
 	view.setState(initialStateFor(text, dialect));
 	typewriterMode?.suspendForNavigation();
 }
@@ -297,8 +309,9 @@ onHostMessage((message) => {
 			// A re-init means a different document (or the same one reloaded), so
 			// files read for the previous one must not be served from cache.
 			clearDrawioFileCache();
-			resetView(message.text, message.dialect, message.zoomPercent);
+			resetView(message.text, message.dialect, message.zoomPercent, message.readingWidthPercent);
 			typewriterMode?.setEnabled(message.typewriterMode);
+			normalizeMathOnPaste = message.normalizeMathOnPaste;
 			drainOutbound();
 			break;
 		case 'saveBarrier':
@@ -308,7 +321,7 @@ onHostMessage((message) => {
 		case 'ackEdit':
 			if (!syncClient) return;
 			if (syncClient.acknowledge(message.editId, message.version).resyncRequired) {
-				postToHost({ type: 'requestResync' });
+				postToHost({ type: 'requestResync', syncState: syncClient.debugState() });
 				return;
 			}
 			drainOutbound();
@@ -317,7 +330,7 @@ onHostMessage((message) => {
 			if (!view || !syncClient) return;
 			const transition = syncClient.receiveExternal(message);
 			if (transition.resyncRequired) {
-				postToHost({ type: 'requestResync' });
+				postToHost({ type: 'requestResync', syncState: syncClient.debugState() });
 				return;
 			}
 			if (!transition.viewChanges.empty) view.dispatch({ changes: transition.viewChanges, annotations: remoteChange.of(true) });
@@ -354,8 +367,14 @@ onHostMessage((message) => {
 		case 'typewriterModeChanged':
 			typewriterMode?.setEnabled(message.enabled);
 			break;
+		case 'normalizeMathOnPasteChanged':
+			normalizeMathOnPaste = message.enabled;
+			break;
 		case 'setZoom':
 			documentZoom?.setPercent(message.percent);
+			break;
+		case 'setReadingWidth':
+			documentZoom?.setReadingWidthPercent(message.percent);
 			break;
 		case 'jumpToLine': {
 			if (!view) return;

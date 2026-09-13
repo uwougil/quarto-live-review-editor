@@ -1,10 +1,17 @@
 import type { HeadingItem } from './headings';
 import type { DocumentDialect } from '../quarto/dialect';
+import type { ReadingWidthState } from './documentZoom';
 
 export interface TextChange {
 	from: number;
 	to: number;
 	insert: string;
+}
+
+export interface SyncStateDiagnostic {
+	pending: boolean;
+	inFlightEditId?: number;
+	hostVersion: number;
 }
 
 export interface CodeToken {
@@ -32,7 +39,10 @@ export type HostToEditorMessage =
 		baseUri: string;
 		dialect: DocumentDialect;
 		typewriterMode: boolean;
+		normalizeMathOnPaste: boolean;
 		zoomPercent: number;
+		readingWidthPercent: ReadingWidthState;
+		syncTrace?: boolean;
 	}
 	| { type: 'externalUpdate'; changes: TextChange[]; baseVersion: number; version: number }
 	| { type: 'ackEdit'; editId: number; version: number }
@@ -42,6 +52,7 @@ export type HostToEditorMessage =
 	| { type: 'codeTokens'; version: number; generation: number; blocks: CodeBlockTokens[] }
 	| { type: 'applyCss'; css: string }
 	| { type: 'typewriterModeChanged'; enabled: boolean }
+	| { type: 'normalizeMathOnPasteChanged'; enabled: boolean }
 	| { type: 'jumpToLine'; line: number }
 	// Reply to `readDrawioFile`. `text` is the file's contents, or `error` says
 	// why it could not be read; exactly one of the two is set. `requestId`
@@ -50,14 +61,15 @@ export type HostToEditorMessage =
 	| { type: 'drawioFile'; requestId: number; text?: string; error?: string }
 	| { type: 'imageResult'; requestId: number; ok: boolean; error?: string }
 	| { type: 'setZoom'; percent: number }
+	| { type: 'setReadingWidth'; percent: ReadingWidthState }
 	| { type: 'setCursor'; pos: number };
 
 export type EditorToHostMessage =
 	| { type: 'ready' }
-	| { type: 'edit'; editId: number; baseVersion: number; changes: TextChange[] }
-	| { type: 'requestResync' }
-	| { type: 'save' }
-	| { type: 'saveBarrierAck'; barrierId: number }
+	| { type: 'edit'; editId: number; baseVersion: number; changes: TextChange[]; syncState?: SyncStateDiagnostic }
+	| { type: 'requestResync'; syncState?: SyncStateDiagnostic }
+	| { type: 'save'; syncState?: SyncStateDiagnostic }
+	| { type: 'saveBarrierAck'; barrierId: number; syncState?: SyncStateDiagnostic }
 	| { type: 'undo' }
 	| { type: 'redo' }
 	| { type: 'openLink'; href: string }
@@ -67,7 +79,8 @@ export type EditorToHostMessage =
 	// and sends its text back for the widget to parse. `src` is the raw, relative
 	// path exactly as written in the Markdown; the host resolves it.
 	| { type: 'readDrawioFile'; requestId: number; src: string }
-	| { type: 'setZoom'; percent: number };
+	| { type: 'setZoom'; percent: number }
+	| { type: 'setReadingWidth'; percent: ReadingWidthState };
 
 export interface StyleEntry {
 	id: string;
@@ -82,6 +95,7 @@ export interface SidebarSettings {
 	defaultEditor: string;
 	codeTheme: string;
 	typewriterMode: boolean;
+	normalizeMathOnPaste: boolean;
 }
 
 /** Which VS Code theme is active, so previews gate `body.vscode-*` rules correctly. */

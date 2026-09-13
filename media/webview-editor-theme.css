@@ -9,8 +9,10 @@ html, body {
 #mlp-root {
 	height: 100%;
 	/* DocumentZoomController updates this inherited factor for this Live Preview
-	   panel only. */
+	   panel only. Reading width is the independent scale applied by the adapted
+	   theme's finite reading-column rules. */
 	--mlp-document-zoom: 1;
+	--mlp-reading-width: 1;
 }
 
 .cm-editor {

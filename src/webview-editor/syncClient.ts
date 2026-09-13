@@ -1,5 +1,6 @@
 import { ChangeSet, Text, type ChangeSpec } from '@codemirror/state';
 import type { TextChange } from '../shared/messages';
+import { normalizeLineEndings } from '../shared/textCoordinates';
 
 export interface OutboundEdit {
 	editId: number;
@@ -30,8 +31,10 @@ interface InFlightEdit {
 	needsRetry: boolean;
 }
 
+const MAX_SETTLED_EDIT_IDS = 32;
+
 function asText(value: string): Text {
-	return Text.of(value.split('\n'));
+	return Text.of(normalizeLineEndings(value).split('\n'));
 }
 
 function toSpecs(changes: TextChange[]): ChangeSpec[] {
@@ -47,6 +50,7 @@ function toTextChanges(changes: ChangeSet): TextChange[] {
 }
 
 function diffAsChangeSet(before: Text, after: string): ChangeSet {
+	after = normalizeLineEndings(after);
 	const oldValue = before.toString();
 	if (oldValue === after) return ChangeSet.of([], before.length);
 	let prefix = 0;
@@ -61,6 +65,36 @@ function diffAsChangeSet(before: Text, after: string): ChangeSet {
 	return ChangeSet.of({ from: prefix, to: oldSuffix, insert: after.slice(prefix, newSuffix) }, before.length);
 }
 
+interface ChangeRange {
+	from: number;
+	to: number;
+}
+
+function outputRanges(changes: ChangeSet): ChangeRange[] {
+	const ranges: ChangeRange[] = [];
+	changes.iterChanges((_fromA, _toA, fromB, toB) => ranges.push({ from: fromB, to: toB }));
+	return ranges;
+}
+
+function touchesOutputRange(changes: ChangeSet, ranges: ChangeRange[]): boolean {
+	let touches = false;
+	changes.iterChanges((fromA, toA) => {
+		if (touches) return;
+		touches = ranges.some(({ from, to }) => {
+			if (from === to) return fromA === from;
+			if (fromA === toA) return fromA > from && fromA < to;
+			return fromA < to && toA > from;
+		});
+	});
+	return touches;
+}
+
+function snapshotPreservesChanges(base: Text, local: ChangeSet, snapshot: string): { changes: ChangeSet; preservesLocal: boolean } {
+	const localDocument = local.apply(base);
+	const changes = diffAsChangeSet(localDocument, snapshot);
+	return { changes, preservesLocal: !touchesOutputRange(changes, outputRanges(local)) };
+}
+
 /**
  * Version-aware webview sync state. Local edits remain represented as
  * ChangeSets until the host acknowledges them, so external updates and full
@@ -71,6 +105,10 @@ export class EditorSyncClient {
 	private version: number;
 	private pending: ChangeSet | null = null;
 	private inFlight: InFlightEdit | null = null;
+	// A canonical saved snapshot can settle an edit before its explicit ack
+	// message reaches the webview. Keep that identity long enough to treat the
+	// delayed ack as an idempotent confirmation instead of requesting a resync.
+	private readonly settledEditIds = new Set<number>();
 	private saveRequested = false;
 	private nextEditId = 1;
 
@@ -89,6 +127,18 @@ export class EditorSyncClient {
 
 	get hasInFlightEdit(): boolean {
 		return this.inFlight !== null;
+	}
+
+	get hasPendingEdits(): boolean {
+		return this.pending !== null && !this.pending.empty;
+	}
+
+	get inFlightEditId(): number | undefined {
+		return this.inFlight?.editId;
+	}
+
+	debugState(): { pending: boolean; inFlightEditId?: number; hostVersion: number } {
+		return { pending: this.hasPendingEdits, inFlightEditId: this.inFlightEditId, hostVersion: this.version };
 	}
 
 	get hasPendingSave(): boolean {
@@ -127,6 +177,9 @@ export class EditorSyncClient {
 	}
 
 	acknowledge(editId: number, version: number): { resyncRequired: boolean } {
+		if (this.settledEditIds.delete(editId)) {
+			return { resyncRequired: version > this.version };
+		}
 		if (!this.inFlight || this.inFlight.editId !== editId || this.inFlight.needsRetry) {
 			return { resyncRequired: true };
 		}
@@ -134,6 +187,15 @@ export class EditorSyncClient {
 		this.inFlight = null;
 		this.version = version;
 		return { resyncRequired: false };
+	}
+
+	private rememberSettledEdit(editId: number): void {
+		this.settledEditIds.add(editId);
+		while (this.settledEditIds.size > MAX_SETTLED_EDIT_IDS) {
+			const oldest = this.settledEditIds.values().next().value;
+			if (oldest === undefined) return;
+			this.settledEditIds.delete(oldest);
+		}
 	}
 
 	receiveExternal(message: ExternalUpdateInput): SyncTransition {
@@ -176,6 +238,40 @@ export class EditorSyncClient {
 		if (message.version < this.version) {
 			const length = this.outstandingChanges()?.newLength ?? this.confirmed.length;
 			return { viewChanges: ChangeSet.of([], length), resyncRequired: false };
+		}
+
+		const local = this.outstandingChanges();
+		if (local) {
+			// Rebase the snapshot from the optimistic local document. If its
+			// operational delta does not touch any output range produced by the
+			// outstanding local ChangeSet, the snapshot has preserved those edits
+			// and only advances canonical state around them.
+			const allLocal = snapshotPreservesChanges(this.confirmed, local, message.text);
+			if (allLocal.preservesLocal) {
+				if (this.inFlight) this.rememberSettledEdit(this.inFlight.editId);
+				this.confirmed = asText(message.text);
+				this.version = message.version;
+				this.inFlight = null;
+				this.pending = null;
+				return { viewChanges: allLocal.changes, resyncRequired: false };
+			}
+
+			// The host may have saved the in-flight prefix while a later local edit
+			// is still pending in CodeMirror. Confirm only that prefix and leave the
+			// later ChangeSet relative to the new canonical text for the next retry.
+			if (this.inFlight) {
+				const inFlightSnapshot = snapshotPreservesChanges(this.confirmed, this.inFlight.changes, message.text);
+				if (!inFlightSnapshot.preservesLocal) return this.receiveResync(message);
+				const pending = this.pending;
+				const viewChanges = pending ? inFlightSnapshot.changes.map(pending, true) : inFlightSnapshot.changes;
+				const rebased = pending ? pending.map(inFlightSnapshot.changes) : null;
+				this.rememberSettledEdit(this.inFlight.editId);
+				this.confirmed = asText(message.text);
+				this.version = message.version;
+				this.inFlight = null;
+				this.pending = rebased && !rebased.empty ? rebased : null;
+				return { viewChanges, resyncRequired: false };
+			}
 		}
 		return this.receiveResync(message);
 	}

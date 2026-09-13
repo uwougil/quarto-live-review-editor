@@ -29,6 +29,47 @@ const safeValue = fc.constantFrom('red', '#333', '1rem', '14px', 'bold', '1.5', 
 const declaration = fc.tuple(safeProp, safeValue).map(([p, v]) => `${p}: ${v};`);
 
 describe('adaptMarkdownCss', () => {
+	it('scales only finite reading-column max-width values', () => {
+		const out = adaptMarkdownCss(`
+			body { max-width: 980px; }
+			.cm-editor .cm-content { max-width: 60rem; }
+			@media (min-width: 900px) { body { max-width: 70rem !important; } }
+			main { max-width: 720px; }
+		`);
+		expect(out).toContain('max-width: var(--mlp-reading-column-max-width, calc(980px * var(--mlp-reading-width, 1)))');
+		expect(out).toContain('max-width: var(--mlp-reading-column-max-width, calc(60rem * var(--mlp-reading-width, 1)))');
+		expect(out).toContain('max-width: var(--mlp-reading-column-max-width, calc(70rem * var(--mlp-reading-width, 1))) !important');
+		expect(out).toContain('max-width: 720px');
+	});
+
+	it('preserves percentage, none, viewport and function widths as valid CSS', () => {
+		const out = adaptMarkdownCss(`
+			body { max-width: 100%; }
+		body { max-width: none; }
+		body { max-width: 80vw; }
+		body { max-width: min(100%, 980px); }
+		body { max-width: clamp(40rem, 80vw, 980px); }
+		body { max-width: 980; }
+		`);
+		expect(out).toContain('max-width: 100%');
+		expect(out).toContain('max-width: none');
+		expect(out).toContain('max-width: 80vw');
+		expect(out).toContain('max-width: min(100%, 980px)');
+		expect(out).toContain('max-width: clamp(40rem, 80vw, 980px)');
+		expect(out).toContain('max-width: 980');
+		expect(out).not.toContain('var(--mlp-reading-column-max-width');
+	});
+
+	it('does not scale max-width on arbitrary or mixed selectors', () => {
+		const out = adaptMarkdownCss(`
+			img { max-width: 980px; }
+			.cm-editor .cm-content, img { max-width: 720px; }
+		`);
+		expect(out).toContain(':is(.mlp-image, .mlp-table-image) { max-width: 980px; }');
+		expect(out).toContain('.cm-editor .cm-content, :is(.mlp-image, .mlp-table-image) { max-width: 720px; }');
+		expect(out).not.toContain('calc(720px * var(--mlp-reading-width');
+	});
+
 	it('rewrites a simple heading selector to its .cm-line class', () => {
 		const out = adaptMarkdownCss('h1 { color: red; }');
 		expect(out).toContain('.cm-line.mlp-line-h1');

@@ -180,6 +180,50 @@ describe('DocumentSyncCoordinator', () => {
 		coordinator.dispose();
 	});
 
+	it('maps LF webview offsets to CRLF host offsets and acknowledges normalized newlines', async () => {
+		const doc = document('a\r\nb');
+		vi.mocked(vscode.workspace.applyEdit).mockImplementation(async (edit: any) => {
+			expect(edit.replacements[0].range.start).toBe(4);
+			expect(edit.replacements[0].range.end).toBe(4);
+			const hostChanges = edit.replacements.map((replacement: any) => ({
+				from: replacement.range.start,
+				to: replacement.range.end,
+				insert: replacement.insert.replaceAll('\n', '\r\n'),
+			}));
+			doc.applyChanges(hostChanges);
+			emitChanges(doc, hostChanges);
+			return true;
+		});
+		const coordinator = new DocumentSyncCoordinator(doc as any);
+		const a = peer();
+		coordinator.addPeer(a);
+
+		await coordinator.enqueueEdit(a, [{ from: 3, to: 3, insert: '\nX' }], 1, 14);
+
+		expect(doc.getText()).toBe('a\r\nb\r\nX');
+		expect(a.acks).toEqual([{ editId: 14, version: 2 }]);
+		coordinator.dispose();
+	});
+
+	it('maps both ends of a replacement spanning CRLF boundaries', async () => {
+		const doc = document('a\r\nbc\r\nd');
+		vi.mocked(vscode.workspace.applyEdit).mockImplementation(async (edit: any) => {
+			expect(edit.replacements[0].range.start).toBe(1);
+			expect(edit.replacements[0].range.end).toBe(7);
+			applyAndEmit(doc, edit);
+			return true;
+		});
+		const coordinator = new DocumentSyncCoordinator(doc as any);
+		const a = peer();
+		coordinator.addPeer(a);
+
+		await coordinator.enqueueEdit(a, [{ from: 1, to: 5, insert: 'Z' }], 1, 15);
+
+		expect(doc.getText()).toBe('aZd');
+		expect(a.acks).toEqual([{ editId: 15, version: 2 }]);
+		coordinator.dispose();
+	});
+
 	it('does not suppress an external change while applyEdit is still pending', async () => {
 		const doc = document('ab');
 		const applyResult = deferred<boolean>();
@@ -547,6 +591,65 @@ describe('DocumentSyncCoordinator', () => {
 		// coordinator must release its wrapper even if the peer's own promise has
 		// not resolved yet.
 		coordinator.removePeer(a);
+		await saveBarrier;
+		barrier.resolve();
+		coordinator.dispose();
+	});
+
+	it('maps an external CRLF event against the delayed local version snapshot', async () => {
+		const doc = document('a\r\nb');
+		const applyResult = deferred<boolean>();
+		let localChanges: TextChange[] = [];
+		vi.mocked(vscode.workspace.applyEdit).mockImplementation((edit: any) => {
+			localChanges = edit.replacements.map((replacement: any) => ({
+				from: replacement.range.start,
+				to: replacement.range.end,
+				insert: replacement.insert.replaceAll('\n', '\r\n'),
+			}));
+			doc.applyChanges(localChanges);
+			return applyResult.promise;
+		});
+		const coordinator = new DocumentSyncCoordinator(doc as any);
+		const a = peer(); const b = peer();
+		coordinator.addPeer(a); coordinator.addPeer(b);
+
+		const operation = coordinator.enqueueEdit(a, [{ from: 3, to: 3, insert: '\nL' }], 1, 16);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const external = [{ from: 7, to: 7, insert: 'X' }];
+		doc.applyChanges(external);
+		// Version 3 is observed before the delayed local event for version 2.
+		// Its raw offset must be mapped against the CRLF text at version 2.
+		emitChangesAtVersion(doc, external, 3);
+		emitChangesAtVersion(doc, localChanges, 2);
+		applyResult.resolve(true);
+		await operation;
+
+		expect(doc.getText()).toBe('a\r\nb\r\nLX');
+		expect(a.acks).toEqual([{ editId: 16, version: 2 }]);
+		expect(a.updates).toEqual([{ changes: [{ from: 5, to: 5, insert: 'X' }], baseVersion: 2, version: 3 }]);
+		expect(b.updates).toEqual([{ changes: [{ from: 5, to: 5, insert: 'X' }], baseVersion: 2, version: 3 }]);
+		coordinator.dispose();
+	});
+
+	it('does not inspect a disposed peer while releasing its save barrier', async () => {
+		const doc = document('ab');
+		const coordinator = new DocumentSyncCoordinator(doc as any);
+		const a = peer();
+		const barrier = deferred<void>();
+		let disposed = false;
+		Object.defineProperty(a, 'active', {
+			get() {
+				if (disposed) throw new Error('Webview is disposed');
+				return true;
+			},
+		});
+		a.requestSaveBarrier = () => barrier.promise;
+		coordinator.addPeer(a);
+
+		const saveBarrier = emitWillSave(doc);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		disposed = true;
+		expect(() => coordinator.removePeer(a)).not.toThrow();
 		await saveBarrier;
 		barrier.resolve();
 		coordinator.dispose();

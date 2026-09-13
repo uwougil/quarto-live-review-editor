@@ -11,6 +11,16 @@ function apply(value: string, changes: ChangeSet): string {
 }
 
 describe('EditorSyncClient', () => {
+	it('uses CodeMirror LF coordinates when the host snapshot contains CRLF', () => {
+		const client = new EditorSyncClient('a\r\nb', 1);
+		client.recordLocal(ChangeSet.of({ from: 3, insert: 'X' }, 3));
+		const edit = client.takeNextEdit()!;
+
+		expect(edit.changes).toEqual([{ from: 3, to: 3, insert: 'X' }]);
+		expect(() => client.acknowledge(edit.editId, 2)).not.toThrow();
+		expect(client.hasOutstandingEdits).toBe(false);
+	});
+
 	it('rebases a pending local edit over an external update without losing either change', () => {
 		const client = new EditorSyncClient('abc', 1);
 		const local = ChangeSet.of({ from: 1, insert: 'X' }, 3);

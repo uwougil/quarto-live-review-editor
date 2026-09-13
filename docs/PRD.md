@@ -32,12 +32,13 @@ Quarto Live Review Editor 是一个 VS Code 扩展，为 Markdown 和 Quarto (`.
 6. 通过单元测试和真实 Chromium 回归测试保护长文档、几何布局和交互行为。
 7. 提供默认开启的 Typewriter Mode，在输入、写作型键盘交互或普通单击定位后把主光标保持在编辑器视口约 50% 的位置，同时把鼠标滚动、拖选和显式导航交还给用户。
 8. 提供独立于 VS Code 全局缩放的 Live Preview 文档字号缩放，并在所有文档间共享和持久化。
+9. 提供可选的粘贴规范化，把从 ChatGPT 等来源复制的 `\(...\)` 与 `\[...\]` 静默转换为 Markdown 的 `$...$` 与 `$$...$$`，让复制来的公式可以直接进入现有数学渲染流程。
 
 ### 3.2 非目标
 
 当前版本不执行 Quarto 文档，不启动 Jupyter/kernel，不调用 Pandoc 或 Quarto CLI，不实现 citation 渲染、cross-reference 解析、callout 渲染、shortcode 展开或 Typst 渲染。上述内容应保持源码安全，而不是伪装成已渲染结果。
 
-文档字号缩放不改变 VS Code 全局缩放、浏览器页面缩放或源文本，不为单个文档/面板保存独立值，也不使用整个编辑器的 transform 缩放；Mermaid 和 draw.io 内部内容不要求随外层字号缩放。
+文档字号和正文阅读区宽度缩放不改变 VS Code 全局缩放、浏览器页面缩放或源文本，不为单个文档/面板保存独立值，也不使用整个编辑器的 transform 缩放；Mermaid 和 draw.io 内部内容不要求随外层字号缩放。
 
 ## 4. 功能需求
 
@@ -54,6 +55,8 @@ Quarto Live Review Editor 是一个 VS Code 扩展，为 Markdown 和 Quarto (`.
 | FR-9 | 扩展必须提供文档大纲、图片粘贴、表格编辑和实时保存能力。 | P1 |
 | FR-10 | Typewriter Mode 默认开启且可关闭；输入、删除、Enter、上下移动光标或普通单击定位后，主光标应尽量保持在编辑器视口约 50% 的位置，且不改写文档内容。 | P1 |
 | FR-11 | Live Preview 必须支持 70% 至 200% 的文档字号缩放，使用 10% 步进、快捷键与 Ctrl/Mod+滚轮，并共享持久化设置。 | P1 |
+| FR-12 | Live Preview 必须支持独立的 60% 至 320% 正文阅读区宽度缩放，并在 320% 后提供响应式 Full 状态；全范围使用 10% 步进、快捷键并共享持久化设置。只有主题声明的 finite reading-column 宽度可被安全适配，Full 不得强行改写不受支持的主题 selector。 | P1 |
+| FR-13 | 用户可启用粘贴规范化；启用后所有粘贴必须在同一次编辑事务内把 `\(...\)` 改写为 `$...$`、把 `\[...\]` 改写为相对目标文档独占行的 `$$...$$`，保留公式内部原文，并且不改写代码围栏、行内代码、既有 `$` 数学范围或受保护的粘贴目标。 | P1 |
 
 ## 5. 可接受行为
 
@@ -63,11 +66,17 @@ Quarto Live Review Editor 是一个 VS Code 扩展，为 Markdown 和 Quarto (`.
 - 主题切换、长段落软换行、上下键移动和脚注定位不得造成光标跳跃、隐藏源码意外展开或 CodeMirror 几何异常。
 - Typewriter Mode 默认开启且可从侧边栏关闭；开启后普通单击会在 caret 到达后立即定位到约 50%，写作型键盘/输入交互会恢复定位，目标位置不可达时在文档首尾自然钳制；拖选、滚轮滚动和宿主驱动的显式跳转必须暂停自动定位。
 - 文档字号缩放只作用于获得焦点的 Live Preview 内容，必须同步更新段落、标题、列表、代码、表格、front matter、脚注和数学布局；缩放不得移动光标、改变选区或修改源文本。
+- `Ctrl/Mod +` 与 `Ctrl/Mod -` 只调整正文阅读区宽度，`Ctrl/Mod + 0` 只重置字号，`Ctrl/Mod + Shift + 0` 只重置正文阅读区宽度；Ctrl/Mod+滚轮只调整字号。
+- 阅读区从 60% 到 320% 全程按 10% 步进；在 320% 再按增加键进入 Full，Full 使用可用预览视口并保留合理侧边留白，再按增加键保持 Full，减少键回到 320%。
+- 阅读区宽度以主题原有的 finite `px`/`rem` 等长度为基线进行缩放；百分比、`none`、viewport 单位、`min()`/`clamp()`、复杂或自定义 selector 保持原值，不生成非法 CSS；没有 finite 基线的主题保持原有 full-width 布局。
 - 保存后文件内容必须仍是用户输入的 Markdown/Quarto 源文本。
+- 粘贴规范化默认关闭；启用后仅在粘贴时改写分隔符，静默完成且不显示提示，公式内部空格、换行和既有 `$` 数学格式保持不变；一次粘贴只产生一次编辑事务/一条 host `edit`，代码围栏、行内代码、既有数学范围以及 front matter 内的目标始终按原样粘贴。显示数学的两个 `$$` 分隔符必须各自位于独占行；目标已处于行首、行尾、空行或相邻换行时不得添加不必要的额外空行。若一次多选区粘贴包含不安全目标，则整次粘贴交回 CodeMirror 默认行为，不部分规范化。
 
 ## 6. 约束与验收入口
 
 - 支持的运行时和验证命令以 [`docs/EDD.md`](EDD.md) 与 [`AGENTS.md`](../AGENTS.md) 为准。
 - 当前已完成的 front matter 功能验收记录在 [`docs/milestones/frontmatter-preview.md`](milestones/frontmatter-preview.md)。
-- Typewriter Mode（Issue #14 的初版及 Issue #27 的产品 follow-up）的实现和验收映射记录在 [`docs/milestones/typewriter-mode.md`](milestones/typewriter-mode.md)。
+ - Typewriter Mode（Issue #14 的初版及 Issue #27 的产品 follow-up）的实现和验收映射记录在 [`docs/milestones/typewriter-mode.md`](milestones/typewriter-mode.md)。
+ - Issue #28 的字号/正文阅读区宽度拆分、CSS 安全边界和回归证据记录在 [`docs/milestones/reading-width.md`](milestones/reading-width.md)。
+ - 粘贴时数学分隔符规范化（Issue #53）的实现和验收映射记录在 [`docs/milestones/normalize-math-on-paste.md`](milestones/normalize-math-on-paste.md)。
 - 仓库再整理的验收记录在 [`docs/milestones/2026-09-repository-rebootstrap.md`](milestones/2026-09-repository-rebootstrap.md)。
