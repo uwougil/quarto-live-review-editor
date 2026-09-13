@@ -27,6 +27,7 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 		private readonly context: vscode.ExtensionContext,
 		private readonly getCss: () => string,
 		private readonly getTypewriterMode: () => boolean,
+		private readonly getNormalizeMathOnPaste: () => boolean,
 	) {
 		this.documentZoomPercent = normalizeDocumentZoom(
 			context.globalState.get<unknown>(MarkdownLivePreviewProvider.DOCUMENT_ZOOM_STATE_KEY, DOCUMENT_ZOOM_DEFAULT),
@@ -40,8 +41,9 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 		context: vscode.ExtensionContext,
 		getCss: () => string,
 		getTypewriterMode: () => boolean = () => false,
+		getNormalizeMathOnPaste: () => boolean = () => false,
 	): { disposable: vscode.Disposable; provider: MarkdownLivePreviewProvider } {
-		const provider = new MarkdownLivePreviewProvider(context, getCss, getTypewriterMode);
+		const provider = new MarkdownLivePreviewProvider(context, getCss, getTypewriterMode, getNormalizeMathOnPaste);
 		const disposable = vscode.window.registerCustomEditorProvider(MarkdownLivePreviewProvider.viewType, provider, {
 			webviewOptions: { retainContextWhenHidden: true },
 			supportsMultipleEditorsPerDocument: true,
@@ -80,6 +82,7 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 			this.getTypewriterMode,
 			() => this.readingWidthPercent,
 			(percent) => this.setReadingWidth(percent),
+			this.getNormalizeMathOnPaste,
 		);
 		this.sessions.add(session);
 
@@ -104,6 +107,13 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 	broadcastTypewriterModeChanged(): void {
 		for (const session of this.sessions) {
 			session.notifyTypewriterModeChanged();
+		}
+	}
+
+	/** Called when the global paste-normalization setting changes. */
+	broadcastNormalizeMathOnPasteChanged(): void {
+		for (const session of this.sessions) {
+			session.notifyNormalizeMathOnPasteChanged();
 		}
 	}
 

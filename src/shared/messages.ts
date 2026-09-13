@@ -39,6 +39,7 @@ export type HostToEditorMessage =
 		baseUri: string;
 		dialect: DocumentDialect;
 		typewriterMode: boolean;
+		normalizeMathOnPaste: boolean;
 		zoomPercent: number;
 		readingWidthPercent: ReadingWidthState;
 		syncTrace?: boolean;
@@ -51,6 +52,7 @@ export type HostToEditorMessage =
 	| { type: 'codeTokens'; version: number; generation: number; blocks: CodeBlockTokens[] }
 	| { type: 'applyCss'; css: string }
 	| { type: 'typewriterModeChanged'; enabled: boolean }
+	| { type: 'normalizeMathOnPasteChanged'; enabled: boolean }
 	| { type: 'jumpToLine'; line: number }
 	// Reply to `readDrawioFile`. `text` is the file's contents, or `error` says
 	// why it could not be read; exactly one of the two is set. `requestId`
@@ -93,6 +95,7 @@ export interface SidebarSettings {
 	defaultEditor: string;
 	codeTheme: string;
 	typewriterMode: boolean;
+	normalizeMathOnPaste: boolean;
 }
 
 /** Which VS Code theme is active, so previews gate `body.vscode-*` rules correctly. */
