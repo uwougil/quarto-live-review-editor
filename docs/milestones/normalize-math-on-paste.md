@@ -1,6 +1,6 @@
 # Milestone: Normalize Math on Paste
 
-状态：进行中
+状态：已完成
 
 ## 来源与目标
 
@@ -17,7 +17,7 @@
 | 单次编辑事务、跳过图片粘贴 | `src/webview-editor/mathPasteHandler.ts`、`src/webview-editor/main.ts` 的扩展顺序 |
 | 单元回归 | `src/quarto/normalizeMathDelimiters.test.ts` |
 | Chromium 回归 | `scripts/run-paste-normalization-browser-test.mjs`、`npm run test:browser:paste-math` |
-| 产品与工程约束 | [`docs/PRD.md`](../PRD.md)（FR-12）、[`docs/EDD.md`](../EDD.md)（§3.3、§7） |
+| 产品与工程约束 | [`docs/PRD.md`](../PRD.md)（FR-13）、[`docs/EDD.md`](../EDD.md)（§3.3、§7） |
 
 ## 验收标准
 
@@ -34,13 +34,13 @@
 
 ## 验证记录
 
-本地全部通过：
+本地全部通过（基线：`main` = `7f6b5d9`，已含 PR #50）：
 
 ```powershell
-npm run typecheck
-npm test                             # 40 files, 475 passed | 2 skipped
-npm run compile
-npm run test:browser:paste-math      # 新增回归
+npm run typecheck                    # 通过
+npm test                             # 43 files, 514 passed
+npm run compile                      # esbuild + tsc 通过
+npm run test:browser:paste-math      # 本次新增回归，{"ok":true}
 npm run test:browser
 npm run test:browser:geometry
 npm run test:browser:inline
@@ -49,9 +49,12 @@ npm run test:browser:typewriter
 npm run test:browser:arrow-scroll
 npm run test:browser:zoom
 npm run test:browser:math
+npm run test:browser:footnote-caret
 ```
 
-`npm run test:browser:paste-math` 在真实 Chromium 中派发真实 `paste` 事件并断言：开启后行内得到 `Pasted $E = mc^2$ here` 且只产生**一条** `edit`；块公式得到 `$$\nE = mc^2\n$$`；开关关闭时插入文本仍是 `\(E = mc^2\)`；光标位于文档已有围栏内时插入 `\(x\)` 原样保留；不含 LaTeX 分隔符的粘贴仍走内置路径。
+`npm run test:browser:paste-math` 在真实 Chromium 中派发真实 `paste` 事件并断言：开启后行内得到 `Pasted $E = mc^2$ here` 且只产生**一条** `edit`；块公式得到 `$$\nE = mc^2\n$$`；开关关闭时插入文本仍是 `\(E = mc^2\)`；光标位于文档已有围栏内时插入 `\(x\)` 原样保留；不含 LaTeX 分隔符的粘贴仍走内置路径。九个既有浏览器回归全部以退出码 0 通过且 `pageErrors` 为空。
+
+`npm run test:integration` 无法在本机执行：本机的 `%LOCALAPPDATA%\Programs\Microsoft VS Code` 目录缺少 `resources/app`，`Code.exe` 不接受 `@vscode/test-electron` 传入的启动标志（`bad option: --disable-gpu`），失败发生在扩展宿主启动之前，与本次改动无关。该命令由 CI 的 `VS Code Extension Host Integration` job 在 Ubuntu 上覆盖。
 
 已知限制：编辑器未启用 `EditorState.allowMultipleSelections`，CodeMirror 会把多选区折叠为单光标，因此本次未覆盖多光标粘贴；改写使用 `state.changeByRange`，启用多选区后该路径无需修改。
 
