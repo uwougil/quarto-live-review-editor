@@ -9,6 +9,7 @@ import { findMarkdownAnchorLine } from '../shared/headings';
 import { TokenizationGate } from './tokenizationGuard';
 import { DocumentSyncCoordinator, type DocumentSyncPeer } from './documentSyncCoordinator';
 import { DOCUMENT_ZOOM_DEFAULT, normalizeDocumentZoom } from '../shared/documentZoom';
+import { DEFAULT_TYPEWRITER_MODE } from '../shared/typewriterMode';
 
 /**
  * Largest `.drawio` file that will be read and parsed.
@@ -58,7 +59,7 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 		private readonly getDocumentZoom: () => number = () => DOCUMENT_ZOOM_DEFAULT,
 		private readonly onDocumentZoomChange: (percent: number) => void = () => undefined,
 		coordinator?: DocumentSyncCoordinator,
-		private readonly getTypewriterMode: () => boolean = () => false,
+		private readonly getTypewriterMode: () => boolean = () => DEFAULT_TYPEWRITER_MODE,
 	) {
 		this.ownsCoordinator = !coordinator;
 		this.coordinator = coordinator ?? new DocumentSyncCoordinator(document);

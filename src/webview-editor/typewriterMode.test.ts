@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { calculateTypewriterScrollTop, isWritingOrientedKey } from './typewriterMode';
+import {
+	calculateTypewriterScrollTop,
+	hasPointerMovedBeyondDragThreshold,
+	isWritingOrientedKey,
+	TYPEWRITER_TARGET_RATIO,
+} from './typewriterMode';
 
 describe('calculateTypewriterScrollTop', () => {
-	it('places the caret midpoint at 40% of the viewport', () => {
+	it('places the caret midpoint at 50% of the viewport', () => {
 		expect(
 			calculateTypewriterScrollTop({
 				currentScrollTop: 100,
@@ -12,7 +17,7 @@ describe('calculateTypewriterScrollTop', () => {
 				caretTop: 470,
 				caretBottom: 490,
 			}),
-		).toBe(360);
+		).toBe(310);
 	});
 
 	it('clamps at the beginning and end of a document', () => {
@@ -49,6 +54,17 @@ describe('calculateTypewriterScrollTop', () => {
 				caretBottom: 320,
 			}),
 		).toBe(0);
+	});
+});
+
+describe('pointer gesture discrimination', () => {
+	it('keeps small pointer movement as a click and larger movement as a drag', () => {
+		expect(hasPointerMovedBeyondDragThreshold(10, 10, 13, 14)).toBe(false);
+		expect(hasPointerMovedBeyondDragThreshold(10, 10, 16, 14)).toBe(true);
+	});
+
+	it('uses the shared 50% product target', () => {
+		expect(TYPEWRITER_TARGET_RATIO).toBe(0.5);
 	});
 });
 

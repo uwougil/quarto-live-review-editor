@@ -6,6 +6,7 @@ import { selectActiveSession } from '../shared/activeSession';
 import { DocumentSyncCoordinator } from './documentSyncCoordinator';
 import { DOCUMENT_ZOOM_DEFAULT, normalizeDocumentZoom } from '../shared/documentZoom';
 import { buildEditorWebviewCsp } from './webviewCsp';
+import { DEFAULT_TYPEWRITER_MODE } from '../shared/typewriterMode';
 
 export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvider {
 	static readonly viewType = 'mdLivePreview.editor';
@@ -28,7 +29,7 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 	static register(
 		context: vscode.ExtensionContext,
 		getCss: () => string,
-		getTypewriterMode: () => boolean = () => false,
+		getTypewriterMode: () => boolean = () => DEFAULT_TYPEWRITER_MODE,
 	): { disposable: vscode.Disposable; provider: MarkdownLivePreviewProvider } {
 		const provider = new MarkdownLivePreviewProvider(context, getCss, getTypewriterMode);
 		const disposable = vscode.window.registerCustomEditorProvider(MarkdownLivePreviewProvider.viewType, provider, {

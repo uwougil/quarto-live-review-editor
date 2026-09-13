@@ -13,7 +13,7 @@
 - 表格单元格原地编辑、行列添加和源码安全保存。
 - 代码块语法高亮、图片粘贴、文档大纲和 CSS 主题管理。
 - 内置 CSS 主题：VS Code、Dark、GitHub Light、Claude 和 GitHub Dark；主题之间互相独立，可在侧栏切换。
-- 可选 Typewriter Mode：输入时将主光标保持在编辑器视口约 40% 的位置，鼠标滚动和显式导航仍由用户控制。
+- Typewriter Mode 默认开启：输入时将主光标保持在编辑器视口约 50% 的位置，也可从侧边栏关闭；鼠标滚动和显式导航仍由用户控制。
 - ` ```{python} `、` ```{r} `、` ```{julia} ` 和 ` ```{.python} ` 使用统一的 Quarto/Pandoc 围栏解析入口，并交给现有 Shiki 高亮体系。
 - Live Preview 支持独立于 VS Code 全局缩放的文档字号缩放：聚焦预览后使用 `Ctrl/Cmd + 滚轮`、`Ctrl/Cmd + +`、`Ctrl/Cmd + -` 调整，`Ctrl/Cmd + 0` 重置。范围为 70%–200%，所有 Live Preview 文档共享并持久化该值。
 
@@ -79,7 +79,7 @@ Quarto 特有的 callout、shortcode、citation、cross-reference 和代码单�
 | `mdLivePreview.codeTheme` | 代码高亮主题：`auto`、`dark-plus`、`light-plus`、`github-dark`、`github-light`。 |
 | `mdLivePreview.enabledStyles` | 当前启用的 CSS 主题。 |
 | `mdLivePreview.defaultEditor` | `prompt` 使用普通编辑器，`livePreview` 默认使用实时预览，`default` 使用普通编辑器。 |
-| `mdLivePreview.typewriterMode` | 输入时将主光标保持在编辑器视口约 40% 的位置。默认关闭，也可从侧边栏切换。 |
+| `mdLivePreview.typewriterMode` | 输入或写作型键盘交互后将主光标保持在编辑器视口约 50% 的位置。默认开启，也可从侧边栏关闭。 |
 
 ## 项目规范文档
 
