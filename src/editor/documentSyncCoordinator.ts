@@ -47,6 +47,13 @@ function peerIsActive(peer: DocumentSyncPeer): boolean {
 	}
 }
 
+function applyHostChanges(text: string, changes: readonly vscode.TextDocumentContentChangeEvent[]): string {
+	for (const change of [...changes].sort((a, b) => b.rangeOffset - a.rangeOffset)) {
+		text = text.slice(0, change.rangeOffset) + change.text + text.slice(change.rangeOffset + change.rangeLength);
+	}
+	return text;
+}
+
 /** The single mutation and change-dispatch boundary for one TextDocument URI. */
 export class DocumentSyncCoordinator implements vscode.Disposable {
 	private readonly peers = new Set<DocumentSyncPeer>();
@@ -59,6 +66,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 	private readonly saveBarrierWaiters = new Map<DocumentSyncPeer, Set<() => void>>();
 	private lastObservedVersion: number;
 	private lastObservedText: string;
+	private readonly hostTextByVersion = new Map<number, string>();
 	private saveInProgress = 0;
 	private nextSaveBarrierId = 1;
 	private saveBarrierInFlight: Promise<void> | undefined;
@@ -70,6 +78,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		this.log('coordinator-created');
 		this.lastObservedVersion = document.version;
 		this.lastObservedText = document.getText();
+		this.hostTextByVersion.set(document.version, this.lastObservedText);
 		this.changeListener = vscode.workspace.onDidChangeTextDocument((event) => {
 			if (event.document.uri.toString() === document.uri.toString()) this.handleDocumentChanged(event);
 		});
@@ -186,6 +195,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 			let applyResult: Thenable<boolean>;
 			try {
 				applyResult = vscode.workspace.applyEdit(edit);
+				this.rememberCurrentDocumentText(pending.expectedVersion);
 			} catch {
 				this.forgetPending(pending);
 				if (this.peers.has(peer)) peer.resync(editId);
@@ -194,6 +204,7 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 			let applied = false;
 			try {
 				applied = await applyResult;
+				this.rememberCurrentDocumentText(pending.expectedVersion);
 			} catch {
 				applied = false;
 			}
@@ -232,12 +243,15 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		if (event.contentChanges.length === 0) return;
 		const eventVersion = event.document.version;
 		const previousVersion = this.lastObservedVersion;
-		const previousText = this.lastObservedText;
+		const previousText = this.hostTextByVersion.get(eventVersion - 1) ?? this.lastObservedText;
 		const changes = event.contentChanges.map((change) => ({
 			from: canonicalOffsetFromHostOffset(previousText, change.rangeOffset),
 			to: canonicalOffsetFromHostOffset(previousText, change.rangeOffset + change.rangeLength),
 			insert: normalizeLineEndings(change.text),
 		}));
+		const eventText = eventVersion === this.document.version
+			? this.document.getText()
+			: applyHostChanges(previousText, event.contentChanges);
 		const eventKey = changesKey(changes);
 		const mutationIndex = this.pendingMutations.findIndex((pending) => (
 			pending.expectedVersion === eventVersion && pending.changesKey === eventKey
@@ -269,14 +283,33 @@ export class DocumentSyncCoordinator implements vscode.Disposable {
 		);
 		if (eventVersion > previousVersion) {
 			this.lastObservedVersion = eventVersion;
-			this.lastObservedText = event.document.getText();
+			this.lastObservedText = eventText;
 		}
+		this.rememberHostText(eventVersion, eventText);
 		// A webview-originated mutation is the save barrier: sibling panels keep
 		// their old snapshot until onDidSaveTextDocument. If its originating panel
 		// closed before a delayed change event arrived, remaining peers still need
 		// the committed host change.
 		if (!mutation || !this.peers.has(mutation.peer)) {
 			for (const peer of this.peers) peer.receiveDocumentChanges(changes, baseVersion, eventVersion);
+		}
+	}
+
+	private rememberCurrentDocumentText(version: number): void {
+		if (this.document.version === version) this.rememberHostText(version, this.document.getText());
+	}
+
+	private rememberHostText(version: number, text: string): void {
+		this.hostTextByVersion.set(version, text);
+		const retainedVersions = new Set<number>([
+			this.lastObservedVersion,
+			...this.pendingMutations.flatMap((pending) => [pending.baseVersion, pending.expectedVersion]),
+		]);
+		const historyFloor = Math.max(0, this.lastObservedVersion - 32);
+		for (const knownVersion of this.hostTextByVersion.keys()) {
+			if (knownVersion < historyFloor && !retainedVersions.has(knownVersion)) {
+				this.hostTextByVersion.delete(knownVersion);
+			}
 		}
 	}
 
