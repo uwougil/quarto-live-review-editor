@@ -345,7 +345,7 @@
 			{ name: 'footnote19', pos: text.indexOf(tokens.footnote19) + 2 },
 			{ name: 'math', pos: text.indexOf(tokens.math) + 2 },
 		];
-		dispatchInit(text, await loadThemeCss());
+		dispatchInit(text, await loadThemeCss(), false);
 		await waitFor(() => snapshot()?.docLength === text.length, 2500);
 		const rendered = [];
 		const source = [];
@@ -415,7 +415,7 @@
 		return response.text();
 	}
 
-	function dispatchInit(text, css = '', typewriterMode = false) {
+	function dispatchInit(text, css = '', typewriterMode = true) {
 		window.__mlpTestSourceText = text;
 		window.dispatchEvent(new MessageEvent('message', { data: {
 			type: 'init', text, version: 1, css, codeTheme: 'light-plus', baseUri: location.origin + '/', dialect: 'markdown', typewriterMode,
@@ -426,14 +426,16 @@
 
 	async function runTypewriterMode() {
 		const source = buildTypewriterFixture();
-		dispatchInit(source, '', true);
+		// Omit the setting argument deliberately: this path proves the browser
+		// fixture's default follows the product default (enabled).
+		dispatchInit(source);
 		await waitFor(() => snapshot()?.docLength === source.length, 2500);
 		return { ok: Boolean(snapshot()), sourceKind: 'typewriter', sourceLength: source.length, targetMarker: 'TYPEWRITER-120' };
 	}
 
 	async function runInteractionReady() {
 		const source = await loadSource();
-		dispatchInit(source.text, await loadThemeCss());
+		dispatchInit(source.text, await loadThemeCss(), false);
 		await waitFor(() => snapshot()?.docLength === source.text.length, 2500);
 		await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 		return { ok: Boolean(snapshot()), baseline: false, sourceKind: source.kind, sourceLength: source.text.length, sourceLines: source.text.split('\n').length };
@@ -480,7 +482,7 @@
 		const started = performance.now();
 		const source = await loadSource();
 		const themeCss = await loadThemeCss();
-		dispatchInit(source.text, themeCss);
+		dispatchInit(source.text, themeCss, false);
 		await waitFor(() => snapshot()?.docLength === source.text.length, 2500);
 		const readyMs = Number((performance.now() - started).toFixed(1));
 		const initial = snapshot();
@@ -521,7 +523,7 @@
 		// This is intentionally the smallest real EditorView reproduction of the
 		// old implementation's failure: a display formula consumes line breaks.
 		const text = '---\ntitle: probe\n---\n\n$$\n\\sigma_{xy} = -\\frac{e^2}{\\hbar}\n$$\n\n# After the formula\n\nThe tail must remain editable.';
-		dispatchInit(text);
+		dispatchInit(text, '', false);
 		await sleep(300);
 		return { ok: true, sourceKind: 'multiline-display-math-probe', sourceLength: text.length, sourceLines: text.split('\n').length, editorPresent: Boolean(document.querySelector('.cm-editor')) };
 	}
