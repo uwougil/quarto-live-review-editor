@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { HostToSidebarMessage, SidebarSettings, SidebarToHostMessage, ThemeKind } from '../shared/messages';
 import { StyleStore } from './styleStore';
 import { StylePreviewController } from './StylePreviewController';
+import { DEFAULT_TYPEWRITER_MODE } from '../shared/typewriterMode';
 
 const CONFIG_SECTION = 'mdLivePreview';
 
@@ -24,7 +25,8 @@ export class StyleManagerViewProvider implements vscode.WebviewViewProvider {
 				if (
 					e.affectsConfiguration(`${CONFIG_SECTION}.defaultEditor`) ||
 					e.affectsConfiguration(`${CONFIG_SECTION}.codeTheme`) ||
-					e.affectsConfiguration(`${CONFIG_SECTION}.typewriterMode`)
+					e.affectsConfiguration(`${CONFIG_SECTION}.typewriterMode`) ||
+					e.affectsConfiguration(`${CONFIG_SECTION}.normalizeMathOnPaste`)
 				) {
 					void this.pushStyles();
 				}
@@ -111,7 +113,8 @@ export class StyleManagerViewProvider implements vscode.WebviewViewProvider {
 		return {
 			defaultEditor: config.get<string>('defaultEditor', 'prompt'),
 			codeTheme: config.get<string>('codeTheme', 'auto'),
-			typewriterMode: config.get<boolean>('typewriterMode', false),
+			typewriterMode: config.get<boolean>('typewriterMode', DEFAULT_TYPEWRITER_MODE),
+			normalizeMathOnPaste: config.get<boolean>('normalizeMathOnPaste', false),
 		};
 	}
 

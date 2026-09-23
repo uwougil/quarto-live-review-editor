@@ -219,8 +219,13 @@ function buildSettings(settings: SidebarSettings): HTMLElement {
 		),
 	);
 	section.appendChild(
-		buildCheckbox('Typewriter Mode（输入时将光标保持在视口约 40%）', settings.typewriterMode, (checked) =>
+		buildCheckbox('Typewriter Mode（输入时将光标保持在视口约 50%）', settings.typewriterMode, (checked) =>
 			post({ type: 'setSetting', key: 'typewriterMode', value: checked }),
+		),
+	);
+	section.appendChild(
+		buildCheckbox('Normalize math on paste（粘贴时把 \\(...\\) / \\[...\\] 规范为 $...$ / $$...$$）', settings.normalizeMathOnPaste, (checked) =>
+			post({ type: 'setSetting', key: 'normalizeMathOnPaste', value: checked }),
 		),
 	);
 

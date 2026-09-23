@@ -40,7 +40,7 @@ Webview Editor
 │   ├── 安装 Markdown/GFM/Quarto 方言扩展
 │   ├── 组合 inline 和 block decorations
 │   ├── 处理光标、鼠标、键盘和主题更新
-│   └── 协调可选的 Typewriter Mode 视口定位
+│   └── 协调默认开启的 Typewriter Mode 视口定位
 ├── src/webview-editor/livePreviewPlugin.ts
 │   └── 行内标记、链接、图片、脚注和轻量视觉装饰
 ├── src/webview-editor/blockDecorations.ts
@@ -50,11 +50,14 @@ Webview Editor
 ├── src/webview-editor/frontmatterWidget.ts
 │   └── 文档首部 YAML front matter 检测、解析和 widget
 ├── src/webview-editor/documentZoom.ts
-│   └── Live Preview 文档字号事件边界、快捷键和 CSS 缩放状态
+│   └── Live Preview 文档字号/阅读区宽度事件边界、快捷键和 CSS 状态
+├── src/webview-editor/mathPasteHandler.ts
+│   └── 粘贴时的 LaTeX 分隔符规范化（单次编辑事务内完成）
 └── src/quarto/
     ├── dialect.ts：按路径区分 Markdown/Quarto
     ├── fence.ts：普通 Markdown 围栏与 Quarto/Pandoc 属性
-    └── math.ts：数学范围扫描和 StateField 缓存
+    ├── math.ts：数学范围扫描和 StateField 缓存
+    └── normalizeMathDelimiters.ts：粘贴片段的分隔符改写与受保护范围
 ```
 
 ## 3. 数据流与编辑模型
@@ -67,7 +70,7 @@ Webview Editor
 6. 普通源码编辑器产生的无 origin 变更是 host-authoritative external update，立即以增量发送到所有 panel；后续保存仍可发送 canonical snapshot。
 7. 用户主题通过 `adaptMarkdownCss` 注入到独立 style 元素，并请求 CodeMirror 的测量流程，避免高度图过期。
 8. `mdLivePreview.typewriterMode` 是宿主侧配置，打开 webview 时随 `init` 消息发送；配置变化通过 `typewriterModeChanged` 广播到所有活动会话。webview 只接收布尔状态，不直接读取 VS Code API。
-9. 文档字号由扩展宿主的 `globalState` 共享持久化；webview 在根节点设置 CSS 自定义属性，并在字号变化后的下一帧请求 CodeMirror 重新测量，保持行框、widget 和命中测试几何有效。
+9. 文档字号与正文阅读区宽度分别由扩展宿主的 `globalState` 独立共享持久化；webview 在根节点设置两个 CSS 自定义属性，并在任一值变化后的下一帧请求 CodeMirror 重新测量，保持行框、widget 和命中测试几何有效。
 
 源位置是所有交互的身份：点击、脚注回跳、表格编辑、图片和图表操作都必须使用 CodeMirror 文档偏移或 DOM 到文档位置的 API，不使用屏幕像素推断文档位置。
 
@@ -91,10 +94,22 @@ Webview Editor
 ### 3.3 Typewriter Mode
 
 - `src/webview-editor/typewriterMode.ts` 只负责编辑器视口控制，不创建文档变更，也不参与宿主同步。
-- 写作型键盘事件、文本输入、删除、粘贴和拖放会安排一次下一帧定位；控制器使用 `coordsAtPos` 和 `scrollDOM` 的实际几何，把主光标中点尽量放到视口高度的 40%。
+- 默认状态由共享常量、`package.json`、宿主 fallback 和侧栏读取路径统一为开启；用户可通过 checkbox 持久化关闭。
+- 写作型键盘事件、文本输入、删除、粘贴和拖放会安排一次下一帧定位；普通单击在最终 selection collapsed 后恢复定位。控制器使用 `coordsAtPos` 和 `scrollDOM` 的实际几何，把主光标中点尽量放到视口高度的 50%。
+- primary pointer 在按下时记录起点，超过 5px 才标记为拖选；拖选期间和 pointerup 后不触发 50% recenter，selection 与 viewport 归用户控制。
 - 目标位置在文档开头或结尾不可达时使用 `scrollTop` 上下界钳制；文档短于视口时保持现有滚动位置。
-- 鼠标/指针点击、滚轮、原生滚动和宿主驱动的 `jumpToLine`/`setCursor` 会暂停自动定位，避免和用户主动浏览或显式导航竞争。
+- 拖选、滚轮、原生滚动和宿主驱动的 `jumpToLine`/`setCursor` 会暂停自动定位，避免和用户主动浏览或显式导航竞争；下一次写作型键盘/输入交互才恢复。
 - 控制器必须只挂在当前 `EditorView`，销毁时移除监听器；不得通过 `scrollIntoView` 事务制造二次编辑更新或同步循环。
+
+### 3.3 粘贴时数学分隔符规范化
+
+- 纯逻辑位于 `src/quarto/normalizeMathDelimiters.ts`，复用 `fence.ts` 的围栏扫描与 `math.ts` 的行内代码/既有数学掩码，不依赖 DOM，可在 Node 环境下由 Vitest 覆盖；完整文档目标还保护 front matter。
+- webview 通过 `EditorView.domEventHandlers` 的 `paste` 处理器拦截并改写内容，改写与内置粘贴同属一次 `changeByRange` 派发：粘贴和规范化是同一个事务，宿主只收到一条 `edit`。这验证了 Issue #53 当前可独立证明的事务边界；Live Preview 全链路 Ctrl+Z/Undo 仍由 Issue #34 负责。
+- 只改写 `\(...\)` 与 `\[...\]` 两处分隔符，公式内部的空格、换行和 LaTeX 环境逐字保留；块公式统一为独占行的 `$$` 形式。
+- 未命中（开关关闭、剪贴板不含 LaTeX 分隔符、改写后文本不变或目标处于受保护范围）时返回 `false`，完整交回 CodeMirror 内置粘贴，保留整行复制与「每选区一行」等既有语义。
+- fenced code block、行内代码、既有 `$...$` / `$$...$$` 范围和 front matter 内的目标不改写；目标判断覆盖整个替换选区，并基于源文本扫描，不依赖语法树是否已解析到该位置。多选区中任一目标不安全时整次粘贴走默认路径，避免部分规范化。
+- 找不到配对闭合符的开头分隔符按原样保留，避免生成孤立 `$` 把后续无关文本吞进数学范围。
+- 改写走 `state.changeByRange`，每个安全选区根据其原始目标行边界生成插入文本，并作为同一事务派发。显示数学粘贴在目标文档行中间时，paste/edit 层只补齐使两个 `$$` 分隔符独占行所需的换行；行首、行尾、空行和已有换行相邻时不补重复空行，并沿用目标文档的 CRLF/LF 语义。当前编辑器未启用 `EditorState.allowMultipleSelections`，CodeMirror 会把多选区折叠为单光标；保护逻辑仍对未来多选区保持整次回退语义。
 
 ## 4. 装饰与源码回退规则
 
@@ -117,14 +132,18 @@ Webview Editor
 - front matter 范围与表格/代码块范围重叠时，块装饰遍历必须优先跳过重叠节点。
 - front matter 的显示样式属于扩展基底 CSS，使用 VS Code CSS 变量，不纳入用户 Markdown CSS 主题改写。
 
-### 5.1 文档字号缩放
+### 5.1 文档字号与正文阅读区宽度缩放
 
-- `documentZoom.ts` 只监听 Live Preview 根节点；只有其后代获得焦点时，Ctrl/Mod+滚轮和 Ctrl/Mod++、Ctrl/Mod+-、Ctrl/Mod+0 才会被处理。
+- `documentZoom.ts` 是 Live Preview 根节点唯一的快捷键/滚轮事件 owner；只有其后代获得焦点时才处理输入，避免重复 keydown listener 造成一次输入执行两次。
 - 文档字号范围为 70% 至 200%，默认值和步进均为 100%/10%；边界操作仍取消浏览器默认缩放，但不越界。
-- 宿主通过 `mdLivePreview.documentZoomPercent` 保存单一全局值，并向所有已打开的 `DocumentSyncSession` 广播；webview 的本地交互再回传 `setZoom`。
-- 缩放使用 CSS 自定义属性参与字体、间距和核心 widget 布局，不使用 `transform: scale`，不改变 CodeMirror 文档、选区或源文本；变化后调用 `requestMeasure`。
+- 正文阅读区宽度范围为 60% 至 320%，默认值为 100%，全范围保持 10% 步进；`Ctrl/Mod +` 增大、`Ctrl/Mod -` 减小、`Ctrl/Mod + Shift + 0` 重置为 100%，边界操作仍取消浏览器默认缩放但不越界。
+- `Ctrl/Mod`+滚轮只改变字号；`Ctrl/Mod + 0` 只重置字号。两套动作由同一个事件 owner 分派。
+- 宿主分别通过 `mdLivePreview.documentZoomPercent` 和 `mdLivePreview.readingWidthPercent` 保存全局值，并向所有已打开的 `DocumentSyncSession` 广播；reading width 的状态为 60%–320% 的 10% 步进数值或持久化的 `full` 哨兵，320% 再增加进入 Full，Full 减少一次回到 320%；webview 的本地交互分别回传 `setZoom`/`setReadingWidth`。
+- `adaptMarkdownCss` 仅在严格识别的 reading-column selector 上，把单一 finite CSS length 的 `max-width` 改写为乘以 `--mlp-reading-width`；百分比、`none`、viewport 单位、函数值、混合 selector 和无法安全解析的规则原样保留。没有 finite `max-width` 的主题不被基底 CSS 强制限制。
+- Full 仅把适配器已经证明属于 reading column 的 finite `max-width` 通过 `--mlp-reading-column-max-width: none` 释放；未适配 selector 和不支持的宽度表达式不引用该变量，因而继续使用主题原值。根节点维持 viewport 响应式布局和侧边留白。
+- 两个缩放值使用 CSS 自定义属性参与字体、间距或安全适配的列宽，不使用 `transform: scale`，不改变 CodeMirror 文档、选区或源文本；任一值变化后调用 `requestMeasure`。
 
-详细的 feature 级验收和历史任务映射见 [`milestones/frontmatter-preview.md`](milestones/frontmatter-preview.md)。
+详细的 feature 级验收和历史任务映射见 [`milestones/reading-width.md`](milestones/reading-width.md)。
 
 ## 6. VS Code 资源和安全边界
 
@@ -151,9 +170,10 @@ npm run test:browser:typewriter
 npm run test:browser:arrow-scroll
 npm run test:browser:zoom
 npm run test:browser:math
+npm run test:browser:paste-math
 ```
 
-CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`VS Code Extension Host Integration` job 使用真实 VS Code Extension Host、TextDocument、WorkspaceEdit 和保存事件执行同步契约；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行七个浏览器命令。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。
+CI 的 `Core` job 执行依赖安装、类型检查、单元测试和编译；`VS Code Extension Host Integration` job 使用真实 VS Code Extension Host、TextDocument、WorkspaceEdit 和保存事件执行同步契约；`Browser Regression` job 重新安装依赖、安装 Chromium、编译 webview bundle，再执行十个浏览器命令（含 `test:browser:paste-math`）。浏览器回归必须使用真实 Playwright/Chromium，不得通过跳过步骤或降低断言来取得绿色状态。
 
 ## 8. Issue 与 PR 交付契约
 
