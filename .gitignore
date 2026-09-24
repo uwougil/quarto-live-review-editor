@@ -12,3 +12,22 @@ Thumbs.db
 sample/assets/
 examples/generated/
 examples/generated/
+# Security: local secrets and credentials
+.env
+.env.*
+!.env.example
+.envrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+.npmrc
+.pypirc
+.netrc
+credentials.json
+credentials.*
+service-account*.json
+service_account*.json
+.claude/settings.local.json
