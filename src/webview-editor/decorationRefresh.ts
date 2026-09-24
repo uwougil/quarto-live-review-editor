@@ -21,7 +21,18 @@ export function selectionDecorationRanges(...states: EditorState[]): DecorationR
 		for (const selection of state.selection.ranges) {
 			const fromLine = state.doc.lineAt(selection.from);
 			const toLine = state.doc.lineAt(selection.to);
-			ranges.push({ from: fromLine.from, to: toLine.to });
+			// A Markdown paragraph owns its trailing blank separator line so theme
+			// paragraph spacing can be distributed onto that measured CodeMirror
+			// line. Rebuilding only the blank line after a click would first remove
+			// the old paragraph decoration and then fail to rediscover the paragraph
+			// node (which ends on the previous line), visibly collapsing the gap.
+			// Include one line of left context only for a blank selection boundary;
+			// this keeps ordinary cursor invalidation local while letting the
+			// paragraph re-apply the separator-line class.
+			const contextualFrom = fromLine.text === '' && fromLine.number > 1
+				? state.doc.line(fromLine.number - 1).from
+				: fromLine.from;
+			ranges.push({ from: contextualFrom, to: toLine.to });
 		}
 	}
 	return ranges;
