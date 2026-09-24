@@ -17,6 +17,7 @@ import {
 	normalizeReadingWidth,
 	type ReadingWidthState,
 } from '../shared/documentZoom';
+import { DEFAULT_TYPEWRITER_MODE } from '../shared/typewriterMode';
 
 /**
  * Largest `.drawio` file that will be read and parsed.
@@ -67,7 +68,7 @@ export class DocumentSyncSession implements DocumentSyncPeer {
 		private readonly getDocumentZoom: () => number = () => DOCUMENT_ZOOM_DEFAULT,
 		private readonly onDocumentZoomChange: (percent: number) => void = () => undefined,
 		coordinator?: DocumentSyncCoordinator,
-		private readonly getTypewriterMode: () => boolean = () => false,
+		private readonly getTypewriterMode: () => boolean = () => DEFAULT_TYPEWRITER_MODE,
 		private readonly getReadingWidth: () => ReadingWidthState = () => READING_WIDTH_DEFAULT,
 		private readonly onReadingWidthChange: (state: ReadingWidthState) => void = () => undefined,
 		private readonly getNormalizeMathOnPaste: () => boolean = () => false,

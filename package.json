@@ -178,8 +178,8 @@
         },
         "mdLivePreview.typewriterMode": {
           "type": "boolean",
-          "default": false,
-          "description": "输入中将主光标保持在编辑器视口约 40% 的位置；默认关闭，也可从侧边栏切换。"
+          "default": true,
+          "description": "输入中将主光标保持在编辑器视口约 50% 的位置；默认开启，也可从侧边栏关闭。"
         },
         "mdLivePreview.normalizeMathOnPaste": {
           "type": "boolean",
