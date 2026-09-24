@@ -12,6 +12,7 @@ import {
 	type ReadingWidthState,
 } from '../shared/documentZoom';
 import { buildEditorWebviewCsp } from './webviewCsp';
+import { DEFAULT_TYPEWRITER_MODE } from '../shared/typewriterMode';
 
 export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvider {
 	static readonly viewType = 'mdLivePreview.editor';
@@ -40,7 +41,7 @@ export class MarkdownLivePreviewProvider implements vscode.CustomTextEditorProvi
 	static register(
 		context: vscode.ExtensionContext,
 		getCss: () => string,
-		getTypewriterMode: () => boolean = () => false,
+		getTypewriterMode: () => boolean = () => DEFAULT_TYPEWRITER_MODE,
 		getNormalizeMathOnPaste: () => boolean = () => false,
 	): { disposable: vscode.Disposable; provider: MarkdownLivePreviewProvider } {
 		const provider = new MarkdownLivePreviewProvider(context, getCss, getTypewriterMode, getNormalizeMathOnPaste);

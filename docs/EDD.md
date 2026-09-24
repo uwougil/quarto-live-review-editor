@@ -40,7 +40,7 @@ Webview Editor
 │   ├── 安装 Markdown/GFM/Quarto 方言扩展
 │   ├── 组合 inline 和 block decorations
 │   ├── 处理光标、鼠标、键盘和主题更新
-│   └── 协调可选的 Typewriter Mode 视口定位
+│   └── 协调默认开启的 Typewriter Mode 视口定位
 ├── src/webview-editor/livePreviewPlugin.ts
 │   └── 行内标记、链接、图片、脚注和轻量视觉装饰
 ├── src/webview-editor/blockDecorations.ts
@@ -89,13 +89,16 @@ Webview Editor
 - KaTeX 保留自身的 glyph metrics、字重、TeX spacing 和 display style；扩展 CSS 只负责继承主题前景色、可测量的 display padding 和横向溢出，不替换数学字体或缩放整个 widget。
 - KaTeX 字体完成加载后触发 CodeMirror 的 supported measurement；加载错误会写入 `data-mlp-katex-fonts="error"` 并记录错误，不静默接受浏览器 serif fallback。
 - `MathWidget` 的等价性由公式内容与 inline/display 模式决定，不由易变的源码绝对偏移决定；鼠标交互通过当前 DOM 向 CodeMirror 查询最新偏移，因此单个公式编辑不会重建其余公式 DOM。
+- `mathEditPreview.ts` 使用 `ViewPlugin` 管理折叠光标所在公式的单个绝对定位预览框。预览只从 `mathRangesField` 和当前选区派生，原始源码仍由 CodeMirror 唯一持有；预览 DOM 使用 `pointer-events: none`，通过 `coordsAtPos` 定位并随输入、选区、滚动和窗口尺寸更新，不加入 decoration、文档流、height map，也不主动滚动或调用 `requestMeasure`。
 
 ### 3.3 Typewriter Mode
 
 - `src/webview-editor/typewriterMode.ts` 只负责编辑器视口控制，不创建文档变更，也不参与宿主同步。
-- 写作型键盘事件、文本输入、删除、粘贴和拖放会安排一次下一帧定位；控制器使用 `coordsAtPos` 和 `scrollDOM` 的实际几何，把主光标中点尽量放到视口高度的 40%。
+- 默认状态由共享常量、`package.json`、宿主 fallback 和侧栏读取路径统一为开启；用户可通过 checkbox 持久化关闭。
+- 写作型键盘事件、文本输入、删除、粘贴和拖放会安排一次下一帧定位；普通单击在最终 selection collapsed 后恢复定位。控制器使用 `coordsAtPos` 和 `scrollDOM` 的实际几何，把主光标中点尽量放到视口高度的 50%。
+- primary pointer 在按下时记录起点，超过 5px 才标记为拖选；拖选期间和 pointerup 后不触发 50% recenter，selection 与 viewport 归用户控制。
 - 目标位置在文档开头或结尾不可达时使用 `scrollTop` 上下界钳制；文档短于视口时保持现有滚动位置。
-- 鼠标/指针点击、滚轮、原生滚动和宿主驱动的 `jumpToLine`/`setCursor` 会暂停自动定位，避免和用户主动浏览或显式导航竞争。
+- 拖选、滚轮、原生滚动和宿主驱动的 `jumpToLine`/`setCursor` 会暂停自动定位，避免和用户主动浏览或显式导航竞争；下一次写作型键盘/输入交互才恢复。
 - 控制器必须只挂在当前 `EditorView`，销毁时移除监听器；不得通过 `scrollIntoView` 事务制造二次编辑更新或同步循环。
 
 ### 3.3 粘贴时数学分隔符规范化

@@ -1,7 +1,7 @@
 import { StateField, type EditorState, type Range } from '@codemirror/state';
 import { Decoration, DecorationSet, EditorView, WidgetType } from '@codemirror/view';
 import katex from 'katex';
-import { mathRangeTouchesSelection, mathRangesForState, type MathRange } from './math';
+import { mathRangesForState, type MathRange } from './math';
 import { pointerGestureIsActive } from './cmUtils';
 import { refreshSyntaxDecorations } from './decorationRefresh';
 
@@ -66,6 +66,18 @@ class MathWidget extends WidgetType {
 }
 
 /**
+ * Only a collapsed caret strictly inside a formula is an editing request.
+ * A non-empty selection is a copy/formatting gesture and must keep the rendered
+ * formula stable instead of swapping KaTeX for raw `$...$` source underneath
+ * the user's selection.
+ */
+function mathRangeHasEditingCaret(state: EditorState, range: MathRange): boolean {
+	return state.selection.ranges.some((selection) =>
+		selection.empty && selection.head > range.from && selection.head < range.to,
+	);
+}
+
+/**
  * Math ranges are independent of the Markdown syntax tree, but their widgets
  * still belong in a StateField. A multi-line `$$...$$` replacement removes
  * line breaks, which CodeMirror only permits for block decorations supplied by
@@ -76,7 +88,7 @@ class MathWidget extends WidgetType {
 function buildMathDecorations(state: EditorState): DecorationSet {
 	const decorations: Range<Decoration>[] = [];
 	for (const range of mathRangesForState(state)) {
-		if (!pointerGestureIsActive() && mathRangeTouchesSelection(state, range)) continue;
+		if (!pointerGestureIsActive() && mathRangeHasEditingCaret(state, range)) continue;
 		const fromLine = state.doc.lineAt(range.from);
 		const toLine = state.doc.lineAt(range.to);
 		if (fromLine.number !== toLine.number) {
